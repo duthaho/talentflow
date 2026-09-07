@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.schemas import (
@@ -26,6 +26,16 @@ from app.api.schemas import (
     TenantResponse,
     TransitionCandidateCaseRequest,
 )
+from app.modules.candidates.application.create_candidate import (
+    CandidateEmailAlreadyExistsError,
+    CreateCandidateCommand,
+    CreateCandidateHandler,
+    RequisitionNotFoundError,
+)
+from app.modules.candidates.application.list_candidates import (
+    ListCandidatesHandler,
+    ListCandidatesQuery,
+)
 from app.modules.candidates.application.transition_candidate import (
     CandidateNotFoundError,
     ConcurrencyConflictError,
@@ -33,7 +43,12 @@ from app.modules.candidates.application.transition_candidate import (
     TransitionCandidateHandler,
 )
 from app.modules.candidates.infrastructure.sqlalchemy_repository import (
+    SqlAlchemyAuditRecorder,
     SqlAlchemyCandidateRepository,
+    SqlAlchemyRequisitionRepository,
+)
+from app.modules.candidates.infrastructure.sqlalchemy_repository import (
+    SqlAlchemyUnitOfWork as SqlAlchemyCandidateUnitOfWork,
 )
 from app.modules.identity.security import ActorContext, require
 from app.modules.interviews.domain.feedback import (
@@ -163,35 +178,19 @@ def create_app(database_url: str | None = None) -> FastAPI:
         cursor: str | None = None,
         limit: int = Query(default=25, ge=1, le=100),
     ) -> CandidateListResponse:
-        filters = [CandidateCase.tenant_id == actor.tenant_id]
-        if stage:
-            filters.append(CandidateCase.stage == stage)
-        if requisition_id:
-            filters.append(CandidateCase.requisition_id == requisition_id)
-        if cursor:
-            filters.append(CandidateCase.id > cursor)
-        candidates = session.scalars(
-            select(CandidateCase).where(*filters).order_by(CandidateCase.id).limit(limit + 1)
-        ).all()
-        total = (
-            session.scalar(select(func.count()).select_from(CandidateCase).where(*filters[:3])) or 0
+        page = ListCandidatesHandler(SqlAlchemyCandidateRepository(session)).handle(
+            ListCandidatesQuery(
+                tenant_id=actor.tenant_id,
+                stage=stage,
+                requisition_id=requisition_id,
+                cursor=cursor,
+                limit=limit,
+            )
         )
-        page = candidates[:limit]
         return CandidateListResponse(
-            items=[
-                CandidateListItem(
-                    id=item.id,
-                    requisition_id=item.requisition_id,
-                    first_name=item.first_name,
-                    last_name=item.last_name,
-                    email=item.email,
-                    stage=item.stage,
-                    version=item.version,
-                )
-                for item in page
-            ],
-            next_cursor=page[-1].id if len(candidates) > limit else None,
-            total=total,
+            items=[CandidateListItem(**item.__dict__) for item in page.items],
+            next_cursor=page.next_cursor,
+            total=page.total,
         )
 
     @app.post(
@@ -206,61 +205,39 @@ def create_app(database_url: str | None = None) -> FastAPI:
         actor: ActorContext = Depends(require("candidate:create")),
         correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
     ) -> CandidateCaseResponse:
-        requisition = session.scalar(
-            select(Requisition).where(
-                Requisition.id == payload.requisition_id,
-                Requisition.tenant_id == actor.tenant_id,
+        try:
+            created = CreateCandidateHandler(
+                candidates=SqlAlchemyCandidateRepository(session),
+                requisitions=SqlAlchemyRequisitionRepository(session),
+                audit=SqlAlchemyAuditRecorder(session),
+                unit_of_work=SqlAlchemyCandidateUnitOfWork(session),
+            ).handle(
+                CreateCandidateCommand(
+                    tenant_id=actor.tenant_id,
+                    requisition_id=payload.requisition_id,
+                    first_name=payload.first_name,
+                    last_name=payload.last_name,
+                    email=payload.email,
+                    actor_id=actor.actor_id,
+                    correlation_id=correlation_id
+                    or request.headers.get("X-Request-Id")
+                    or str(uuid4()),
+                )
             )
-        )
-        if requisition is None:
+        except RequisitionNotFoundError as error:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Requisition not found"
-            )
-
-        email = payload.email.strip().lower()
-        if session.scalar(
-            select(CandidateCase).where(
-                CandidateCase.tenant_id == actor.tenant_id,
-                CandidateCase.email == email,
-            )
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Candidate email already exists in this tenant",
-            )
-
-        candidate_case = CandidateCase(
-            tenant_id=actor.tenant_id,
-            requisition_id=requisition.id,
-            first_name=payload.first_name.strip(),
-            last_name=payload.last_name.strip(),
-            email=email,
-            created_by=actor.actor_id,
-        )
-        session.add(candidate_case)
-        session.flush()
-        session.add(
-            AuditEvent(
-                tenant_id=actor.tenant_id,
-                actor_id=actor.actor_id,
-                action="candidate_case.created",
-                aggregate_type="candidate_case",
-                aggregate_id=candidate_case.id,
-                correlation_id=correlation_id
-                or request.headers.get("X-Request-Id")
-                or str(uuid4()),
-                metadata_json={"requisition_id": requisition.id, "stage": candidate_case.stage},
-            )
-        )
-        session.commit()
+            ) from error
+        except CandidateEmailAlreadyExistsError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         return CandidateCaseResponse(
-            id=candidate_case.id,
-            requisition_id=candidate_case.requisition_id,
-            first_name=candidate_case.first_name,
-            last_name=candidate_case.last_name,
-            email=candidate_case.email,
-            stage=candidate_case.stage,
-            version=candidate_case.version,
+            id=created.candidate.id,
+            requisition_id=created.candidate.requisition_id,
+            first_name=created.first_name,
+            last_name=created.last_name,
+            email=created.email,
+            stage=created.candidate.stage.value,
+            version=created.candidate.version,
         )
 
     @app.patch(
