@@ -6,6 +6,8 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     database_url: str = "sqlite:///talentflow.db"
+    sendgrid_api_key: str = ""
+    notification_from_email: str = ""
 
 
 settings = Settings()
