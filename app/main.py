@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.schemas import (
@@ -25,6 +25,15 @@ from app.api.schemas import (
     SubmitFeedbackRequest,
     TenantResponse,
     TransitionCandidateCaseRequest,
+)
+from app.modules.candidates.application.transition_candidate import (
+    CandidateNotFoundError,
+    ConcurrencyConflictError,
+    TransitionCandidateCommand,
+    TransitionCandidateHandler,
+)
+from app.modules.candidates.infrastructure.sqlalchemy_repository import (
+    SqlAlchemyCandidateRepository,
 )
 from app.modules.identity.security import ActorContext, require
 from app.modules.interviews.domain.feedback import (
@@ -276,20 +285,24 @@ def create_app(database_url: str | None = None) -> FastAPI:
             ) from error
 
         prior_stage = candidate_case.stage
-        update_result = session.execute(
-            update(CandidateCase)
-            .where(
-                CandidateCase.id == candidate_case.id,
-                CandidateCase.tenant_id == actor.tenant_id,
-                CandidateCase.version == payload.expected_version,
+        try:
+            TransitionCandidateHandler(SqlAlchemyCandidateRepository(session)).handle(
+                TransitionCandidateCommand(
+                    candidate_id=candidate_case_id,
+                    tenant_id=actor.tenant_id,
+                    target_stage=target_stage.value,
+                    expected_version=payload.expected_version,
+                )
             )
-            .values(stage=target_stage.value, version=CandidateCase.version + 1)
-        )
-        if update_result.rowcount != 1:
+        except CandidateNotFoundError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
+            ) from error
+        except ConcurrencyConflictError as error:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Candidate case has changed; refresh and retry",
-            )
+            ) from error
         session.refresh(candidate_case)
         session.add(
             AuditEvent(
