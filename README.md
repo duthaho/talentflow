@@ -12,6 +12,16 @@ A production-oriented, multi-tenant HR candidate workflow and case-management pl
 - Transactional audit records for tenant bootstrap, requisition, candidate-case, interview scheduling, and feedback submission.
 - PostgreSQL-ready configuration, Docker Compose local environment, health endpoint, test and lint gates.
 
+## SendGrid delivery worker
+
+Set `SENDGRID_API_KEY` and `NOTIFICATION_FROM_EMAIL` in deployment secrets, then run:
+
+```bash
+uv run python -m app.modules.notifications.application.run_email_worker
+```
+
+The sender address must be verified in SendGrid. Notification recipients need a `users.email` value; failed deliveries retry and eventually move to `dead_letter`.
+
 ## Run locally
 
 ```bash
