@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -46,6 +48,32 @@ class CandidateCaseResponse(BaseModel):
     email: str
     stage: str
     version: int
+
+
+class CreateInterviewRequest(BaseModel):
+    interviewer_id: str = Field(min_length=1, max_length=128)
+    scheduled_at: datetime
+
+
+class InterviewResponse(BaseModel):
+    id: str
+    candidate_case_id: str
+    interviewer_id: str
+    scheduled_at: datetime
+
+
+class SubmitFeedbackRequest(BaseModel):
+    score: int = Field(ge=1, le=5)
+    recommendation: str = Field(pattern=r"^(strong_hire|hire|no_hire|strong_no_hire)$")
+    comments: str = Field(min_length=1, max_length=5000)
+
+
+class FeedbackResponse(BaseModel):
+    id: str
+    interview_id: str
+    score: int
+    recommendation: str
+    comments: str
 
 
 class AuditEventResponse(BaseModel):

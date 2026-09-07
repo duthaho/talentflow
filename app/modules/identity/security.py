@@ -15,16 +15,24 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "requisition:create",
             "candidate:create",
             "candidate:transition",
+            "interview:manage",
             "audit:read",
             "tenant:read",
         }
     ),
     "recruiter": frozenset(
-        {"requisition:create", "candidate:create", "candidate:transition", "tenant:read"}
+        {
+            "requisition:create",
+            "candidate:create",
+            "candidate:transition",
+            "interview:manage",
+            "audit:read",
+            "tenant:read",
+        }
     ),
     "auditor": frozenset({"audit:read", "tenant:read"}),
     "hiring_manager": frozenset({"tenant:read"}),
-    "interviewer": frozenset(),
+    "interviewer": frozenset({"feedback:submit"}),
 }
 
 

@@ -8,7 +8,8 @@ A production-oriented, multi-tenant HR candidate workflow and case-management pl
 - Tenant-scoped RBAC and request identity context.
 - Candidate-case creation validates tenant-owned requisitions and enforces normalized, tenant-unique emails.
 - Explicit candidate state machine, authorization-gated stage transitions, and database-level optimistic locking.
-- Transactional audit records for tenant bootstrap, requisition, and candidate-case creation.
+- Interview scheduling assigns tenant members with the `interviewer` role; only the assigned interviewer can submit one structured feedback record.
+- Transactional audit records for tenant bootstrap, requisition, candidate-case, interview scheduling, and feedback submission.
 - PostgreSQL-ready configuration, Docker Compose local environment, health endpoint, test and lint gates.
 
 ## Run locally

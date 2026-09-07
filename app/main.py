@@ -11,13 +11,22 @@ from app.api.schemas import (
     AuditEventResponse,
     CandidateCaseResponse,
     CreateCandidateCaseRequest,
+    CreateInterviewRequest,
     CreateRequisitionRequest,
     CreateTenantRequest,
+    FeedbackResponse,
+    InterviewResponse,
     RequisitionResponse,
+    SubmitFeedbackRequest,
     TenantResponse,
     TransitionCandidateCaseRequest,
 )
 from app.modules.identity.security import ActorContext, require
+from app.modules.interviews.domain.feedback import (
+    FeedbackAlreadySubmittedError,
+    InterviewerNotAssignedError,
+    assert_feedback_can_be_submitted,
+)
 from app.modules.workflow.domain.candidate_state_machine import (
     CandidateStage,
     InvalidTransitionError,
@@ -28,6 +37,8 @@ from app.shared.models import (
     AuditEvent,
     Base,
     CandidateCase,
+    Interview,
+    InterviewFeedback,
     Membership,
     Requisition,
     Tenant,
@@ -257,6 +268,130 @@ def create_app(database_url: str | None = None) -> FastAPI:
             email=candidate_case.email,
             stage=candidate_case.stage,
             version=candidate_case.version,
+        )
+
+    @app.post(
+        "/v1/candidate-cases/{candidate_case_id}/interviews",
+        response_model=InterviewResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def schedule_interview(
+        candidate_case_id: str,
+        payload: CreateInterviewRequest,
+        request: Request,
+        session: SessionDep,
+        actor: ActorContext = Depends(require("interview:manage")),
+    ) -> InterviewResponse:
+        candidate = session.scalar(
+            select(CandidateCase).where(
+                CandidateCase.id == candidate_case_id, CandidateCase.tenant_id == actor.tenant_id
+            )
+        )
+        interviewer = session.scalar(
+            select(Membership).where(
+                Membership.tenant_id == actor.tenant_id,
+                Membership.user_id == payload.interviewer_id,
+                Membership.role == "interviewer",
+            )
+        )
+        if candidate is None or interviewer is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Candidate case or interviewer not found",
+            )
+        interview = Interview(
+            tenant_id=actor.tenant_id,
+            candidate_case_id=candidate.id,
+            interviewer_id=payload.interviewer_id,
+            scheduled_at=payload.scheduled_at,
+            created_by=actor.actor_id,
+        )
+        session.add(interview)
+        session.flush()
+        session.add(
+            AuditEvent(
+                tenant_id=actor.tenant_id,
+                actor_id=actor.actor_id,
+                action="interview.scheduled",
+                aggregate_type="interview",
+                aggregate_id=interview.id,
+                correlation_id=request.headers.get("X-Correlation-Id") or str(uuid4()),
+                metadata_json={
+                    "candidate_case_id": candidate.id,
+                    "interviewer_id": interview.interviewer_id,
+                },
+            )
+        )
+        session.commit()
+        return InterviewResponse(
+            id=interview.id,
+            candidate_case_id=interview.candidate_case_id,
+            interviewer_id=interview.interviewer_id,
+            scheduled_at=interview.scheduled_at,
+        )
+
+    @app.post(
+        "/v1/interviews/{interview_id}/feedback",
+        response_model=FeedbackResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def submit_interview_feedback(
+        interview_id: str,
+        payload: SubmitFeedbackRequest,
+        request: Request,
+        session: SessionDep,
+        actor: ActorContext = Depends(require("feedback:submit")),
+    ) -> FeedbackResponse:
+        interview = session.scalar(
+            select(Interview).where(
+                Interview.id == interview_id, Interview.tenant_id == actor.tenant_id
+            )
+        )
+        feedback = session.scalar(
+            select(InterviewFeedback).where(InterviewFeedback.interview_id == interview_id)
+        )
+        if interview is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+        try:
+            assert_feedback_can_be_submitted(
+                is_assigned=interview.interviewer_id == actor.actor_id,
+                feedback_exists=feedback is not None,
+            )
+        except (InterviewerNotAssignedError, FeedbackAlreadySubmittedError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT
+                if isinstance(error, FeedbackAlreadySubmittedError)
+                else status.HTTP_403_FORBIDDEN,
+                detail=str(error),
+            ) from error
+        feedback = InterviewFeedback(
+            tenant_id=actor.tenant_id,
+            interview_id=interview.id,
+            interviewer_id=actor.actor_id,
+            score=payload.score,
+            recommendation=payload.recommendation,
+            comments=payload.comments.strip(),
+        )
+        session.add(feedback)
+        session.flush()
+        session.add(
+            AuditEvent(
+                tenant_id=actor.tenant_id,
+                actor_id=actor.actor_id,
+                action="interview.feedback_submitted",
+                aggregate_type="interview",
+                aggregate_id=interview.id,
+                correlation_id=request.headers.get("X-Correlation-Id") or str(uuid4()),
+                metadata_json={"score": feedback.score, "recommendation": feedback.recommendation},
+            )
+        )
+        session.commit()
+        return FeedbackResponse(
+            id=feedback.id,
+            interview_id=feedback.interview_id,
+            score=feedback.score,
+            recommendation=feedback.recommendation,
+            comments=feedback.comments,
         )
 
     @app.get("/v1/audit-events", response_model=list[AuditEventResponse])
