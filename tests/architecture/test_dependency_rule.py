@@ -3,7 +3,7 @@ from pathlib import Path
 DOMAIN_ROOT = Path("app/modules")
 FORBIDDEN = ("fastapi", "sqlalchemy", "pydantic", "sendgrid")
 APPLICATION_FORBIDDEN = ("fastapi", "sqlalchemy", "pydantic", "sendgrid", "app.shared.models")
-CLEAN_ARCHITECTURE_MODULES = ("candidates", "offers")
+CLEAN_ARCHITECTURE_MODULES = ("audit", "candidates", "interviews", "offers", "organization")
 
 
 def test_domain_layer_does_not_depend_on_frameworks_or_infrastructure() -> None:

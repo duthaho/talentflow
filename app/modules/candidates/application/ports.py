@@ -61,6 +61,15 @@ class AuditRecorder(Protocol):
         self, *, candidate: CandidateCase, actor_id: str, correlation_id: str
     ) -> None: ...
 
+    def candidate_stage_transitioned(
+        self,
+        *,
+        candidate: CandidateCase,
+        prior_stage: str,
+        actor_id: str,
+        correlation_id: str,
+    ) -> None: ...
+
 
 class UnitOfWork(Protocol):
     def commit(self) -> None: ...

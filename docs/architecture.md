@@ -15,9 +15,17 @@ HTTP adapter -> application command/query -> domain -> port -> infrastructure ad
 - `infrastructure`: SQLAlchemy, SendGrid, and worker implementations.
 - `presentation`: request validation, authentication context, and mapping errors to HTTP.
 
+## Implemented contexts
+
+- **Organization:** tenant bootstrap, membership, requisitions, and audit-backed transactional commands.
+- **Candidates:** candidate creation/query/transition commands with tenant isolation and optimistic locking.
+- **Interviews:** scheduling and single-submission structured feedback.
+- **Offers:** staged approval policy, immutable decisions, and transactional outbox records.
+- **Audit:** tenant-scoped read model exposed through its own router adapter.
+
 ## Candidate transition flow
 
-`TransitionCandidateHandler` receives a command, loads `CandidateCase` through `CandidateRepository`, delegates the transition to the domain aggregate, and applies a version-guarded persistence update. The HTTP layer maps not-found/concurrency errors and records the audit event in the same transaction.
+`TransitionCandidateHandler` receives a command, loads `CandidateCase` through `CandidateRepository`, delegates the transition to the domain aggregate, applies a version-guarded persistence update, records the audit event, and commits through its application unit of work. The HTTP layer maps only transport errors and responses.
 
 ## Reliability
 

@@ -158,6 +158,30 @@ class SqlAlchemyAuditRecorder:
             )
         )
 
+    def candidate_stage_transitioned(
+        self,
+        *,
+        candidate: CandidateCase,
+        prior_stage: str,
+        actor_id: str,
+        correlation_id: str,
+    ) -> None:
+        self._session.add(
+            AuditEvent(
+                tenant_id=candidate.tenant_id,
+                actor_id=actor_id,
+                action="candidate_case.stage_transitioned",
+                aggregate_type="candidate_case",
+                aggregate_id=candidate.id,
+                correlation_id=correlation_id,
+                metadata_json={
+                    "from_stage": prior_stage,
+                    "to_stage": candidate.stage.value,
+                    "version": candidate.version,
+                },
+            )
+        )
+
 
 class SqlAlchemyUnitOfWork:
     def __init__(self, session: Session):

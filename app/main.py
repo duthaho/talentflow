@@ -4,12 +4,11 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
-from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
+from app.api.audit_router import router as audit_router
 from app.api.schemas import (
     ApproveOfferRequest,
-    AuditEventResponse,
     CandidateCaseResponse,
     CandidateListItem,
     CandidateListResponse,
@@ -51,10 +50,25 @@ from app.modules.candidates.infrastructure.sqlalchemy_repository import (
     SqlAlchemyUnitOfWork as SqlAlchemyCandidateUnitOfWork,
 )
 from app.modules.identity.security import ActorContext, require
+from app.modules.interviews.application.schedule_interview import (
+    InterviewSchedulingTargetNotFoundError,
+    ScheduleInterviewCommand,
+    ScheduleInterviewHandler,
+)
+from app.modules.interviews.application.submit_feedback import (
+    InterviewNotFoundError,
+    SubmitFeedbackCommand,
+    SubmitFeedbackHandler,
+)
 from app.modules.interviews.domain.feedback import (
     FeedbackAlreadySubmittedError,
     InterviewerNotAssignedError,
-    assert_feedback_can_be_submitted,
+)
+from app.modules.interviews.infrastructure.sqlalchemy_repository import (
+    SqlAlchemyInterviewRepository,
+)
+from app.modules.interviews.infrastructure.sqlalchemy_repository import (
+    SqlAlchemyUnitOfWork as SqlAlchemyInterviewUnitOfWork,
 )
 from app.modules.offers.application.create_offer import (
     CandidateNotEligibleForOfferError,
@@ -74,22 +88,26 @@ from app.modules.offers.infrastructure.sqlalchemy_repository import (
     SqlAlchemyOfferRepository,
     SqlAlchemyUnitOfWork,
 )
+from app.modules.organization.application.commands import (
+    CreateRequisitionCommand,
+    CreateTenantCommand,
+    OrganizationService,
+    TenantSlugAlreadyExistsError,
+)
+from app.modules.organization.infrastructure.sqlalchemy_repository import (
+    SqlAlchemyOrganizationRepository,
+)
+from app.modules.organization.infrastructure.sqlalchemy_repository import (
+    SqlAlchemyUnitOfWork as SqlAlchemyOrganizationUnitOfWork,
+)
 from app.modules.workflow.domain.candidate_state_machine import (
     CandidateStage,
     InvalidTransitionError,
-    transition_to,
 )
 from app.shared.database import SessionDep, build_engine
 from app.shared.models import (
-    AuditEvent,
     Base,
     CandidateCase,
-    Interview,
-    InterviewFeedback,
-    Membership,
-    Requisition,
-    Tenant,
-    User,
 )
 from app.shared.settings import settings
 
@@ -106,6 +124,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
 
     app = FastAPI(title="TalentFlow API", version="0.1.0", lifespan=lifespan)
     app.state.session_factory = session_factory
+    app.include_router(audit_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -113,27 +132,15 @@ def create_app(database_url: str | None = None) -> FastAPI:
 
     @app.post("/v1/tenants", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
     def create_tenant(payload: CreateTenantRequest, session: SessionDep) -> TenantResponse:
-        if session.scalar(select(Tenant).where(Tenant.slug == payload.slug)):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail="Tenant slug already exists"
+        try:
+            tenant = OrganizationService(
+                repository=SqlAlchemyOrganizationRepository(session),
+                unit_of_work=SqlAlchemyOrganizationUnitOfWork(session),
+            ).create_tenant(
+                CreateTenantCommand(name=payload.name, slug=payload.slug, admin_id=payload.admin_id)
             )
-        tenant = Tenant(name=payload.name, slug=payload.slug)
-        user = session.get(User, payload.admin_id) or User(id=payload.admin_id)
-        session.add_all([tenant, user])
-        session.flush()
-        session.add(Membership(tenant_id=tenant.id, user_id=user.id, role="tenant_admin"))
-        session.add(
-            AuditEvent(
-                tenant_id=tenant.id,
-                actor_id=user.id,
-                action="tenant.created",
-                aggregate_type="tenant",
-                aggregate_id=tenant.id,
-                correlation_id=str(uuid4()),
-                metadata_json={"slug": tenant.slug},
-            )
-        )
-        session.commit()
+        except TenantSlugAlreadyExistsError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         return TenantResponse(id=tenant.id, name=tenant.name, slug=tenant.slug)
 
     @app.post(
@@ -145,26 +152,18 @@ def create_app(database_url: str | None = None) -> FastAPI:
         actor: ActorContext = Depends(require("requisition:create")),
         correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
     ) -> RequisitionResponse:
-        requisition = Requisition(
-            tenant_id=actor.tenant_id,
-            title=payload.title,
-            department=payload.department,
-            created_by=actor.actor_id,
-        )
-        session.add(requisition)
-        session.flush()
-        session.add(
-            AuditEvent(
+        requisition = OrganizationService(
+            repository=SqlAlchemyOrganizationRepository(session),
+            unit_of_work=SqlAlchemyOrganizationUnitOfWork(session),
+        ).create_requisition(
+            CreateRequisitionCommand(
                 tenant_id=actor.tenant_id,
+                title=payload.title,
+                department=payload.department,
                 actor_id=actor.actor_id,
-                action="requisition.created",
-                aggregate_type="requisition",
-                aggregate_id=requisition.id,
                 correlation_id=correlation_id or str(uuid4()),
-                metadata_json={"title": requisition.title},
             )
         )
-        session.commit()
         return RequisitionResponse(
             id=requisition.id, title=requisition.title, department=requisition.department
         )
@@ -251,38 +250,21 @@ def create_app(database_url: str | None = None) -> FastAPI:
         actor: ActorContext = Depends(require("candidate:transition")),
         correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
     ) -> CandidateCaseResponse:
-        candidate_case = session.scalar(
-            select(CandidateCase).where(
-                CandidateCase.id == candidate_case_id,
-                CandidateCase.tenant_id == actor.tenant_id,
-            )
-        )
-        if candidate_case is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
-            )
-        if candidate_case.version != payload.expected_version:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Candidate case has changed; refresh and retry",
-            )
         try:
-            target_stage = transition_to(
-                CandidateStage(candidate_case.stage), CandidateStage(payload.target_stage)
-            )
-        except (InvalidTransitionError, ValueError) as error:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
-            ) from error
-
-        prior_stage = candidate_case.stage
-        try:
-            TransitionCandidateHandler(SqlAlchemyCandidateRepository(session)).handle(
+            transitioned = TransitionCandidateHandler(
+                repository=SqlAlchemyCandidateRepository(session),
+                audit=SqlAlchemyAuditRecorder(session),
+                unit_of_work=SqlAlchemyCandidateUnitOfWork(session),
+            ).handle(
                 TransitionCandidateCommand(
                     candidate_id=candidate_case_id,
                     tenant_id=actor.tenant_id,
-                    target_stage=target_stage.value,
+                    target_stage=payload.target_stage,
                     expected_version=payload.expected_version,
+                    actor_id=actor.actor_id,
+                    correlation_id=correlation_id
+                    or request.headers.get("X-Request-Id")
+                    or str(uuid4()),
                 )
             )
         except CandidateNotFoundError as error:
@@ -294,33 +276,20 @@ def create_app(database_url: str | None = None) -> FastAPI:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Candidate case has changed; refresh and retry",
             ) from error
-        session.refresh(candidate_case)
-        session.add(
-            AuditEvent(
-                tenant_id=actor.tenant_id,
-                actor_id=actor.actor_id,
-                action="candidate_case.stage_transitioned",
-                aggregate_type="candidate_case",
-                aggregate_id=candidate_case.id,
-                correlation_id=correlation_id
-                or request.headers.get("X-Request-Id")
-                or str(uuid4()),
-                metadata_json={
-                    "from_stage": prior_stage,
-                    "to_stage": candidate_case.stage,
-                    "version": candidate_case.version,
-                },
-            )
-        )
-        session.commit()
+        except (InvalidTransitionError, ValueError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+        record = session.get(CandidateCase, transitioned.id)
+        assert record is not None
         return CandidateCaseResponse(
-            id=candidate_case.id,
-            requisition_id=candidate_case.requisition_id,
-            first_name=candidate_case.first_name,
-            last_name=candidate_case.last_name,
-            email=candidate_case.email,
-            stage=candidate_case.stage,
-            version=candidate_case.version,
+            id=record.id,
+            requisition_id=record.requisition_id,
+            first_name=record.first_name,
+            last_name=record.last_name,
+            email=record.email,
+            stage=transitioned.stage.value,
+            version=transitioned.version,
         )
 
     @app.post(
@@ -335,47 +304,22 @@ def create_app(database_url: str | None = None) -> FastAPI:
         session: SessionDep,
         actor: ActorContext = Depends(require("interview:manage")),
     ) -> InterviewResponse:
-        candidate = session.scalar(
-            select(CandidateCase).where(
-                CandidateCase.id == candidate_case_id, CandidateCase.tenant_id == actor.tenant_id
+        try:
+            interview = ScheduleInterviewHandler(
+                interviews=SqlAlchemyInterviewRepository(session),
+                unit_of_work=SqlAlchemyInterviewUnitOfWork(session),
+            ).handle(
+                ScheduleInterviewCommand(
+                    tenant_id=actor.tenant_id,
+                    candidate_case_id=candidate_case_id,
+                    interviewer_id=payload.interviewer_id,
+                    scheduled_at=payload.scheduled_at,
+                    actor_id=actor.actor_id,
+                    correlation_id=request.headers.get("X-Correlation-Id") or str(uuid4()),
+                )
             )
-        )
-        interviewer = session.scalar(
-            select(Membership).where(
-                Membership.tenant_id == actor.tenant_id,
-                Membership.user_id == payload.interviewer_id,
-                Membership.role == "interviewer",
-            )
-        )
-        if candidate is None or interviewer is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Candidate case or interviewer not found",
-            )
-        interview = Interview(
-            tenant_id=actor.tenant_id,
-            candidate_case_id=candidate.id,
-            interviewer_id=payload.interviewer_id,
-            scheduled_at=payload.scheduled_at,
-            created_by=actor.actor_id,
-        )
-        session.add(interview)
-        session.flush()
-        session.add(
-            AuditEvent(
-                tenant_id=actor.tenant_id,
-                actor_id=actor.actor_id,
-                action="interview.scheduled",
-                aggregate_type="interview",
-                aggregate_id=interview.id,
-                correlation_id=request.headers.get("X-Correlation-Id") or str(uuid4()),
-                metadata_json={
-                    "candidate_case_id": candidate.id,
-                    "interviewer_id": interview.interviewer_id,
-                },
-            )
-        )
-        session.commit()
+        except InterviewSchedulingTargetNotFoundError as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
         return InterviewResponse(
             id=interview.id,
             candidate_case_id=interview.candidate_case_id,
@@ -395,21 +339,25 @@ def create_app(database_url: str | None = None) -> FastAPI:
         session: SessionDep,
         actor: ActorContext = Depends(require("feedback:submit")),
     ) -> FeedbackResponse:
-        interview = session.scalar(
-            select(Interview).where(
-                Interview.id == interview_id, Interview.tenant_id == actor.tenant_id
-            )
-        )
-        feedback = session.scalar(
-            select(InterviewFeedback).where(InterviewFeedback.interview_id == interview_id)
-        )
-        if interview is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
         try:
-            assert_feedback_can_be_submitted(
-                is_assigned=interview.interviewer_id == actor.actor_id,
-                feedback_exists=feedback is not None,
+            feedback = SubmitFeedbackHandler(
+                interviews=SqlAlchemyInterviewRepository(session),
+                unit_of_work=SqlAlchemyInterviewUnitOfWork(session),
+            ).handle(
+                SubmitFeedbackCommand(
+                    interview_id=interview_id,
+                    tenant_id=actor.tenant_id,
+                    actor_id=actor.actor_id,
+                    score=payload.score,
+                    recommendation=payload.recommendation,
+                    comments=payload.comments,
+                    correlation_id=request.headers.get("X-Correlation-Id") or str(uuid4()),
+                )
             )
+        except InterviewNotFoundError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found"
+            ) from error
         except (InterviewerNotAssignedError, FeedbackAlreadySubmittedError) as error:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT
@@ -417,28 +365,6 @@ def create_app(database_url: str | None = None) -> FastAPI:
                 else status.HTTP_403_FORBIDDEN,
                 detail=str(error),
             ) from error
-        feedback = InterviewFeedback(
-            tenant_id=actor.tenant_id,
-            interview_id=interview.id,
-            interviewer_id=actor.actor_id,
-            score=payload.score,
-            recommendation=payload.recommendation,
-            comments=payload.comments.strip(),
-        )
-        session.add(feedback)
-        session.flush()
-        session.add(
-            AuditEvent(
-                tenant_id=actor.tenant_id,
-                actor_id=actor.actor_id,
-                action="interview.feedback_submitted",
-                aggregate_type="interview",
-                aggregate_id=interview.id,
-                correlation_id=request.headers.get("X-Correlation-Id") or str(uuid4()),
-                metadata_json={"score": feedback.score, "recommendation": feedback.recommendation},
-            )
-        )
-        session.commit()
         return FeedbackResponse(
             id=feedback.id,
             interview_id=feedback.interview_id,
@@ -525,27 +451,6 @@ def create_app(database_url: str | None = None) -> FastAPI:
             version=offer.version,
             candidate_stage=candidate_stage,
         )
-
-    @app.get("/v1/audit-events", response_model=list[AuditEventResponse])
-    def list_audit_events(
-        session: SessionDep,
-        actor: ActorContext = Depends(require("audit:read")),
-    ) -> list[AuditEventResponse]:
-        events = session.scalars(
-            select(AuditEvent)
-            .where(AuditEvent.tenant_id == actor.tenant_id)
-            .order_by(AuditEvent.created_at.desc())
-        ).all()
-        return [
-            AuditEventResponse(
-                id=event.id,
-                action=event.action,
-                aggregate_type=event.aggregate_type,
-                aggregate_id=event.aggregate_id,
-                correlation_id=event.correlation_id,
-            )
-            for event in events
-        ]
 
     return app
 
