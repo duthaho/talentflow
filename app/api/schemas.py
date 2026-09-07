@@ -50,6 +50,22 @@ class CandidateCaseResponse(BaseModel):
     version: int
 
 
+class CandidateListItem(BaseModel):
+    id: str
+    requisition_id: str
+    first_name: str
+    last_name: str
+    email: str
+    stage: str
+    version: int
+
+
+class CandidateListResponse(BaseModel):
+    items: list[CandidateListItem]
+    next_cursor: str | None
+    total: int
+
+
 class CreateInterviewRequest(BaseModel):
     interviewer_id: str = Field(min_length=1, max_length=128)
     scheduled_at: datetime

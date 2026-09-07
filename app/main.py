@@ -3,14 +3,16 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
-from sqlalchemy import select, update
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import sessionmaker
 
 from app.api.schemas import (
     ApproveOfferRequest,
     AuditEventResponse,
     CandidateCaseResponse,
+    CandidateListItem,
+    CandidateListResponse,
     CreateCandidateCaseRequest,
     CreateInterviewRequest,
     CreateOfferRequest,
@@ -127,6 +129,46 @@ def create_app(database_url: str | None = None) -> FastAPI:
         session.commit()
         return RequisitionResponse(
             id=requisition.id, title=requisition.title, department=requisition.department
+        )
+
+    @app.get("/v1/candidate-cases", response_model=CandidateListResponse)
+    def list_candidate_cases(
+        session: SessionDep,
+        actor: ActorContext = Depends(require("tenant:read")),
+        stage: str | None = None,
+        requisition_id: str | None = None,
+        cursor: str | None = None,
+        limit: int = Query(default=25, ge=1, le=100),
+    ) -> CandidateListResponse:
+        filters = [CandidateCase.tenant_id == actor.tenant_id]
+        if stage:
+            filters.append(CandidateCase.stage == stage)
+        if requisition_id:
+            filters.append(CandidateCase.requisition_id == requisition_id)
+        if cursor:
+            filters.append(CandidateCase.id > cursor)
+        candidates = session.scalars(
+            select(CandidateCase).where(*filters).order_by(CandidateCase.id).limit(limit + 1)
+        ).all()
+        total = (
+            session.scalar(select(func.count()).select_from(CandidateCase).where(*filters[:3])) or 0
+        )
+        page = candidates[:limit]
+        return CandidateListResponse(
+            items=[
+                CandidateListItem(
+                    id=item.id,
+                    requisition_id=item.requisition_id,
+                    first_name=item.first_name,
+                    last_name=item.last_name,
+                    email=item.email,
+                    stage=item.stage,
+                    version=item.version,
+                )
+                for item in page
+            ],
+            next_cursor=page[-1].id if len(candidates) > limit else None,
+            total=total,
         )
 
     @app.post(
