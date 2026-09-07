@@ -26,3 +26,4 @@ def test_publisher_creates_one_idempotent_notification_delivery() -> None:
         delivery = session.query(NotificationDelivery).one()
         assert delivery.recipient_id == "manager"
         assert delivery.status == "pending"
+    sessions.kw["bind"].dispose()
