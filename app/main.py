@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 
 from app.api.schemas import (
@@ -15,8 +15,14 @@ from app.api.schemas import (
     CreateTenantRequest,
     RequisitionResponse,
     TenantResponse,
+    TransitionCandidateCaseRequest,
 )
 from app.modules.identity.security import ActorContext, require
+from app.modules.workflow.domain.candidate_state_machine import (
+    CandidateStage,
+    InvalidTransitionError,
+    transition_to,
+)
 from app.shared.database import SessionDep, build_engine
 from app.shared.models import (
     AuditEvent,
@@ -171,6 +177,86 @@ def create_app(database_url: str | None = None) -> FastAPI:
             last_name=candidate_case.last_name,
             email=candidate_case.email,
             stage=candidate_case.stage,
+            version=candidate_case.version,
+        )
+
+    @app.patch(
+        "/v1/candidate-cases/{candidate_case_id}/stage", response_model=CandidateCaseResponse
+    )
+    def transition_candidate_case_stage(
+        candidate_case_id: str,
+        payload: TransitionCandidateCaseRequest,
+        request: Request,
+        session: SessionDep,
+        actor: ActorContext = Depends(require("candidate:transition")),
+        correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    ) -> CandidateCaseResponse:
+        candidate_case = session.scalar(
+            select(CandidateCase).where(
+                CandidateCase.id == candidate_case_id,
+                CandidateCase.tenant_id == actor.tenant_id,
+            )
+        )
+        if candidate_case is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
+            )
+        if candidate_case.version != payload.expected_version:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Candidate case has changed; refresh and retry",
+            )
+        try:
+            target_stage = transition_to(
+                CandidateStage(candidate_case.stage), CandidateStage(payload.target_stage)
+            )
+        except (InvalidTransitionError, ValueError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+
+        prior_stage = candidate_case.stage
+        update_result = session.execute(
+            update(CandidateCase)
+            .where(
+                CandidateCase.id == candidate_case.id,
+                CandidateCase.tenant_id == actor.tenant_id,
+                CandidateCase.version == payload.expected_version,
+            )
+            .values(stage=target_stage.value, version=CandidateCase.version + 1)
+        )
+        if update_result.rowcount != 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Candidate case has changed; refresh and retry",
+            )
+        session.refresh(candidate_case)
+        session.add(
+            AuditEvent(
+                tenant_id=actor.tenant_id,
+                actor_id=actor.actor_id,
+                action="candidate_case.stage_transitioned",
+                aggregate_type="candidate_case",
+                aggregate_id=candidate_case.id,
+                correlation_id=correlation_id
+                or request.headers.get("X-Request-Id")
+                or str(uuid4()),
+                metadata_json={
+                    "from_stage": prior_stage,
+                    "to_stage": candidate_case.stage,
+                    "version": candidate_case.version,
+                },
+            )
+        )
+        session.commit()
+        return CandidateCaseResponse(
+            id=candidate_case.id,
+            requisition_id=candidate_case.requisition_id,
+            first_name=candidate_case.first_name,
+            last_name=candidate_case.last_name,
+            email=candidate_case.email,
+            stage=candidate_case.stage,
+            version=candidate_case.version,
         )
 
     @app.get("/v1/audit-events", response_model=list[AuditEventResponse])

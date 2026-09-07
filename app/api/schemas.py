@@ -33,6 +33,11 @@ class CreateCandidateCaseRequest(BaseModel):
     email: str = Field(min_length=3, max_length=320)
 
 
+class TransitionCandidateCaseRequest(BaseModel):
+    target_stage: str = Field(min_length=3, max_length=40)
+    expected_version: int = Field(ge=1)
+
+
 class CandidateCaseResponse(BaseModel):
     id: str
     requisition_id: str
@@ -40,6 +45,7 @@ class CandidateCaseResponse(BaseModel):
     last_name: str
     email: str
     stage: str
+    version: int
 
 
 class AuditEventResponse(BaseModel):

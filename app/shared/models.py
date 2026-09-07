@@ -82,6 +82,7 @@ class CandidateCase(Base):
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     stage: Mapped[str] = mapped_column(String(40), nullable=False, default="applied")
+    version: Mapped[int] = mapped_column(default=1, nullable=False)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False

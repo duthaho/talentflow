@@ -11,9 +11,17 @@ from app.shared.models import Membership
 
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "tenant_admin": frozenset(
-        {"requisition:create", "candidate:create", "audit:read", "tenant:read"}
+        {
+            "requisition:create",
+            "candidate:create",
+            "candidate:transition",
+            "audit:read",
+            "tenant:read",
+        }
     ),
-    "recruiter": frozenset({"requisition:create", "candidate:create", "tenant:read"}),
+    "recruiter": frozenset(
+        {"requisition:create", "candidate:create", "candidate:transition", "tenant:read"}
+    ),
     "auditor": frozenset({"audit:read", "tenant:read"}),
     "hiring_manager": frozenset({"tenant:read"}),
     "interviewer": frozenset(),

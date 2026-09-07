@@ -7,6 +7,7 @@ A production-oriented, multi-tenant HR candidate workflow and case-management pl
 - Modular FastAPI foundation with explicit `identity`, `tenancy`, `audit`, `requisitions`, and `candidates` modules.
 - Tenant-scoped RBAC and request identity context.
 - Candidate-case creation validates tenant-owned requisitions and enforces normalized, tenant-unique emails.
+- Explicit candidate state machine, authorization-gated stage transitions, and database-level optimistic locking.
 - Transactional audit records for tenant bootstrap, requisition, and candidate-case creation.
 - PostgreSQL-ready configuration, Docker Compose local environment, health endpoint, test and lint gates.
 

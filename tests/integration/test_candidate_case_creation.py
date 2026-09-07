@@ -46,6 +46,7 @@ def test_recruiter_creates_candidate_case_for_tenant_requisition() -> None:
         "last_name": "Lovelace",
         "email": "ada@example.com",
         "stage": "applied",
+        "version": 1,
     }
     assert tenant["id"]
 
