@@ -192,6 +192,8 @@ class NotificationDelivery(Base):
     recipient_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     channel: Mapped[str] = mapped_column(String(32), nullable=False, default="in_app")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     payload_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False
