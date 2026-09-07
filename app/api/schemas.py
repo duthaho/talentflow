@@ -26,6 +26,22 @@ class RequisitionResponse(BaseModel):
     department: str
 
 
+class CreateCandidateCaseRequest(BaseModel):
+    requisition_id: str = Field(min_length=36, max_length=36)
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=3, max_length=320)
+
+
+class CandidateCaseResponse(BaseModel):
+    id: str
+    requisition_id: str
+    first_name: str
+    last_name: str
+    email: str
+    stage: str
+
+
 class AuditEventResponse(BaseModel):
     id: str
     action: str

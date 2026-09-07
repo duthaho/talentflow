@@ -3,12 +3,14 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
 from app.api.schemas import (
     AuditEventResponse,
+    CandidateCaseResponse,
+    CreateCandidateCaseRequest,
     CreateRequisitionRequest,
     CreateTenantRequest,
     RequisitionResponse,
@@ -16,7 +18,15 @@ from app.api.schemas import (
 )
 from app.modules.identity.security import ActorContext, require
 from app.shared.database import SessionDep, build_engine
-from app.shared.models import AuditEvent, Base, Membership, Requisition, Tenant, User
+from app.shared.models import (
+    AuditEvent,
+    Base,
+    CandidateCase,
+    Membership,
+    Requisition,
+    Tenant,
+    User,
+)
 from app.shared.settings import settings
 
 
@@ -93,6 +103,74 @@ def create_app(database_url: str | None = None) -> FastAPI:
         session.commit()
         return RequisitionResponse(
             id=requisition.id, title=requisition.title, department=requisition.department
+        )
+
+    @app.post(
+        "/v1/candidate-cases",
+        response_model=CandidateCaseResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_candidate_case(
+        payload: CreateCandidateCaseRequest,
+        request: Request,
+        session: SessionDep,
+        actor: ActorContext = Depends(require("candidate:create")),
+        correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    ) -> CandidateCaseResponse:
+        requisition = session.scalar(
+            select(Requisition).where(
+                Requisition.id == payload.requisition_id,
+                Requisition.tenant_id == actor.tenant_id,
+            )
+        )
+        if requisition is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Requisition not found"
+            )
+
+        email = payload.email.strip().lower()
+        if session.scalar(
+            select(CandidateCase).where(
+                CandidateCase.tenant_id == actor.tenant_id,
+                CandidateCase.email == email,
+            )
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Candidate email already exists in this tenant",
+            )
+
+        candidate_case = CandidateCase(
+            tenant_id=actor.tenant_id,
+            requisition_id=requisition.id,
+            first_name=payload.first_name.strip(),
+            last_name=payload.last_name.strip(),
+            email=email,
+            created_by=actor.actor_id,
+        )
+        session.add(candidate_case)
+        session.flush()
+        session.add(
+            AuditEvent(
+                tenant_id=actor.tenant_id,
+                actor_id=actor.actor_id,
+                action="candidate_case.created",
+                aggregate_type="candidate_case",
+                aggregate_id=candidate_case.id,
+                correlation_id=correlation_id
+                or request.headers.get("X-Request-Id")
+                or str(uuid4()),
+                metadata_json={"requisition_id": requisition.id, "stage": candidate_case.stage},
+            )
+        )
+        session.commit()
+        return CandidateCaseResponse(
+            id=candidate_case.id,
+            requisition_id=candidate_case.requisition_id,
+            first_name=candidate_case.first_name,
+            last_name=candidate_case.last_name,
+            email=candidate_case.email,
+            stage=candidate_case.stage,
         )
 
     @app.get("/v1/audit-events", response_model=list[AuditEventResponse])
