@@ -49,6 +49,7 @@ from app.modules.candidates.infrastructure.sqlalchemy_repository import (
 from app.modules.candidates.infrastructure.sqlalchemy_repository import (
     SqlAlchemyUnitOfWork as SqlAlchemyCandidateUnitOfWork,
 )
+from app.modules.identity.infrastructure.jwt_validator import HttpJwksProvider, JwtValidator
 from app.modules.identity.security import ActorContext, require
 from app.modules.interviews.application.schedule_interview import (
     InterviewSchedulingTargetNotFoundError,
@@ -109,11 +110,12 @@ from app.shared.models import (
     Base,
     CandidateCase,
 )
-from app.shared.settings import settings
+from app.shared.settings import Settings, settings
 
 
-def create_app(database_url: str | None = None) -> FastAPI:
-    engine = build_engine(database_url or settings.database_url)
+def create_app(database_url: str | None = None, app_settings: Settings | None = None) -> FastAPI:
+    runtime_settings = app_settings or settings
+    engine = build_engine(database_url or runtime_settings.database_url)
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
     @asynccontextmanager
@@ -124,6 +126,17 @@ def create_app(database_url: str | None = None) -> FastAPI:
 
     app = FastAPI(title="TalentFlow API", version="0.1.0", lifespan=lifespan)
     app.state.session_factory = session_factory
+    app.state.auth_mode = runtime_settings.auth_mode
+    if runtime_settings.auth_mode == "oidc_jwt":
+        app.state.token_validator = JwtValidator(
+            issuer=runtime_settings.oidc_issuer,
+            audience=runtime_settings.oidc_audience,
+            algorithms=("RS256",),
+            jwks=HttpJwksProvider(
+                url=runtime_settings.oidc_jwks_url,
+                cache_ttl_seconds=runtime_settings.oidc_jwks_cache_ttl_seconds,
+            ),
+        )
     app.include_router(audit_router)
 
     @app.get("/health")
