@@ -76,6 +76,25 @@ class FeedbackResponse(BaseModel):
     comments: str
 
 
+class CreateOfferRequest(BaseModel):
+    title: str = Field(min_length=2, max_length=160)
+    annual_salary: int = Field(gt=0)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+
+
+class ApproveOfferRequest(BaseModel):
+    decision: str = Field(pattern=r"^(approved|rejected)$")
+    expected_version: int = Field(ge=1)
+
+
+class OfferResponse(BaseModel):
+    id: str
+    status: str
+    approval_step: int
+    version: int
+    candidate_stage: str
+
+
 class AuditEventResponse(BaseModel):
     id: str
     action: str

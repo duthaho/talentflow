@@ -127,6 +127,25 @@ class InterviewFeedback(Base):
     )
 
 
+class Offer(Base):
+    __tablename__ = "offers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    candidate_case_id: Mapped[str] = mapped_column(
+        ForeignKey("candidate_cases.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    annual_salary: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending_approval")
+    approval_step: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 

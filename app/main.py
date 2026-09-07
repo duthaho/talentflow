@@ -8,14 +8,17 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 
 from app.api.schemas import (
+    ApproveOfferRequest,
     AuditEventResponse,
     CandidateCaseResponse,
     CreateCandidateCaseRequest,
     CreateInterviewRequest,
+    CreateOfferRequest,
     CreateRequisitionRequest,
     CreateTenantRequest,
     FeedbackResponse,
     InterviewResponse,
+    OfferResponse,
     RequisitionResponse,
     SubmitFeedbackRequest,
     TenantResponse,
@@ -27,6 +30,7 @@ from app.modules.interviews.domain.feedback import (
     InterviewerNotAssignedError,
     assert_feedback_can_be_submitted,
 )
+from app.modules.offers.domain.approval_policy import ApprovalPolicy
 from app.modules.workflow.domain.candidate_state_machine import (
     CandidateStage,
     InvalidTransitionError,
@@ -40,6 +44,7 @@ from app.shared.models import (
     Interview,
     InterviewFeedback,
     Membership,
+    Offer,
     Requisition,
     Tenant,
     User,
@@ -392,6 +397,87 @@ def create_app(database_url: str | None = None) -> FastAPI:
             score=feedback.score,
             recommendation=feedback.recommendation,
             comments=feedback.comments,
+        )
+
+    @app.post(
+        "/v1/candidate-cases/{candidate_case_id}/offers",
+        response_model=OfferResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def create_offer(
+        candidate_case_id: str,
+        payload: CreateOfferRequest,
+        session: SessionDep,
+        actor: ActorContext = Depends(require("candidate:transition")),
+    ) -> OfferResponse:
+        candidate = session.scalar(
+            select(CandidateCase).where(
+                CandidateCase.id == candidate_case_id, CandidateCase.tenant_id == actor.tenant_id
+            )
+        )
+        if candidate is None or candidate.stage != CandidateStage.INTERVIEWING.value:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Candidate must be interviewing before an offer is created",
+            )
+        offer = Offer(
+            tenant_id=actor.tenant_id,
+            candidate_case_id=candidate.id,
+            title=payload.title,
+            annual_salary=payload.annual_salary,
+            currency=payload.currency,
+            created_by=actor.actor_id,
+        )
+        candidate.stage = CandidateStage.OFFER_PENDING_APPROVAL.value
+        candidate.version += 1
+        session.add(offer)
+        session.commit()
+        return OfferResponse(
+            id=offer.id,
+            status=offer.status,
+            approval_step=offer.approval_step,
+            version=offer.version,
+            candidate_stage=candidate.stage,
+        )
+
+    @app.post("/v1/offers/{offer_id}/approvals", response_model=OfferResponse)
+    def approve_offer(
+        offer_id: str,
+        payload: ApproveOfferRequest,
+        session: SessionDep,
+        actor: ActorContext = Depends(require("tenant:read")),
+    ) -> OfferResponse:
+        offer = session.scalar(
+            select(Offer).where(Offer.id == offer_id, Offer.tenant_id == actor.tenant_id)
+        )
+        if offer is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found")
+        if offer.version != payload.expected_version:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="Offer has changed; refresh and retry"
+            )
+        if actor.role != ApprovalPolicy.standard().required_role(offer.approval_step):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Actor is not the required approver"
+            )
+        candidate = session.get(CandidateCase, offer.candidate_case_id)
+        if payload.decision == "rejected":
+            offer.status = "rejected"
+            candidate.stage = CandidateStage.OFFER_REJECTED.value
+        elif offer.approval_step == 1:
+            offer.approval_step = 2
+        else:
+            offer.status = "approved"
+            candidate.stage = CandidateStage.OFFER_APPROVED.value
+        offer.version += 1
+        candidate.version += 1
+        session.commit()
+        return OfferResponse(
+            id=offer.id,
+            status=offer.status,
+            approval_step=offer.approval_step,
+            version=offer.version,
+            candidate_stage=candidate.stage,
         )
 
     @app.get("/v1/audit-events", response_model=list[AuditEventResponse])
