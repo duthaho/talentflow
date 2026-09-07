@@ -38,6 +38,7 @@ from app.modules.workflow.domain.candidate_state_machine import (
 )
 from app.shared.database import SessionDep, build_engine
 from app.shared.models import (
+    ApprovalDecision,
     AuditEvent,
     Base,
     CandidateCase,
@@ -45,6 +46,7 @@ from app.shared.models import (
     InterviewFeedback,
     Membership,
     Offer,
+    OutboxEvent,
     Requisition,
     Tenant,
     User,
@@ -461,6 +463,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
                 status_code=status.HTTP_403_FORBIDDEN, detail="Actor is not the required approver"
             )
         candidate = session.get(CandidateCase, offer.candidate_case_id)
+        decision_step = offer.approval_step
         if payload.decision == "rejected":
             offer.status = "rejected"
             candidate.stage = CandidateStage.OFFER_REJECTED.value
@@ -471,6 +474,26 @@ def create_app(database_url: str | None = None) -> FastAPI:
             candidate.stage = CandidateStage.OFFER_APPROVED.value
         offer.version += 1
         candidate.version += 1
+        session.add(
+            ApprovalDecision(
+                offer_id=offer.id,
+                tenant_id=actor.tenant_id,
+                step=decision_step,
+                actor_id=actor.actor_id,
+                decision=payload.decision,
+            )
+        )
+        session.add(
+            OutboxEvent(
+                tenant_id=actor.tenant_id,
+                topic="offer.approval_recorded.v1",
+                payload_json={
+                    "offer_id": offer.id,
+                    "decision": payload.decision,
+                    "actor_id": actor.actor_id,
+                },
+            )
+        )
         session.commit()
         return OfferResponse(
             id=offer.id,

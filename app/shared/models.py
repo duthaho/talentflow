@@ -146,6 +146,37 @@ class Offer(Base):
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
 
 
+class ApprovalDecision(Base):
+    __tablename__ = "approval_decisions"
+    __table_args__ = (UniqueConstraint("offer_id", "step", name="uq_approval_decision_offer_step"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    offer_id: Mapped[str] = mapped_column(
+        ForeignKey("offers.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    step: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+
+
+class OutboxEvent(Base):
+    __tablename__ = "outbox_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    tenant_id: Mapped[str] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    topic: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    payload_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, nullable=False
+    )
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 
