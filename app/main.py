@@ -41,7 +41,24 @@ from app.modules.interviews.domain.feedback import (
     InterviewerNotAssignedError,
     assert_feedback_can_be_submitted,
 )
+from app.modules.offers.application.create_offer import (
+    CandidateNotEligibleForOfferError,
+    CreateOfferCommand,
+    CreateOfferHandler,
+    OfferAlreadyExistsError,
+)
+from app.modules.offers.application.decide_offer import (
+    DecideOfferCommand,
+    DecideOfferHandler,
+    InvalidOfferApprovalError,
+    OfferConcurrencyConflictError,
+    OfferNotFoundError,
+)
 from app.modules.offers.domain.approval_policy import ApprovalPolicy
+from app.modules.offers.infrastructure.sqlalchemy_repository import (
+    SqlAlchemyOfferRepository,
+    SqlAlchemyUnitOfWork,
+)
 from app.modules.workflow.domain.candidate_state_machine import (
     CandidateStage,
     InvalidTransitionError,
@@ -49,15 +66,12 @@ from app.modules.workflow.domain.candidate_state_machine import (
 )
 from app.shared.database import SessionDep, build_engine
 from app.shared.models import (
-    ApprovalDecision,
     AuditEvent,
     Base,
     CandidateCase,
     Interview,
     InterviewFeedback,
     Membership,
-    Offer,
-    OutboxEvent,
     Requisition,
     Tenant,
     User,
@@ -467,34 +481,31 @@ def create_app(database_url: str | None = None) -> FastAPI:
         session: SessionDep,
         actor: ActorContext = Depends(require("candidate:transition")),
     ) -> OfferResponse:
-        candidate = session.scalar(
-            select(CandidateCase).where(
-                CandidateCase.id == candidate_case_id, CandidateCase.tenant_id == actor.tenant_id
+        try:
+            offer = CreateOfferHandler(
+                candidates=SqlAlchemyCandidateRepository(session),
+                offers=SqlAlchemyOfferRepository(session),
+                unit_of_work=SqlAlchemyUnitOfWork(session),
+            ).handle(
+                CreateOfferCommand(
+                    tenant_id=actor.tenant_id,
+                    candidate_case_id=candidate_case_id,
+                    title=payload.title,
+                    annual_salary=payload.annual_salary,
+                    currency=payload.currency,
+                    actor_id=actor.actor_id,
+                )
             )
-        )
-        if candidate is None or candidate.stage != CandidateStage.INTERVIEWING.value:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Candidate must be interviewing before an offer is created",
-            )
-        offer = Offer(
-            tenant_id=actor.tenant_id,
-            candidate_case_id=candidate.id,
-            title=payload.title,
-            annual_salary=payload.annual_salary,
-            currency=payload.currency,
-            created_by=actor.actor_id,
-        )
-        candidate.stage = CandidateStage.OFFER_PENDING_APPROVAL.value
-        candidate.version += 1
-        session.add(offer)
-        session.commit()
+        except CandidateNotEligibleForOfferError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        except OfferAlreadyExistsError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         return OfferResponse(
             id=offer.id,
             status=offer.status,
             approval_step=offer.approval_step,
             version=offer.version,
-            candidate_stage=candidate.stage,
+            candidate_stage=CandidateStage.OFFER_PENDING_APPROVAL.value,
         )
 
     @app.post("/v1/offers/{offer_id}/approvals", response_model=OfferResponse)
@@ -504,58 +515,38 @@ def create_app(database_url: str | None = None) -> FastAPI:
         session: SessionDep,
         actor: ActorContext = Depends(require("tenant:read")),
     ) -> OfferResponse:
-        offer = session.scalar(
-            select(Offer).where(Offer.id == offer_id, Offer.tenant_id == actor.tenant_id)
-        )
-        if offer is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found")
-        if offer.version != payload.expected_version:
+        try:
+            offer, candidate_stage = DecideOfferHandler(
+                candidates=SqlAlchemyCandidateRepository(session),
+                offers=SqlAlchemyOfferRepository(session),
+                unit_of_work=SqlAlchemyUnitOfWork(session),
+                policy=ApprovalPolicy.standard(),
+            ).handle(
+                DecideOfferCommand(
+                    offer_id=offer_id,
+                    tenant_id=actor.tenant_id,
+                    actor_id=actor.actor_id,
+                    actor_role=actor.role,
+                    decision=payload.decision,
+                    expected_version=payload.expected_version,
+                )
+            )
+        except OfferNotFoundError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found"
+            ) from error
+        except OfferConcurrencyConflictError as error:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail="Offer has changed; refresh and retry"
-            )
-        if actor.role != ApprovalPolicy.standard().required_role(offer.approval_step):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Actor is not the required approver"
-            )
-        candidate = session.get(CandidateCase, offer.candidate_case_id)
-        decision_step = offer.approval_step
-        if payload.decision == "rejected":
-            offer.status = "rejected"
-            candidate.stage = CandidateStage.OFFER_REJECTED.value
-        elif offer.approval_step == 1:
-            offer.approval_step = 2
-        else:
-            offer.status = "approved"
-            candidate.stage = CandidateStage.OFFER_APPROVED.value
-        offer.version += 1
-        candidate.version += 1
-        session.add(
-            ApprovalDecision(
-                offer_id=offer.id,
-                tenant_id=actor.tenant_id,
-                step=decision_step,
-                actor_id=actor.actor_id,
-                decision=payload.decision,
-            )
-        )
-        session.add(
-            OutboxEvent(
-                tenant_id=actor.tenant_id,
-                topic="offer.approval_recorded.v1",
-                payload_json={
-                    "offer_id": offer.id,
-                    "decision": payload.decision,
-                    "actor_id": actor.actor_id,
-                },
-            )
-        )
-        session.commit()
+            ) from error
+        except InvalidOfferApprovalError as error:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error)) from error
         return OfferResponse(
             id=offer.id,
             status=offer.status,
             approval_step=offer.approval_step,
             version=offer.version,
-            candidate_stage=candidate.stage,
+            candidate_stage=candidate_stage,
         )
 
     @app.get("/v1/audit-events", response_model=list[AuditEventResponse])
