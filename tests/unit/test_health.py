@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.shared.settings import Settings
 
 
 def test_health_reports_service_status() -> None:
@@ -9,3 +10,29 @@ def test_health_reports_service_status() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_cors_allows_only_configured_origin() -> None:
+    app = create_app(
+        "sqlite://",
+        app_settings=Settings(cors_allowed_origins="https://console.example.test"),
+    )
+    with TestClient(app) as client:
+        allowed = client.options(
+            "/health",
+            headers={
+                "Origin": "https://console.example.test",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        denied = client.options(
+            "/health",
+            headers={
+                "Origin": "https://untrusted.example.test",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "https://console.example.test"
+    assert denied.status_code == 400

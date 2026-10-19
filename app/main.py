@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
 
 from app.api.audit_router import router as audit_router
@@ -126,6 +127,14 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
         engine.dispose()
 
     app = FastAPI(title="TalentFlow API", version="0.1.0", lifespan=lifespan)
+    if runtime_settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(runtime_settings.cors_origins),
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "X-Correlation-Id"],
+        )
     app.state.session_factory = session_factory
     app.state.auth_mode = runtime_settings.auth_mode
     if runtime_settings.auth_mode == "oidc_jwt":

@@ -81,9 +81,13 @@ See [ADR-002](docs/adr/002-transactional-outbox.md).
 - Audit records retain actor, tenant, aggregate, action, correlation ID, and scoped metadata.
 - Provider credentials are configuration only; never commit API keys.
 
-### Current authentication limitation
+### Authentication and configuration
 
-`X-Tenant-Id` and `X-Actor-Id` headers are a **development-only identity adapter**. They are intentionally not production authentication. A production deployment must replace this adapter with OIDC/JWT validation, issuer/audience checks, key rotation, and identity-to-membership mapping before exposing the API publicly.
+Production requires `AUTH_MODE=oidc_jwt`. The API verifies the JWT signature, issuer, audience, and JWKS signing key before resolving tenant membership and RBAC. `X-Tenant-Id` and `X-Actor-Id` remain available only in explicit development/test header-auth mode.
+
+Runtime configuration is validated at process startup. Production must provide a PostgreSQL `DATABASE_URL`, explicit HTTPS `CORS_ALLOWED_ORIGINS`, and OIDC issuer/audience/JWKS coordinates. The app never creates tables in production; apply the schema first with `uv run alembic upgrade head`.
+
+Provider credentials are typed as secrets and redacted from settings representations. `SENDGRID_API_KEY` and `NOTIFICATION_FROM_EMAIL` are an all-or-nothing pair, supplied through deployment secrets rather than repository files.
 
 ## Local development
 

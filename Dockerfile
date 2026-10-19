@@ -2,9 +2,10 @@ FROM python:3.13-slim
 
 WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.6.5 /uv /uvx /bin/
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md alembic.ini ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY app ./app
+COPY migrations ./migrations
 RUN uv sync --no-dev
 
 EXPOSE 8000

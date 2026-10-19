@@ -7,7 +7,8 @@ from app.shared.settings import settings
 
 def main() -> None:
     adapter = SendGridEmailAdapter(
-        api_key=settings.sendgrid_api_key, sender=settings.notification_from_email
+        api_key=settings.sendgrid_api_key.get_secret_value() if settings.sendgrid_api_key else "",
+        sender=settings.notification_from_email,
     )
     sessions = build_session_factory(settings.database_url)
     worker = DeliveryWorker(
