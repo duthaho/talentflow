@@ -120,7 +120,8 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        Base.metadata.create_all(engine)
+        if runtime_settings.app_env != "production":
+            Base.metadata.create_all(engine)
         yield
         engine.dispose()
 
