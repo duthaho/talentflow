@@ -98,11 +98,15 @@ uv sync --all-groups
 uv run uvicorn app.main:app --reload
 ```
 
-Health check:
+Health and operational probes:
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/health/live
+curl http://127.0.0.1:8000/health/ready
+curl http://127.0.0.1:8000/metrics
 ```
+
+`/health/live` verifies process liveness; `/health/ready` verifies database connectivity. `/metrics` exposes Prometheus metrics for HTTP traffic/latency, command conflicts, outbox backlog, delivery outcomes, dead letters, and worker claims. Request logs are structured JSON, include `correlation_id`, and the API propagates OpenTelemetry trace context.
 
 Run quality gates:
 
@@ -123,13 +127,19 @@ SENDGRID_API_KEY=<provider-secret>
 NOTIFICATION_FROM_EMAIL=<verified-sender>
 ```
 
-Then run:
+Then run one bounded worker cycle (typically under a deployment scheduler or worker supervisor):
 
 ```bash
 uv run python -m app.modules.notifications.application.run_email_worker
 ```
 
-The sender must be verified by SendGrid. Recipient resolution requires `users.email`; failed deliveries are retried and eventually marked `dead_letter`.
+The worker first materializes pending outbox events, then claims delivery rows with a durable lease. A crashed worker's expired lease is reclaimed; only the lease holder can finalize the attempt. The sender must be verified by SendGrid. Recipient resolution requires `users.email`; failed deliveries are retried and eventually marked `dead_letter`.
+
+For an outbox-only operational cycle:
+
+```bash
+uv run python -m app.modules.notifications.application.run_outbox_publisher
+```
 
 ## Quality evidence
 
@@ -146,4 +156,4 @@ The current suite verifies tenant isolation, RBAC, candidate lifecycle invariant
 
 ## Production-readiness roadmap
 
-The architecture foundation is complete, but a real production rollout still requires OIDC/JWT, schema migrations, production secret management, rate limits, observability/telemetry, backup and recovery procedures, CI/CD with vulnerability scanning, and deployment-specific infrastructure validation.
+The architecture foundation, OIDC/JWT identity, Alembic migrations, configuration hardening, and operational telemetry are implemented. A real production rollout still requires rate limits, backup and recovery procedures, CI/CD with vulnerability scanning, deployment-specific infrastructure validation, and live verification against a real OIDC provider and verified email sender.

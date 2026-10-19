@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     oidc_jwks_cache_ttl_seconds: int = 300
     sendgrid_api_key: SecretStr | None = None
     notification_from_email: str = ""
+    worker_lease_seconds: int = 60
+    worker_max_attempts: int = 5
 
     @property
     def cors_origins(self) -> tuple[str, ...]:

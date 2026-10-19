@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
 
 from app.api.audit_router import router as audit_router
+from app.api.health_router import router as health_router
 from app.api.schemas import (
     ApproveOfferRequest,
     CandidateCaseResponse,
@@ -111,10 +112,12 @@ from app.shared.models import (
     Base,
     CandidateCase,
 )
+from app.shared.observability import command_conflicts, configure_logging, instrument_app
 from app.shared.settings import Settings, settings
 
 
 def create_app(database_url: str | None = None, app_settings: Settings | None = None) -> FastAPI:
+    configure_logging()
     runtime_settings = app_settings or settings
     engine = build_engine(database_url or runtime_settings.database_url)
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
@@ -147,7 +150,9 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
                 cache_ttl_seconds=runtime_settings.oidc_jwks_cache_ttl_seconds,
             ),
         )
+    instrument_app(app)
     app.include_router(audit_router)
+    app.include_router(health_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -295,6 +300,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
                 status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
             ) from error
         except ConcurrencyConflictError as error:
+            command_conflicts.labels("candidate_case").inc()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Candidate case has changed; refresh and retry",
@@ -462,6 +468,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
                 status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found"
             ) from error
         except OfferConcurrencyConflictError as error:
+            command_conflicts.labels("offer").inc()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail="Offer has changed; refresh and retry"
             ) from error

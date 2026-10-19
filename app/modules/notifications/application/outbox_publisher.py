@@ -1,7 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
 from app.shared.models import NotificationDelivery, OutboxEvent
+from app.shared.observability import outbox_backlog
 
 
 class OutboxPublisher:
@@ -35,4 +36,12 @@ class OutboxPublisher:
                     published += 1
                 event.status = "published"
             session.commit()
+            outbox_backlog.set(
+                session.scalar(
+                    select(func.count())
+                    .select_from(OutboxEvent)
+                    .where(OutboxEvent.status == "pending")
+                )
+                or 0
+            )
             return published
