@@ -113,6 +113,11 @@ from app.shared.models import (
     CandidateCase,
 )
 from app.shared.observability import command_conflicts, configure_logging, instrument_app
+from app.shared.rate_limit import (
+    MemoryFixedWindowRateLimiter,
+    RedisFixedWindowRateLimiter,
+    install_rate_limit_middleware,
+)
 from app.shared.settings import Settings, settings
 
 
@@ -121,12 +126,18 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
     runtime_settings = app_settings or settings
     engine = build_engine(database_url or runtime_settings.database_url)
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    rate_limiter = (
+        RedisFixedWindowRateLimiter(runtime_settings.redis_url)
+        if runtime_settings.redis_url
+        else MemoryFixedWindowRateLimiter()
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         if runtime_settings.app_env != "production":
             Base.metadata.create_all(engine)
         yield
+        rate_limiter.close()
         engine.dispose()
 
     app = FastAPI(title="TalentFlow API", version="0.1.0", lifespan=lifespan)
@@ -139,7 +150,15 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
             allow_headers=["Authorization", "Content-Type", "X-Correlation-Id"],
         )
     app.state.session_factory = session_factory
+    app.state.rate_limiter = rate_limiter
     app.state.auth_mode = runtime_settings.auth_mode
+    install_rate_limit_middleware(
+        app,
+        limiter=rate_limiter,
+        enabled=runtime_settings.rate_limit_enabled,
+        requests_per_minute=runtime_settings.rate_limit_requests_per_minute,
+        trusted_proxy_cidrs=runtime_settings.trusted_proxy_cidrs(),
+    )
     if runtime_settings.auth_mode == "oidc_jwt":
         app.state.token_validator = JwtValidator(
             issuer=runtime_settings.oidc_issuer,

@@ -29,6 +29,15 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     env:
       DATABASE_URL: postgresql+psycopg://talentflow:ci-password@localhost:5432/talentflow
     steps:
@@ -61,6 +70,15 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     env:
       APP_ENV: production
       AUTH_MODE: oidc_jwt
@@ -69,6 +87,7 @@ jobs:
       OIDC_ISSUER: https://issuer.example.test
       OIDC_AUDIENCE: talentflow-api
       OIDC_JWKS_URL: https://issuer.example.test/.well-known/jwks.json
+      REDIS_URL: redis://host.docker.internal:6379/0
     steps:
       - uses: actions/checkout@v4
       - name: Build immutable candidate image
@@ -77,14 +96,14 @@ jobs:
         run: >-
           docker run --rm --add-host host.docker.internal:host-gateway
           --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS
-          --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL
+          --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL --env REDIS_URL
           talentflow:${{ github.sha }} uv run alembic upgrade head
       - name: Run API and verify liveness/readiness
         run: |
           docker run --detach --rm --name talentflow-api --add-host host.docker.internal:host-gateway \
             --publish 8000:8000 \
             --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS \
-            --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL \
+            --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL --env REDIS_URL \
             talentflow:${{ github.sha }}
           trap 'docker logs talentflow-api; docker stop talentflow-api' EXIT
           for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8000/health/ready && break; sleep 1; done
@@ -93,5 +112,5 @@ jobs:
         run: >-
           docker run --rm --add-host host.docker.internal:host-gateway
           --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS
-          --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL
+          --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL --env REDIS_URL
           talentflow:${{ github.sha }} uv run python -m app.modules.notifications.application.run_outbox_publisher

@@ -40,6 +40,10 @@ worker_claims = Counter(
     "Worker delivery claim outcomes.",
     ("outcome",),
 )
+rate_limit_rejections = Counter(
+    "talentflow_rate_limit_rejections",
+    "HTTP requests rejected by the rate limiter.",
+)
 
 
 class JsonFormatter(logging.Formatter):

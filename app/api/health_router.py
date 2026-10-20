@@ -17,6 +17,7 @@ def readiness(request: Request):
     try:
         with request.app.state.session_factory() as session:
             session.execute(text("SELECT 1"))
+        request.app.state.rate_limiter.ping()
     except Exception:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"status": "unavailable"}

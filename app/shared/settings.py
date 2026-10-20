@@ -19,11 +19,20 @@ class Settings(BaseSettings):
     notification_from_email: str = ""
     worker_lease_seconds: int = 60
     worker_max_attempts: int = 5
+    redis_url: str = Field(default="", repr=False)
+    rate_limit_enabled: bool = True
+    rate_limit_requests_per_minute: int = 120
+    rate_limit_trusted_proxy_cidrs: str = ""
 
     @property
     def cors_origins(self) -> tuple[str, ...]:
         return tuple(
             origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()
+        )
+
+    def trusted_proxy_cidrs(self) -> tuple[str, ...]:
+        return tuple(
+            cidr.strip() for cidr in self.rate_limit_trusted_proxy_cidrs.split(",") if cidr.strip()
         )
 
     @model_validator(mode="after")
@@ -37,6 +46,10 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires explicit CORS_ALLOWED_ORIGINS")
             if not all(origin.startswith("https://") for origin in self.cors_origins):
                 raise ValueError("Production CORS_ALLOWED_ORIGINS must use HTTPS")
+            if not self.redis_url.startswith(("redis://", "rediss://")):
+                raise ValueError("Production requires a Redis REDIS_URL for rate limiting")
+        if self.rate_limit_requests_per_minute < 1:
+            raise ValueError("RATE_LIMIT_REQUESTS_PER_MINUTE must be positive")
         if self.auth_mode == "oidc_jwt" and not all(
             (self.oidc_issuer, self.oidc_audience, self.oidc_jwks_url)
         ):

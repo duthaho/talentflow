@@ -48,3 +48,18 @@ def test_liveness_readiness_and_metrics_expose_operational_signals() -> None:
     assert ready.json() == {"status": "ok"}
     assert metrics.status_code == 200
     assert "talentflow_http_requests_total" in metrics.text
+
+
+def test_rate_limiter_returns_429_and_standard_headers() -> None:
+    app = create_app(
+        "sqlite://",
+        app_settings=Settings(rate_limit_requests_per_minute=1),
+    )
+    with TestClient(app) as client:
+        first = client.get("/unmapped")
+        limited = client.get("/unmapped")
+
+    assert first.status_code == 404
+    assert first.headers["x-ratelimit-remaining"] == "0"
+    assert limited.status_code == 429
+    assert limited.headers["retry-after"]

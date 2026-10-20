@@ -89,6 +89,10 @@ Runtime configuration is validated at process startup. Production must provide a
 
 Provider credentials are typed as secrets and redacted from settings representations. `SENDGRID_API_KEY` and `NOTIFICATION_FROM_EMAIL` are an all-or-nothing pair, supplied through deployment secrets rather than repository files.
 
+### API rate limiting
+
+All non-operational HTTP routes are protected by a fixed-window rate limit. Production requires Redis via `REDIS_URL`, so limits remain shared across API replicas. Configure `RATE_LIMIT_REQUESTS_PER_MINUTE` and only set `RATE_LIMIT_TRUSTED_PROXY_CIDRS` for known ingress proxy networks; forwarded client addresses are ignored unless the direct peer is trusted. Responses include `X-RateLimit-*` headers and use `429` with `Retry-After` when exhausted.
+
 ## Local development
 
 Requirements: Python 3.13+ and [uv](https://docs.astral.sh/uv/).
