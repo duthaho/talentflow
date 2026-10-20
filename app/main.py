@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.audit_router import router as audit_router
 from app.api.health_router import router as health_router
+from app.api.reporting_router import router as reporting_router
 from app.api.schemas import (
     ApproveOfferRequest,
     CandidateCaseResponse,
@@ -172,6 +173,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
     instrument_app(app)
     app.include_router(audit_router)
     app.include_router(health_router)
+    app.include_router(reporting_router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

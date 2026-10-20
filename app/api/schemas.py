@@ -111,6 +111,27 @@ class OfferResponse(BaseModel):
     candidate_stage: str
 
 
+class PipelineCandidateSummary(BaseModel):
+    total: int
+    by_stage: dict[str, int]
+
+
+class PipelineOfferSummary(BaseModel):
+    total: int
+    by_status: dict[str, int]
+
+
+class PipelineInterviewSummary(BaseModel):
+    scheduled_total: int
+    feedback_submitted_total: int
+
+
+class PipelineReportResponse(BaseModel):
+    candidates: PipelineCandidateSummary
+    offers: PipelineOfferSummary
+    interviews: PipelineInterviewSummary
+
+
 class AuditEventResponse(BaseModel):
     id: str
     action: str

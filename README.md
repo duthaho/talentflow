@@ -93,6 +93,10 @@ Provider credentials are typed as secrets and redacted from settings representat
 
 All non-operational HTTP routes are protected by a fixed-window rate limit. Production requires Redis via `REDIS_URL`, so limits remain shared across API replicas. Configure `RATE_LIMIT_REQUESTS_PER_MINUTE` and only set `RATE_LIMIT_TRUSTED_PROXY_CIDRS` for known ingress proxy networks; forwarded client addresses are ignored unless the direct peer is trusted. Responses include `X-RateLimit-*` headers and use `429` with `Retry-After` when exhausted.
 
+## Reporting
+
+`GET /v1/reports/pipeline` is a tenant-scoped operational read model for users with `report:read`. It reports candidate stage distribution, offer status distribution, scheduled interviews, and submitted feedback without exposing candidate PII.
+
 ## Local development
 
 Requirements: Python 3.13+ and [uv](https://docs.astral.sh/uv/).

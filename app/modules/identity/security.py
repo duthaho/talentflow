@@ -16,6 +16,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "candidate:transition",
             "interview:manage",
             "audit:read",
+            "report:read",
             "tenant:read",
         }
     ),
@@ -26,6 +27,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "candidate:transition",
             "interview:manage",
             "audit:read",
+            "report:read",
             "tenant:read",
         }
     ),
