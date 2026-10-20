@@ -4,6 +4,7 @@ DOMAIN_ROOT = Path("app/modules")
 FORBIDDEN = ("fastapi", "sqlalchemy", "pydantic", "sendgrid")
 APPLICATION_FORBIDDEN = ("fastapi", "sqlalchemy", "pydantic", "sendgrid", "app.shared.models")
 CLEAN_ARCHITECTURE_MODULES = (
+    "attachments",
     "audit",
     "candidates",
     "interviews",

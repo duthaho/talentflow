@@ -88,6 +88,8 @@ jobs:
       OIDC_AUDIENCE: talentflow-api
       OIDC_JWKS_URL: https://issuer.example.test/.well-known/jwks.json
       REDIS_URL: redis://host.docker.internal:6379/0
+      ATTACHMENT_STORAGE_ROOT: /var/lib/talentflow/attachments
+      ATTACHMENT_SCAN_MODE: clamav
     steps:
       - uses: actions/checkout@v4
       - name: Build immutable candidate image
@@ -97,6 +99,7 @@ jobs:
           docker run --rm --add-host host.docker.internal:host-gateway
           --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS
           --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL --env REDIS_URL
+          --env ATTACHMENT_STORAGE_ROOT --env ATTACHMENT_SCAN_MODE
           talentflow:${{ github.sha }} uv run alembic upgrade head
       - name: Run API and verify liveness/readiness
         run: |
@@ -104,6 +107,7 @@ jobs:
             --publish 8000:8000 \
             --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS \
             --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL --env REDIS_URL \
+            --env ATTACHMENT_STORAGE_ROOT --env ATTACHMENT_SCAN_MODE \
             talentflow:${{ github.sha }}
           trap 'docker logs talentflow-api; docker stop talentflow-api' EXIT
           for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8000/health/ready && break; sleep 1; done
@@ -113,4 +117,5 @@ jobs:
           docker run --rm --add-host host.docker.internal:host-gateway
           --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS
           --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL --env REDIS_URL
+          --env ATTACHMENT_STORAGE_ROOT --env ATTACHMENT_SCAN_MODE
           talentflow:${{ github.sha }} uv run python -m app.modules.notifications.application.run_outbox_publisher

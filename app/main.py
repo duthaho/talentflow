@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, sta
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
 
+from app.api.attachment_router import router as attachment_router
 from app.api.audit_router import router as audit_router
 from app.api.health_router import router as health_router
 from app.api.reporting_router import router as reporting_router
@@ -153,6 +154,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
     app.state.session_factory = session_factory
     app.state.rate_limiter = rate_limiter
     app.state.auth_mode = runtime_settings.auth_mode
+    app.state.runtime_settings = runtime_settings
     install_rate_limit_middleware(
         app,
         limiter=rate_limiter,
@@ -171,6 +173,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
             ),
         )
     instrument_app(app)
+    app.include_router(attachment_router)
     app.include_router(audit_router)
     app.include_router(health_router)
     app.include_router(reporting_router)

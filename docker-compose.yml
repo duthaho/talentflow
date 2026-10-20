@@ -34,6 +34,9 @@ services:
       CORS_ALLOWED_ORIGINS: http://localhost:3000
       REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_REQUESTS_PER_MINUTE: 120
+      ATTACHMENT_STORAGE_ROOT: /app/data/attachments
+      ATTACHMENT_MAX_BYTES: 5242880
+      ATTACHMENT_SCAN_MODE: noop
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,6 +52,8 @@ services:
         condition: service_completed_successfully
     ports:
       - "8000:8000"
+    volumes:
+      - attachment_data:/app/data/attachments
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"]
       interval: 10s
@@ -66,3 +71,4 @@ services:
 
 volumes:
   postgres_data:
+  attachment_data:

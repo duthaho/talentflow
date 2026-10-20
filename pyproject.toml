@@ -17,6 +17,7 @@ dependencies = [
   "opentelemetry-sdk>=1.29,<2.0",
   "opentelemetry-instrumentation-fastapi>=0.50b0,<1.0",
   "redis>=5.2,<6.0",
+  "python-multipart>=0.0.20,<1.0",
 ]
 
 [dependency-groups]

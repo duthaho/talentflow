@@ -111,6 +111,16 @@ class OfferResponse(BaseModel):
     candidate_stage: str
 
 
+class AttachmentResponse(BaseModel):
+    id: str
+    document_type: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    created_at: datetime
+
+
 class PipelineCandidateSummary(BaseModel):
     total: int
     by_stage: dict[str, int]

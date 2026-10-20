@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_requests_per_minute: int = 120
     rate_limit_trusted_proxy_cidrs: str = ""
+    attachment_storage_root: str = "./data/attachments"
+    attachment_max_bytes: int = 5 * 1024 * 1024
+    attachment_scan_mode: Literal["noop", "clamav"] = "noop"
+    attachment_scan_command: str = "clamscan"
 
     @property
     def cors_origins(self) -> tuple[str, ...]:
@@ -48,8 +52,14 @@ class Settings(BaseSettings):
                 raise ValueError("Production CORS_ALLOWED_ORIGINS must use HTTPS")
             if not self.redis_url.startswith(("redis://", "rediss://")):
                 raise ValueError("Production requires a Redis REDIS_URL for rate limiting")
+            if self.attachment_scan_mode != "clamav":
+                raise ValueError("Production requires ATTACHMENT_SCAN_MODE=clamav")
+            if not self.attachment_storage_root.startswith("/"):
+                raise ValueError("Production requires an absolute ATTACHMENT_STORAGE_ROOT")
         if self.rate_limit_requests_per_minute < 1:
             raise ValueError("RATE_LIMIT_REQUESTS_PER_MINUTE must be positive")
+        if self.attachment_max_bytes < 1:
+            raise ValueError("ATTACHMENT_MAX_BYTES must be positive")
         if self.auth_mode == "oidc_jwt" and not all(
             (self.oidc_issuer, self.oidc_audience, self.oidc_jwks_url)
         ):
