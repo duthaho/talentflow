@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-migrations:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: talentflow
+          POSTGRES_USER: talentflow
+          POSTGRES_PASSWORD: ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U talentflow -d talentflow"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://talentflow:ci-password@localhost:5432/talentflow
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+          enable-cache: true
+      - run: uv sync --all-groups --frozen
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
+      - run: uv run alembic upgrade head
+      - run: uv run alembic current
+      - run: uv run python -m pytest
+
+  container-smoke:
+    needs: quality-and-migrations
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: talentflow
+          POSTGRES_USER: talentflow
+          POSTGRES_PASSWORD: ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U talentflow -d talentflow"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      APP_ENV: production
+      AUTH_MODE: oidc_jwt
+      DATABASE_URL: postgresql+psycopg://talentflow:ci-password@host.docker.internal:5432/talentflow
+      CORS_ALLOWED_ORIGINS: https://console.example.test
+      OIDC_ISSUER: https://issuer.example.test
+      OIDC_AUDIENCE: talentflow-api
+      OIDC_JWKS_URL: https://issuer.example.test/.well-known/jwks.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build immutable candidate image
+        run: docker build --tag talentflow:${{ github.sha }} .
+      - name: Apply migrations in the image
+        run: >-
+          docker run --rm --add-host host.docker.internal:host-gateway
+          --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS
+          --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL
+          talentflow:${{ github.sha }} uv run alembic upgrade head
+      - name: Run API and verify liveness/readiness
+        run: |
+          docker run --detach --rm --name talentflow-api --add-host host.docker.internal:host-gateway \
+            --publish 8000:8000 \
+            --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS \
+            --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL \
+            talentflow:${{ github.sha }}
+          trap 'docker logs talentflow-api; docker stop talentflow-api' EXIT
+          for attempt in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8000/health/ready && break; sleep 1; done
+          curl --fail --silent http://127.0.0.1:8000/metrics | grep -q talentflow_http_requests_total
+      - name: Run bounded outbox-worker smoke command
+        run: >-
+          docker run --rm --add-host host.docker.internal:host-gateway
+          --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS
+          --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL
+          talentflow:${{ github.sha }} uv run python -m app.modules.notifications.application.run_outbox_publisher

@@ -19,6 +19,8 @@ def test_production_requires_non_sqlite_database_url() -> None:
         Settings(
             app_env="production",
             auth_mode="oidc_jwt",
+            database_url="sqlite:///talentflow.db",
+            cors_allowed_origins="https://console.example.test",
             oidc_issuer="https://issuer.example.test",
             oidc_audience="talentflow-api",
             oidc_jwks_url="https://issuer.example.test/.well-known/jwks.json",

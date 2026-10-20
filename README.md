@@ -141,6 +141,13 @@ For an outbox-only operational cycle:
 uv run python -m app.modules.notifications.application.run_outbox_publisher
 ```
 
+## Delivery automation and recovery
+
+GitHub Actions enforces formatting, linting, tests, PostgreSQL migration smoke checks, immutable-image build, API readiness, and an outbox-worker smoke command. The Security workflow runs CodeQL and reports High/Critical container vulnerabilities; it blocks fixed Critical vulnerabilities.
+
+- [Deployment runbook](docs/runbooks/deployment.md)
+- [PostgreSQL backup and restore runbook](docs/runbooks/backup-restore.md)
+
 ## Quality evidence
 
 The current suite verifies tenant isolation, RBAC, candidate lifecycle invariants, concurrency behavior, interview authorization, offer approval ordering, transactional outbox persistence, retry behavior, SendGrid request mapping, and architecture dependency rules.

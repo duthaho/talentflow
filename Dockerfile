@@ -6,7 +6,14 @@ COPY pyproject.toml uv.lock README.md alembic.ini ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY app ./app
 COPY migrations ./migrations
-RUN uv sync --no-dev
+RUN uv sync --frozen --no-dev \
+    && groupadd --system talentflow \
+    && useradd --system --gid talentflow --home-dir /app talentflow \
+    && chown -R talentflow:talentflow /app
 
+ENV PATH="/app/.venv/bin:$PATH"
+USER talentflow
 EXPOSE 8000
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
