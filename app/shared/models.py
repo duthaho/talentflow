@@ -89,6 +89,7 @@ class CandidateCase(Base):
         DateTime(timezone=True), default=now_utc, nullable=False
     )
     anonymized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terminal_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RetentionPolicy(Base):

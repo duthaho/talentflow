@@ -71,7 +71,7 @@ class SqlAlchemyRetentionRepository:
                 CandidateCase.tenant_id == tenant_id,
                 CandidateCase.stage.in_(("rejected", "withdrawn")),
                 CandidateCase.anonymized_at.is_(None),
-                CandidateCase.created_at <= now - timedelta(days=policy.retention_days),
+                CandidateCase.terminal_at <= now - timedelta(days=policy.retention_days),
                 ~hold_exists,
             )
         ).all()

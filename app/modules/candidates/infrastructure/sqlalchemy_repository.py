@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -61,7 +63,13 @@ class SqlAlchemyCandidateRepository:
                 CandidateCaseRecord.tenant_id == candidate.tenant_id,
                 CandidateCaseRecord.version == expected_version,
             )
-            .values(stage=candidate.stage.value, version=candidate.version)
+            .values(
+                stage=candidate.stage.value,
+                version=candidate.version,
+                terminal_at=datetime.now(UTC)
+                if candidate.stage.value in {"rejected", "withdrawn"}
+                else None,
+            )
         )
         return result.rowcount == 1
 

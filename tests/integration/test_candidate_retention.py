@@ -61,7 +61,7 @@ def test_retention_purge_anonymizes_only_due_terminal_candidates_without_legal_h
             session.execute(
                 update(CandidateCase)
                 .where(CandidateCase.id.in_([due["id"], held["id"], other_tenant["id"]]))
-                .values(created_at=datetime.now(UTC) - timedelta(days=31))
+                .values(terminal_at=datetime.now(UTC) - timedelta(days=31))
             )
             session.commit()
         purged = client.post("/v1/retention/purge", headers=acme_headers)
@@ -103,7 +103,7 @@ def test_retention_purge_deletes_private_attachment_metadata_and_content() -> No
                 session.execute(
                     update(CandidateCase)
                     .where(CandidateCase.id == candidate["id"])
-                    .values(created_at=datetime.now(UTC) - timedelta(days=2))
+                    .values(terminal_at=datetime.now(UTC) - timedelta(days=2))
                 )
                 session.commit()
             purge = client.post("/v1/retention/purge", headers=headers)
