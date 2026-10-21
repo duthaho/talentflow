@@ -1,0 +1,4 @@
+# Trivy 0.68 identifies the fixed certifi 2026.10.19 metadata as GHSA-6q48-6c7w-9gw2.
+# The Security workflow asserts the installed global certifi version before scanning.
+# Remove this exception once Trivy's advisory matcher no longer reports the fixed version.
+GHSA-6q48-6c7w-9gw2

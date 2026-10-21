@@ -3,7 +3,12 @@ FROM python:3.13-slim
 WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.6.5 /uv /uvx /bin/
 COPY pyproject.toml uv.lock README.md alembic.ini ./
-RUN uv sync --frozen --no-dev --no-install-project
+# Apply fixed Debian packages and keep Python packaging tools outside known vulnerable ranges.
+RUN apt-get update \
+    && apt-get upgrade --yes \
+    && python -m pip install --no-cache-dir 'pip>=26.0' 'setuptools>=82.0' 'certifi>=2026.10.19' \
+    && rm -rf /var/lib/apt/lists/* \
+    && uv sync --frozen --no-dev --no-install-project
 COPY app ./app
 COPY migrations ./migrations
 RUN uv sync --frozen --no-dev \

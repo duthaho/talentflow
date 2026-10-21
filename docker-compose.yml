@@ -37,6 +37,7 @@ services:
       ATTACHMENT_STORAGE_ROOT: /app/data/attachments
       ATTACHMENT_MAX_BYTES: 5242880
       ATTACHMENT_SCAN_MODE: noop
+      CALENDAR_PUBLIC_BASE_URL: http://localhost:8000
     depends_on:
       postgres:
         condition: service_healthy

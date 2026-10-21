@@ -54,6 +54,22 @@ def test_production_requires_attachment_malware_scanning() -> None:
         )
 
 
+def test_production_requires_https_calendar_public_base_url() -> None:
+    with pytest.raises(ValidationError, match="CALENDAR_PUBLIC_BASE_URL"):
+        Settings(
+            app_env="production",
+            auth_mode="oidc_jwt",
+            database_url="postgresql+psycopg://user:pass@db/talentflow",
+            cors_allowed_origins="https://console.example.test",
+            oidc_issuer="https://issuer.example.test",
+            oidc_audience="talentflow-api",
+            oidc_jwks_url="https://issuer.example.test/.well-known/jwks.json",
+            redis_url="redis://redis:6379/0",
+            attachment_storage_root="/var/lib/talentflow/attachments",
+            attachment_scan_mode="clamav",
+        )
+
+
 def test_settings_rejects_partial_notification_secret_configuration() -> None:
     with pytest.raises(ValidationError, match="must be configured together"):
         Settings(sendgrid_api_key="super-secret-value")

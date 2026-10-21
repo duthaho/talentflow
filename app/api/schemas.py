@@ -111,6 +111,17 @@ class OfferResponse(BaseModel):
     candidate_stage: str
 
 
+class CreateCalendarSubscriptionRequest(BaseModel):
+    interviewer_id: str = Field(min_length=1, max_length=128)
+
+
+class CalendarSubscriptionResponse(BaseModel):
+    id: str
+    interviewer_id: str
+    feed_url: str
+    expires_at: datetime
+
+
 class AttachmentResponse(BaseModel):
     id: str
     document_type: str

@@ -93,6 +93,11 @@ Provider credentials are typed as secrets and redacted from settings representat
 
 All non-operational HTTP routes are protected by a fixed-window rate limit. Production requires Redis via `REDIS_URL`, so limits remain shared across API replicas. Configure `RATE_LIMIT_REQUESTS_PER_MINUTE` and only set `RATE_LIMIT_TRUSTED_PROXY_CIDRS` for known ingress proxy networks; forwarded client addresses are ignored unless the direct peer is trusted. Responses include `X-RateLimit-*` headers and use `429` with `Retry-After` when exhausted.
 
+## Calendar subscriptions
+
+Recruiters can create a revocable, per-interviewer iCalendar (`.ics`) feed with `POST /v1/calendar-subscriptions`. The response contains the only copy of the opaque feed URL; subscribe to it in Google Calendar, Outlook, or another RFC 5545 client. Feeds expose only generic interview time blocks, expire by default after 90 days, and can be revoked with `DELETE /v1/calendar-subscriptions/{id}`. Production requires the canonical HTTPS `CALENDAR_PUBLIC_BASE_URL` so generated links cannot be influenced by inbound host headers.
+
+
 ## Candidate attachments
 
 Candidate documents are uploaded through `POST /v1/candidate-cases/{candidate_case_id}/attachments` as `multipart/form-data` with `file` and `document_type` (`resume`, `cover_letter`, `portfolio`, or `other`). Only PDF and DOCX files with matching signatures are accepted; storage uses opaque server-side keys, `0600` file permissions, and tenant-scoped metadata authorization. Metadata and downloads are auditable. Production requires an absolute private attachment root and ClamAV (`ATTACHMENT_SCAN_MODE=clamav`); the development/test no-op scanner must not be used in production.

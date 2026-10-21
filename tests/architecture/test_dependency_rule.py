@@ -6,6 +6,7 @@ APPLICATION_FORBIDDEN = ("fastapi", "sqlalchemy", "pydantic", "sendgrid", "app.s
 CLEAN_ARCHITECTURE_MODULES = (
     "attachments",
     "audit",
+    "calendar",
     "candidates",
     "interviews",
     "offers",

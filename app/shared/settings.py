@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     attachment_max_bytes: int = 5 * 1024 * 1024
     attachment_scan_mode: Literal["noop", "clamav"] = "noop"
     attachment_scan_command: str = "clamscan"
+    calendar_subscription_lifetime_days: int = 90
+    calendar_interview_duration_minutes: int = 60
+    calendar_public_base_url: str = ""
 
     @property
     def cors_origins(self) -> tuple[str, ...]:
@@ -56,10 +59,16 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires ATTACHMENT_SCAN_MODE=clamav")
             if not self.attachment_storage_root.startswith("/"):
                 raise ValueError("Production requires an absolute ATTACHMENT_STORAGE_ROOT")
+            if not self.calendar_public_base_url.startswith("https://"):
+                raise ValueError("Production requires an HTTPS CALENDAR_PUBLIC_BASE_URL")
         if self.rate_limit_requests_per_minute < 1:
             raise ValueError("RATE_LIMIT_REQUESTS_PER_MINUTE must be positive")
         if self.attachment_max_bytes < 1:
             raise ValueError("ATTACHMENT_MAX_BYTES must be positive")
+        if self.calendar_subscription_lifetime_days < 1:
+            raise ValueError("CALENDAR_SUBSCRIPTION_LIFETIME_DAYS must be positive")
+        if self.calendar_interview_duration_minutes < 1:
+            raise ValueError("CALENDAR_INTERVIEW_DURATION_MINUTES must be positive")
         if self.auth_mode == "oidc_jwt" and not all(
             (self.oidc_issuer, self.oidc_audience, self.oidc_jwks_url)
         ):
