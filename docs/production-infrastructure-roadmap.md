@@ -8,10 +8,12 @@ These are **code and CI evidence**, not proof of a live production deployment. T
 
 ## Target operating model
 
-- **Runtime:** immutable API and bounded-worker images, deployed to a managed container platform or Kubernetes; PostgreSQL, Redis, and private object storage are managed services.
-- **Telemetry:** OpenTelemetry is the vendor-neutral application contract. Export traces and structured logs through an OpenTelemetry Collector. Use one initial backend: Datadog *or* Grafana Cloud/Prometheus + Loki + Tempo. Do not run Datadog and a self-hosted ELK stack in the first production release.
-- **Error tracking:** Sentry SDK for unhandled exceptions and sampled performance transactions; scrub PII, authorization headers, cookies, request bodies, candidate emails, attachment filenames, and feed tokens before export.
-- **Alerting:** PagerDuty/Opsgenie (paging) plus Slack/Teams (non-page notifications). Alertmanager or the chosen observability provider routes alerts; the application never sends operational pages directly.
+- **Runtime:** AWS ECS Fargate hosts immutable API and bounded-worker images. PostgreSQL (RDS with PITR), Redis (ElastiCache with TLS/authentication), and private attachment storage (S3) are managed AWS services. Staging and production use separate AWS accounts.
+- **Telemetry:** OpenTelemetry is the vendor-neutral application contract. Workloads export through an OpenTelemetry Collector to Datadog for metrics, logs, traces, dashboards, and alert routing. Do not run Datadog and self-hosted ELK in the first production release.
+- **Error tracking:** Sentry receives unhandled exceptions and sampled performance transactions only after PII/sensitive-data scrubbing. Candidate emails, authorization headers, cookies, request bodies, attachment filenames, and feed tokens are excluded.
+- **Alerting:** PagerDuty receives actionable pages. The selected chat integration handles non-page notifications after its workspace/channel is approved. The application never sends operational pages directly.
+
+The selection rationale and non-committed deployment inputs are recorded in [ADR 004](adr/004-select-aws-sentry-datadog-pagerduty.md).
 
 ## Delivery order
 

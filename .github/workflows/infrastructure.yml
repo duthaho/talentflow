@@ -1,0 +1,40 @@
+name: Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - 'infra/opentofu/**'
+      - '.github/workflows/infrastructure.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/opentofu/**'
+      - '.github/workflows/infrastructure.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infrastructure-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: OpenTofu validation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version_file: infra/opentofu/.opentofu-version
+          tofu_wrapper: false
+      - name: Check formatting
+        run: tofu fmt -check -recursive infra/opentofu
+      - name: Initialize bootstrap providers without state backend
+        run: tofu -chdir=infra/opentofu/bootstrap init -backend=false -lockfile=readonly
+      - name: Validate bootstrap
+        run: tofu -chdir=infra/opentofu/bootstrap validate
+      - name: Initialize platform providers without state backend
+        run: tofu -chdir=infra/opentofu/aws init -backend=false -lockfile=readonly
+      - name: Validate platform
+        run: tofu -chdir=infra/opentofu/aws validate

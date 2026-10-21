@@ -17,7 +17,7 @@ Phase 0 establishes the operating contract and decision gates that must exist be
 
 ### Gaps deliberately not represented as complete
 
-- No cloud account/project, region, registry, DNS, production secret manager, managed service, or workload identity has been selected or provisioned.
+- AWS ECS Fargate, Sentry, Datadog, and PagerDuty are selected as the initial platform vendors, but no AWS account, region, DNS zone, production secret, managed workload, vendor project, dashboard, alert route, or paging integration has been provisioned.
 - No Sentry project/DSN, OTLP Collector, metrics/log backend, dashboard, alert route, paging integration, or incident communication channel is configured.
 - No staging deployment, production deployment, backup restore drill, rollback drill, OIDC-provider verification, email-provider verification, malware-scanner verification, or load-test result exists.
 - Local Docker daemon is unavailable in this development environment. Container behavior is verified by GitHub Actions, not locally.
@@ -39,6 +39,14 @@ The accountable delivery owner must complete every field before provisioning. Va
 | Observability | Sentry yes/no; one metrics/log/trace backend; retention and cost owner | SRE/platform owner | Vendor selection record |
 | Paging and chat | PagerDuty/Opsgenie or provider-native paging; non-page chat destination | Incident manager | Test alert delivery record |
 | Delivery | Container registry, signing authority, protected environments and rollout strategy | Release owner | CI/CD design review |
+
+## Selected technology baseline
+
+- **Cloud and runtime:** AWS with ECS Fargate. Each staging and production environment uses a separate AWS account; the exact account IDs, region, DNS domain, and billing owner remain approval-gated.
+- **Infrastructure as code:** OpenTofu 1.13.1. The AWS foundation and bootstrap state-bucket design are version controlled in [`infra/opentofu/`](../../infra/opentofu/README.md). State is encrypted, versioned, private, and locked through S3 native lock files.
+- **Application error tracking:** Sentry. It must use PII scrubbing and bounded sampling; no DSN is committed.
+- **Metrics, logs, traces, dashboards, and alert routing:** Datadog, fed from OpenTelemetry/OTLP and platform log shipping. No API key, site, or project is configured in the repository.
+- **Paging:** PagerDuty. Chat notifications are a non-page integration and require a selected workspace/channel and an approved webhook or app installation outside the repository.
 
 ## Environment isolation contract
 

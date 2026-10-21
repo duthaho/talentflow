@@ -117,7 +117,7 @@ uv run python -m app.modules.retention.application.run_retention_worker
 
 ## Production infrastructure roadmap
 
-Application and CI controls are implemented; operated production infrastructure remains a separate evidence-based rollout. The prioritized [production infrastructure roadmap](docs/production-infrastructure-roadmap.md) covers Sentry-safe error tracking, OpenTelemetry/Collector telemetry, a single monitoring backend, alert routing, signed progressive delivery, load testing, and incident operations. Phase 0 artifacts are the [operating model decision](docs/adr/003-production-operating-model.md), [foundation gate](docs/operations/phase-0-foundation.md), and [incident management policy](docs/operations/incident-management.md).
+Application and CI controls are implemented; operated production infrastructure remains a separate evidence-based rollout. The prioritized [production infrastructure roadmap](docs/production-infrastructure-roadmap.md) covers Sentry-safe error tracking, OpenTelemetry/Collector telemetry, Datadog monitoring, PagerDuty alerting, signed progressive delivery, load testing, and incident operations. Phase 0 selects AWS ECS Fargate, Sentry, Datadog, and PagerDuty; its [AWS OpenTofu foundation](infra/opentofu/README.md), [technology decision](docs/adr/004-select-aws-sentry-datadog-pagerduty.md), [foundation gate](docs/operations/phase-0-foundation.md), and [incident policy](docs/operations/incident-management.md) are version controlled. No production account or workload is provisioned by this repository.
 
 ## Local development
 

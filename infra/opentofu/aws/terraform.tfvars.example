@@ -1,0 +1,10 @@
+aws_region         = "ap-southeast-1"
+environment        = "staging"
+availability_zones = ["ap-southeast-1a", "ap-southeast-1b"]
+vpc_cidr           = "10.40.0.0/16"
+
+tags = {
+  Owner              = "platform-team"
+  CostCenter         = "replace-before-apply"
+  DataClassification = "confidential"
+}

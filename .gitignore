@@ -9,3 +9,10 @@ htmlcov/
 .DS_Store
 node_modules/
 .next/
+# OpenTofu state, local plans, credentials, and environment values.
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/terraform.tfvars
+**/terraform.tfvars.json
