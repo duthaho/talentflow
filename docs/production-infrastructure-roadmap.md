@@ -17,7 +17,7 @@ These are **code and CI evidence**, not proof of a live production deployment. T
 
 ### Phase 0 — Production foundations and ownership
 
-**Outcome:** one accountable production environment and measurable service objectives.
+**Outcome:** one accountable production environment and measurable service objectives. The repository-backed decision register, environment-isolation contract, initial objectives, severity policy, and completion gate are in [Phase 0 foundation](operations/phase-0-foundation.md); the operating-model decision is [ADR 003](adr/003-production-operating-model.md). The incident lifecycle and alert-quality requirements are in [incident management](operations/incident-management.md).
 
 1. Select cloud/platform, regions, DNS, container registry, secret manager, managed PostgreSQL with PITR, managed Redis, and private object storage.
 2. Define owners, escalation schedule, severity policy, maintenance windows, SLOs, error budgets, RPO/RTO, and a data-classification policy.

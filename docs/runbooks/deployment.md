@@ -28,7 +28,14 @@ Never put production values in Compose files, image layers, GitHub Actions logs,
 
    The job must complete before an API rollout. It is safe to rerun an Alembic upgrade, but do not run destructive migrations without a tested rollback plan and a verified backup.
 4. Deploy API instances with readiness checks on `/health/ready` and liveness checks on `/health/live`. Do not route traffic until readiness succeeds.
-5. Schedule `python -m app.modules.notifications.application.run_email_worker` as a bounded worker cycle. It materializes outbox work and then attempts delivery with durable leases.
+5. Schedule the bounded notification and retention worker cycles using the same exact image digest:
+
+   ```bash
+   python -m app.modules.notifications.application.run_email_worker
+   python -m app.modules.retention.application.run_retention_worker
+   ```
+
+   The notification cycle materializes outbox work and attempts delivery with durable leases. The retention cycle processes a configured bounded tenant set and may delete eligible private attachment bytes before anonymizing candidate PII. Record each schedule and its execution outcome in platform telemetry.
 6. Verify `/metrics`, inspect structured logs by `correlation_id`, and check migration revision with `alembic current`.
 
 ## Rollback
