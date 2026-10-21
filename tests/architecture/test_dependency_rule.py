@@ -12,6 +12,7 @@ CLEAN_ARCHITECTURE_MODULES = (
     "offers",
     "organization",
     "reporting",
+    "retention",
 )
 
 

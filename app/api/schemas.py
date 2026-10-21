@@ -122,6 +122,23 @@ class CalendarSubscriptionResponse(BaseModel):
     expires_at: datetime
 
 
+class RetentionPolicyRequest(BaseModel):
+    retention_days: int = Field(ge=1, le=3650)
+
+
+class RetentionPolicyResponse(BaseModel):
+    retention_days: int
+
+
+class LegalHoldRequest(BaseModel):
+    held: bool
+    reason: str | None = Field(default=None, min_length=1, max_length=500)
+
+
+class RetentionPurgeResponse(BaseModel):
+    purged_count: int
+
+
 class AttachmentResponse(BaseModel):
     id: str
     document_type: str
