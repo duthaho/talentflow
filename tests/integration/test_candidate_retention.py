@@ -1,4 +1,6 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from fastapi.testclient import TestClient
 from sqlalchemy import update
@@ -77,3 +79,39 @@ def test_retention_purge_anonymizes_only_due_terminal_candidates_without_legal_h
     assert due_item["email"] != "due@example.com"
     assert held_item["email"] == "held@example.com"
     assert "candidate_case.retention_purged" in [event["action"] for event in audit.json()]
+
+
+def test_retention_purge_deletes_private_attachment_metadata_and_content() -> None:
+    with TemporaryDirectory() as storage_root:
+        app = create_app(
+            "sqlite://", Settings(app_env="test", attachment_storage_root=storage_root)
+        )
+        with TestClient(app) as client:
+            tenant = bootstrap_tenant(client, "acme", "admin-1")
+            headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "admin-1"}
+            candidate = _create_rejected_candidate(client, headers, "delete@example.com")
+            upload = client.post(
+                f"/v1/candidate-cases/{candidate['id']}/attachments",
+                headers=headers,
+                data={"document_type": "resume"},
+                files={"file": ("resume.pdf", b"%PDF-1.7\nresume", "application/pdf")},
+            )
+            assert upload.status_code == 201
+            assert list(Path(storage_root).iterdir())
+            client.put("/v1/retention-policy", headers=headers, json={"retention_days": 1})
+            with app.state.session_factory() as session:
+                session.execute(
+                    update(CandidateCase)
+                    .where(CandidateCase.id == candidate["id"])
+                    .values(created_at=datetime.now(UTC) - timedelta(days=2))
+                )
+                session.commit()
+            purge = client.post("/v1/retention/purge", headers=headers)
+            attachments = client.get(
+                f"/v1/candidate-cases/{candidate['id']}/attachments", headers=headers
+            )
+            remaining_files = list(Path(storage_root).iterdir())
+
+    assert purge.json() == {"purged_count": 1}
+    assert attachments.json() == []
+    assert remaining_files == []

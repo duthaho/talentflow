@@ -3,14 +3,16 @@ from datetime import datetime, timedelta
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
+from app.modules.attachments.infrastructure.filesystem_storage import LocalAttachmentStorage
 from app.modules.retention.application.retention import RetentionPolicy
-from app.shared.models import AuditEvent, CandidateCase, CandidateLegalHold
+from app.shared.models import Attachment, AuditEvent, CandidateCase, CandidateLegalHold
 from app.shared.models import RetentionPolicy as RetentionPolicyRecord
 
 
 class SqlAlchemyRetentionRepository:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, attachment_storage_root: str) -> None:
         self._session = session
+        self._storage = LocalAttachmentStorage(attachment_storage_root)
 
     def set_policy(self, *, tenant_id: str, retention_days: int) -> RetentionPolicy:
         record = self._session.get(RetentionPolicyRecord, tenant_id)
@@ -74,6 +76,15 @@ class SqlAlchemyRetentionRepository:
             )
         ).all()
         for record in records:
+            attachments = self._session.scalars(
+                select(Attachment).where(
+                    Attachment.candidate_case_id == record.id,
+                    Attachment.tenant_id == tenant_id,
+                )
+            ).all()
+            for attachment in attachments:
+                self._storage.delete(storage_key=attachment.storage_key)
+                self._session.delete(attachment)
             record.first_name = "Redacted"
             record.last_name = "Candidate"
             record.email = f"purged+{record.id}@redacted.invalid"
