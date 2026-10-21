@@ -197,7 +197,7 @@ Correlation IDs are accepted through `X-Correlation-Id`; a generated identifier 
 
 SQLAlchemy ORM records are persistence models, not domain aggregates. Infrastructure repositories translate records into domain entities or application read DTOs. PostgreSQL is the intended production database; SQLite is used in tests.
 
-The project currently initializes schema metadata at application startup for development/test convenience. A production rollout must replace this with an explicit migration pipeline (for example Alembic), migration review, backup, and rollback procedures.
+The application creates schema metadata only for development/test convenience. Production starts against an explicitly migrated database; Alembic revisions, review, backup, rollback compatibility, and restore drills are required deployment controls.
 
 ## 10. Operational model
 

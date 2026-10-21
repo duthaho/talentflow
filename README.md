@@ -107,6 +107,18 @@ Candidate documents are uploaded through `POST /v1/candidate-cases/{candidate_ca
 
 `GET /v1/reports/pipeline` is a tenant-scoped operational read model for users with `report:read`. It reports candidate stage distribution, offer status distribution, scheduled interviews, and submitted feedback without exposing candidate PII.
 
+## Retention and legal holds
+
+Tenant administrators define a retention period and can place a candidate on legal hold. Purge eligibility is based on when a `rejected` or `withdrawn` candidate entered a terminal state—not when the case was created. A purge removes private attachment metadata and bytes, anonymizes case PII, and writes audit evidence. The bounded retention worker is intended for a platform scheduler:
+
+```bash
+uv run python -m app.modules.retention.application.run_retention_worker
+```
+
+## Production infrastructure roadmap
+
+Application and CI controls are implemented; operated production infrastructure remains a separate evidence-based rollout. The prioritized plan covers Sentry-safe error tracking, OpenTelemetry/Collector telemetry, a single monitoring backend, alert routing, signed progressive delivery, load testing, and incident operations: [production infrastructure roadmap](docs/production-infrastructure-roadmap.md).
+
 ## Local development
 
 Requirements: Python 3.13+ and [uv](https://docs.astral.sh/uv/).
@@ -171,7 +183,7 @@ GitHub Actions enforces formatting, linting, tests, PostgreSQL migration smoke c
 The current suite verifies tenant isolation, RBAC, candidate lifecycle invariants, concurrency behavior, interview authorization, offer approval ordering, transactional outbox persistence, retry behavior, SendGrid request mapping, and architecture dependency rules.
 
 - Pytest coverage threshold: **85%**
-- Last verified local result: **41 tests passed; 93.44% coverage**
+- Last verified local result: **63 tests passed; 87.94% coverage**
 
 ## Decisions and further reading
 
@@ -181,4 +193,4 @@ The current suite verifies tenant isolation, RBAC, candidate lifecycle invariant
 
 ## Production-readiness roadmap
 
-The architecture foundation, OIDC/JWT identity, Alembic migrations, configuration hardening, and operational telemetry are implemented. A real production rollout still requires rate limits, backup and recovery procedures, CI/CD with vulnerability scanning, deployment-specific infrastructure validation, and live verification against a real OIDC provider and verified email sender.
+The architecture foundation, OIDC/JWT identity, Alembic migrations, configuration hardening, Redis rate limiting, operational telemetry, backup/restore runbooks, CI/CD, and vulnerability scanning are implemented and verified in CI. A live launch still requires deployment-specific evidence: managed dependencies, real OIDC and email-provider validation, production backup/restore and rollback drills, and operated telemetry/incident response. See the [production infrastructure roadmap](docs/production-infrastructure-roadmap.md).
