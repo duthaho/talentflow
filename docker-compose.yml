@@ -70,6 +70,17 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  retention-worker:
+    build: .
+    command: ["python", "-m", "app.modules.retention.application.run_retention_worker"]
+    environment: *runtime_environment
+    volumes:
+      - attachment_data:/app/data/attachments
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
 volumes:
   postgres_data:
   attachment_data:

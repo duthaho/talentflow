@@ -58,6 +58,15 @@ class SqlAlchemyRetentionRepository:
         elif record is not None and record.tenant_id == tenant_id:
             self._session.delete(record)
 
+    def policy_tenant_ids(self, *, limit: int) -> list[str]:
+        return list(
+            self._session.scalars(
+                select(RetentionPolicyRecord.tenant_id)
+                .order_by(RetentionPolicyRecord.tenant_id)
+                .limit(limit)
+            )
+        )
+
     def purge_due(self, *, tenant_id: str, now: datetime) -> list[str]:
         policy = self._session.get(RetentionPolicyRecord, tenant_id)
         if policy is None:

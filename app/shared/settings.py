@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     calendar_subscription_lifetime_days: int = 90
     calendar_interview_duration_minutes: int = 60
     calendar_public_base_url: str = ""
+    retention_worker_batch_size: int = 100
 
     @property
     def cors_origins(self) -> tuple[str, ...]:
@@ -69,6 +70,8 @@ class Settings(BaseSettings):
             raise ValueError("CALENDAR_SUBSCRIPTION_LIFETIME_DAYS must be positive")
         if self.calendar_interview_duration_minutes < 1:
             raise ValueError("CALENDAR_INTERVIEW_DURATION_MINUTES must be positive")
+        if self.retention_worker_batch_size < 1:
+            raise ValueError("RETENTION_WORKER_BATCH_SIZE must be positive")
         if self.auth_mode == "oidc_jwt" and not all(
             (self.oidc_issuer, self.oidc_audience, self.oidc_jwks_url)
         ):
