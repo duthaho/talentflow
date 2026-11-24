@@ -1,5 +1,7 @@
 # Incident management policy
 
+> **Archived (2026-11-24, DUTH-44).** Part of the retired AWS production track; superseded by [ADR-005](../../adr/005-local-open-source-runtime-stack.md) and the [roadmap](../../roadmap.md). Kept for history only.
+
 ## Scope
 
 This policy governs production incidents for the TalentFlow API, scheduled workers, managed dependencies, delivery pipeline, and security controls. It supplements the deployment and backup/restore runbooks. It does not replace an organization-wide legal, privacy, or security-incident process.

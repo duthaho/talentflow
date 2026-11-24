@@ -1,5 +1,7 @@
 # Production infrastructure readiness roadmap
 
+> **Archived (2026-11-24, DUTH-44).** Part of the retired AWS production track; superseded by [ADR-005](../adr/005-local-open-source-runtime-stack.md) and the [roadmap](../roadmap.md). Kept for history only.
+
 ## Status and boundary
 
 TalentFlow has application-level readiness controls: OIDC/JWT validation, Alembic migrations, Redis-backed rate limiting, Prometheus metrics, JSON logs with correlation IDs, OpenTelemetry FastAPI instrumentation, CI/security workflows, private attachment storage, retention purge, and recovery runbooks.
@@ -13,13 +15,13 @@ These are **code and CI evidence**, not proof of a live production deployment. T
 - **Error tracking:** Sentry receives unhandled exceptions and sampled performance transactions only after PII/sensitive-data scrubbing. Candidate emails, authorization headers, cookies, request bodies, attachment filenames, and feed tokens are excluded.
 - **Alerting:** PagerDuty receives actionable pages. The selected chat integration handles non-page notifications after its workspace/channel is approved. The application never sends operational pages directly.
 
-The selection rationale and non-committed deployment inputs are recorded in [ADR 004](adr/004-select-aws-sentry-datadog-pagerduty.md).
+The selection rationale and non-committed deployment inputs are recorded in [ADR 004](../adr/004-select-aws-sentry-datadog-pagerduty.md).
 
 ## Delivery order
 
 ### Phase 0 — Production foundations and ownership
 
-**Outcome:** one accountable production environment and measurable service objectives. The repository-backed decision register, environment-isolation contract, initial objectives, severity policy, and completion gate are in [Phase 0 foundation](operations/phase-0-foundation.md); the operating-model decision is [ADR 003](adr/003-production-operating-model.md). The incident lifecycle and alert-quality requirements are in [incident management](operations/incident-management.md).
+**Outcome:** one accountable production environment and measurable service objectives. The repository-backed decision register, environment-isolation contract, initial objectives, severity policy, and completion gate are in [Phase 0 foundation](operations/phase-0-foundation.md); the operating-model decision is [ADR 003](../adr/003-production-operating-model.md). The incident lifecycle and alert-quality requirements are in [incident management](operations/incident-management.md).
 
 1. Select cloud/platform, regions, DNS, container registry, secret manager, managed PostgreSQL with PITR, managed Redis, and private object storage.
 2. Define owners, escalation schedule, severity policy, maintenance windows, SLOs, error budgets, RPO/RTO, and a data-classification policy.

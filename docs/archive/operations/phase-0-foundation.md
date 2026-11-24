@@ -1,5 +1,7 @@
 # Phase 0 production foundation
 
+> **Archived (2026-11-24, DUTH-44).** Part of the retired AWS production track; superseded by [ADR-005](../../adr/005-local-open-source-runtime-stack.md) and the [roadmap](../../roadmap.md). Kept for history only.
+
 ## Purpose
 
 Phase 0 establishes the operating contract and decision gates that must exist before infrastructure provisioning. It does not claim a live deployment. The repository currently proves application behavior and CI checks; the selected platform must produce staging and production evidence later.
@@ -43,7 +45,7 @@ The accountable delivery owner must complete every field before provisioning. Va
 ## Selected technology baseline
 
 - **Cloud and runtime:** AWS with ECS Fargate. Each staging and production environment uses a separate AWS account; the exact account IDs, region, DNS domain, and billing owner remain approval-gated.
-- **Infrastructure as code:** OpenTofu 1.13.1. The AWS foundation and bootstrap state-bucket design are version controlled in [`infra/opentofu/`](../../infra/opentofu/README.md). State is encrypted, versioned, private, and locked through S3 native lock files.
+- **Infrastructure as code:** OpenTofu 1.13.1. The AWS foundation and bootstrap state-bucket design are version controlled in [`infra/opentofu/`](../../../infra/opentofu/README.md). State is encrypted, versioned, private, and locked through S3 native lock files.
 - **Application error tracking:** Sentry. It must use PII scrubbing and bounded sampling; no DSN is committed.
 - **Metrics, logs, traces, dashboards, and alert routing:** Datadog, fed from OpenTelemetry/OTLP and platform log shipping. No API key, site, or project is configured in the repository.
 - **Paging:** PagerDuty. Chat notifications are a non-page integration and require a selected workspace/channel and an approved webhook or app installation outside the repository.

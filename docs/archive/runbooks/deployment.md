@@ -1,5 +1,7 @@
 # Deployment runbook
 
+> **Archived (2026-11-24, DUTH-44).** Part of the retired AWS production track; superseded by [ADR-005](../../adr/005-local-open-source-runtime-stack.md) and the [roadmap](../../roadmap.md). Kept for history only.
+
 ## Scope and release contract
 
 TalentFlow is deployed as an API process plus a bounded notification worker, backed by PostgreSQL. The deployment artifact is an immutable image tagged with both the Git commit SHA and an immutable registry digest. Promote the same digest between environments; do not rebuild an image during promotion.
