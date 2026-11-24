@@ -1,6 +1,6 @@
 # ADR 003: Provider-neutral production operating model
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 005](005-local-open-source-runtime-stack.md) (2026-11-24)
 - **Date:** 2026-10-21
 
 ## Context
@@ -23,7 +23,7 @@ Selecting a cloud provider, Kubernetes distribution, and monitoring vendor befor
 
 - Application code can be integrated with Sentry and OTLP later without coupling business modules to a monitoring provider.
 - The first production release has one telemetry backend and one deployment target, lowering alerting and cost complexity.
-- Environment provisioning cannot begin until the decision record in `docs/operations/phase-0-foundation.md` has accountable owners and approved selections.
+- Environment provisioning cannot begin until the decision record in `docs/archive/operations/phase-0-foundation.md` has accountable owners and approved selections.
 - Terraform/OpenTofu modules will be added only after the selected provider, region, data-residency constraints, and organization boundaries are supplied.
 
 ## Rejected alternatives

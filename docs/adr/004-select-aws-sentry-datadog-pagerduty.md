@@ -1,6 +1,6 @@
 # ADR 004: Select AWS ECS Fargate, Sentry, Datadog, and PagerDuty
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 005](005-local-open-source-runtime-stack.md) (2026-11-24)
 - **Date:** 2026-10-21
 
 ## Context
