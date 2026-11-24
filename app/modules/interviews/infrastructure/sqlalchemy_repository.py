@@ -1,10 +1,13 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.audit.persistence import AuditEvent
+from app.modules.candidates.persistence import CandidateCase
 from app.modules.interviews.application.ports import Feedback
 from app.modules.interviews.domain.interview import Interview
-from app.shared.models import AuditEvent, CandidateCase, InterviewFeedback, Membership
-from app.shared.models import Interview as InterviewRecord
+from app.modules.interviews.persistence import Interview as InterviewRecord
+from app.modules.interviews.persistence import InterviewFeedback
+from app.modules.organization.persistence import Membership
 
 
 class SqlAlchemyInterviewRepository:

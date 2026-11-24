@@ -3,11 +3,12 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app.modules.audit.persistence import AuditEvent
 from app.modules.candidates.application.ports import CandidateListItem, CandidatePage
 from app.modules.candidates.domain.candidate_case import CandidateCase
+from app.modules.candidates.persistence import CandidateCase as CandidateCaseRecord
+from app.modules.organization.persistence import Requisition
 from app.modules.workflow.domain.candidate_state_machine import CandidateStage
-from app.shared.models import AuditEvent, Requisition
-from app.shared.models import CandidateCase as CandidateCaseRecord
 
 
 class SqlAlchemyCandidateRepository:

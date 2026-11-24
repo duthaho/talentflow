@@ -4,15 +4,20 @@ from starlette.responses import JSONResponse
 
 from app.shared.observability import prometheus_response
 
-router = APIRouter(tags=["operations"])
+router = APIRouter()
 
 
-@router.get("/health/live")
+@router.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@router.get("/health/live", tags=["operations"])
 def liveness() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/health/ready")
+@router.get("/health/ready", tags=["operations"])
 def readiness(request: Request):
     try:
         with request.app.state.session_factory() as session:
@@ -25,6 +30,6 @@ def readiness(request: Request):
     return {"status": "ok"}
 
 
-@router.get("/metrics", include_in_schema=False)
+@router.get("/metrics", include_in_schema=False, tags=["operations"])
 def metrics():
     return prometheus_response()

@@ -1,8 +1,9 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.audit.persistence import AuditEvent
 from app.modules.organization.application.ports import RequisitionView, TenantView
-from app.shared.models import AuditEvent, Membership, Requisition, Tenant, User
+from app.modules.organization.persistence import Membership, Requisition, Tenant, User
 
 
 class SqlAlchemyOrganizationRepository:

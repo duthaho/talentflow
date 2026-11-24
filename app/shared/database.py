@@ -5,8 +5,12 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+
+class Base(DeclarativeBase):
+    pass
 
 
 def build_engine(database_url: str):

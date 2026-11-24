@@ -3,8 +3,10 @@ from collections import Counter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.candidates.persistence import CandidateCase
+from app.modules.interviews.persistence import Interview, InterviewFeedback
+from app.modules.offers.persistence import Offer
 from app.modules.reporting.application.pipeline_report import PipelineReport
-from app.shared.models import CandidateCase, Interview, InterviewFeedback, Offer
 
 
 class SqlAlchemyPipelineReportReader:

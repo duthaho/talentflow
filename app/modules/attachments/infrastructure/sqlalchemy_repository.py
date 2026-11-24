@@ -4,8 +4,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.attachments.application.ports import Attachment
-from app.shared.models import Attachment as AttachmentRecord
-from app.shared.models import AuditEvent, CandidateCase
+from app.modules.attachments.persistence import Attachment as AttachmentRecord
+from app.modules.audit.persistence import AuditEvent
+from app.modules.candidates.persistence import CandidateCase
 
 
 class SqlAlchemyAttachmentRepository:
