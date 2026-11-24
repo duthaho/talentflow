@@ -1,252 +1,278 @@
-# TalentFlow Architecture
+# TalentFlow architecture
 
-## 1. Purpose and architectural thesis
+This document describes the architecture **as built today** (baseline commit `db1f7bc`, 2026-11-24) and the **target** architecture of the [roadmap](roadmap.md). Every target element is labelled with the stage that delivers it. Runtime services are chosen in [ADR 005](adr/005-local-open-source-runtime-stack.md).
 
-TalentFlow is a multi-tenant HR candidate workflow and case-management platform. Its purpose is to demonstrate an enterprise design that is credible in production without starting as a network-distributed system.
+## 1. Thesis
 
-The system starts as a **modular monolith**: one deployable application, one transactional relational database boundary, and independently structured bounded contexts. This avoids distributed transactions, cross-service deployment coordination, and operational overhead before the domain, ownership, scale, or availability profile proves that separation is worthwhile.
+TalentFlow is a multi-tenant HR candidate workflow and case-management platform (ATS). It is a **modular monolith**: one deployable API, background workers built from the same image, one PostgreSQL transactional boundary, and bounded contexts with explicit ports. This avoids distributed transactions and cross-service deployment before the domain, ownership or scale proves a split is worth it ([ADR 001](adr/001-modular-monolith-clean-architecture.md)).
 
-The design applies Clean Architecture / Hexagonal Architecture within each modularized context:
+Inside each module, Clean/Hexagonal layering applies and dependencies point inward:
 
-```text
-presentation -> application -> domain
-                    |
-                    v
-                  ports <-> infrastructure adapters
+```mermaid
+flowchart LR
+  P["Presentation<br/>FastAPI routes, Pydantic DTOs"] --> A["Application<br/>commands, queries, ports, transaction scope"]
+  A --> D["Domain<br/>aggregates, policies, state machine"]
+  I["Infrastructure<br/>SQLAlchemy, SendGrid, ClamAV, storage"] -. implements ports .-> A
 ```
-
-Dependencies point inward. The domain is framework-independent. The application coordinates a use case through protocols. Infrastructure contains SQLAlchemy and provider details. Presentation owns FastAPI, Pydantic DTOs, HTTP mapping, and request authentication context.
-
-## 2. System context
-
-```text
-+----------------------+       HTTPS        +-------------------------+
-| Browser / API client | -----------------> | TalentFlow FastAPI app  |
-+----------------------+                    +------------+------------+
-                                                          |
-                         +--------------------------------+------------------------------+
-                         |                                |                              |
-                         v                                v                              v
-                +----------------+             +-------------------+         +------------------+
-                | PostgreSQL     |             | Outbox publisher   |         | Email worker     |
-                | system of      |             | durable event ->   |         | retry/dead-letter|
-                | record         |             | delivery intent    |         | -> SendGrid      |
-                +----------------+             +-------------------+         +------------------+
-```
-
-The PostgreSQL database is the system of record. External email is never part of the business transaction. Instead, a committed outbox event represents the durable intent to notify.
-
-## 3. Bounded contexts
-
-### Organization
-
-**Responsibility:** bootstrap a tenant, establish the initial tenant administrator membership, create requisitions, and record organization-level audit evidence.
-
-**Application services:** `OrganizationService`, `CreateTenantCommand`, `CreateRequisitionCommand`.
-
-**Invariants:**
-
-- Tenant slug is globally unique.
-- The bootstrap administrator exists as a user and has a `tenant_admin` membership for the new tenant.
-- Requisitions belong to the calling actor's tenant.
-
-### Candidates
-
-**Responsibility:** candidate-case creation, tenant-scoped search, lifecycle transitions, email normalization, and concurrency protection.
-
-**Domain aggregate:** `CandidateCase`.
-
-**Invariants:**
-
-- Candidate email is normalized and unique within a tenant.
-- Requisition must belong to the tenant.
-- Lifecycle changes must be allowed by the candidate state machine.
-- A write requires an `expected_version`; stale writes are rejected.
-
-**Read/write split:** commands use `CreateCandidateHandler` and `TransitionCandidateHandler`. `ListCandidatesHandler` is a CQRS-lite query path that returns an optimized page DTO without loading a write aggregate.
-
-### Interviews
-
-**Responsibility:** schedule interviews and capture structured interviewer feedback.
-
-**Domain entity:** `Interview`.
-
-**Invariants:**
-
-- The candidate case and assigned interviewer must belong to the tenant.
-- The assigned user must have the `interviewer` membership role.
-- Only the assigned interviewer may submit feedback.
-- Each interview allows one feedback record.
-
-### Offers
-
-**Responsibility:** create offers, enforce staged approval, preserve immutable decisions, synchronize candidate lifecycle, and emit integration events.
-
-**Domain aggregate:** `Offer`.
-
-**Policy object:** `ApprovalPolicy.standard()` requires a `hiring_manager` decision followed by a `tenant_admin` decision.
-
-**Invariants:**
-
-- Offer creation begins only when a candidate is in `interviewing`.
-- One offer belongs to one candidate case.
-- Approval role and step ordering are enforced by domain policy.
-- Offer and candidate updates use version checks.
-- Decisions are immutable; each approval step has one decision.
-
-### Notifications
-
-**Responsibility:** transform committed outbox events into delivery work, send email through a provider adapter, and retry failures.
-
-This context currently has a worker boundary and a SendGrid adapter. It is the most likely early extraction candidate because delivery workload, availability objectives, and provider concerns can evolve independently from the workflow core.
-
-### Audit
-
-**Responsibility:** retain tenant-scoped, append-only evidence of material actions and expose a read-side API adapter.
-
-Audit records retain tenant, actor, action, aggregate type/id, correlation ID, metadata, and creation time. Commands write audit records in the same application transaction as their state change.
-
-## 4. Layering and dependency rules
 
 | Layer | May contain | Must not depend on |
 | --- | --- | --- |
-| Domain | aggregates, entities, policies, domain errors, value objects | FastAPI, SQLAlchemy, Pydantic, SendGrid/provider SDKs |
-| Application | commands, handlers, query services, ports, unit-of-work contracts | HTTP framework, ORM records, provider SDKs |
-| Infrastructure | SQLAlchemy repositories, persistence records, provider clients, workers | presentation concerns |
-| Presentation | routes, request/response DTOs, dependency injection, error mapping | business invariants or direct business-state mutation |
+| Domain | aggregates, entities, policies, value objects, domain errors | FastAPI, SQLAlchemy, Pydantic, provider SDKs |
+| Application | commands, handlers, query services, ports, unit-of-work contracts | HTTP framework, ORM records (`app.shared.models`), provider SDKs |
+| Infrastructure | repositories, persistence records, provider clients, workers | presentation concerns |
+| Presentation | routes, DTOs, dependency wiring, error mapping | business invariants |
 
-`tests/architecture/test_dependency_rule.py` programmatically checks that the modularized application and domain layers do not import forbidden framework or persistence dependencies.
+`tests/architecture/test_dependency_rule.py` enforces the domain rule for every module and the application rule for `attachments`, `audit`, `calendar`, `candidates`, `interviews`, `offers`, `organization`, `reporting` and `retention`.
 
-## 5. Command flow and transaction ownership
+## 2. System context (C4 level 1)
 
-A business command follows this lifecycle:
+### Current
 
-```text
-HTTP route
-  -> validate transport DTO
-  -> build command with tenant, actor, correlation metadata
-  -> application handler
-      -> load aggregate/read through a port
-      -> evaluate domain rule or policy
-      -> persist through a port
-      -> record audit/outbox work through ports
-      -> commit unit of work
-  -> map result or domain error to HTTP response
+```mermaid
+flowchart TB
+  user["HR user<br/>(admin, recruiter, hiring manager, interviewer)<br/>via API client"]
+  cal["Calendar client<br/>(Google, Outlook)"]
+  tf["TalentFlow<br/>FastAPI modular monolith + workers"]
+  idp["OIDC provider<br/>(any; JWKS)"]
+  sg["SendGrid<br/>(email, optional)"]
+  user -- "HTTPS / JSON, Bearer JWT" --> tf
+  cal -- "HTTPS iCalendar feed" --> tf
+  tf -- "fetch JWKS" --> idp
+  tf -- "HTTPS API" --> sg
 ```
 
-The **application handler owns the transaction boundary**. This keeps an endpoint from accidentally committing only one part of a state transition. Examples:
+There is no web UI yet. Authentication is either `oidc_jwt` (production mode) or `development_headers` (`X-Tenant-Id` / `X-Actor-Id`, development and tests only).
 
-- Candidate creation writes candidate case and audit record together.
-- Candidate transition writes version-guarded stage update and transition audit record together.
-- Offer decision writes offer state, candidate state when final/rejected, immutable approval decision, and outbox event together.
+### Target
 
-## 6. Candidate state machine and concurrency
-
-```text
-applied -> screening -> interviewing -> offer_pending_approval
-                                           |              |
-                                           v              v
-                                   offer_rejected   offer_approved -> hired
+```mermaid
+flowchart TB
+  staff["HR staff<br/>(admin, recruiter, hiring manager, interviewer)"]
+  applicant["Applicant<br/>(public, anonymous)"]
+  cal["Calendar client"]
+  partner["Tenant webhook endpoint"]
+  tf["TalentFlow<br/>web app + API + workers"]
+  kc["Keycloak<br/>(identity)"]
+  mail["Mailpit<br/>(local SMTP sink)"]
+  staff -- "browser, OIDC login" --> tf
+  applicant -- "careers page, apply (stage 5)" --> tf
+  cal -- "iCalendar feed" --> tf
+  tf -- "signed webhooks (stage 5)" --> partner
+  tf -- "OIDC, admin API" --> kc
+  staff -- "login" --> kc
+  tf -- "SMTP (stage 2)" --> mail
 ```
 
-Terminal and alternate transitions such as rejection and withdrawal are explicitly enumerated in the state machine. A candidate command carries `expected_version`. Repositories issue version-guarded updates; `rowcount != 1` becomes a conflict instead of silent lost update.
+## 3. Containers (C4 level 2)
 
-This is optimistic concurrency control: concurrent callers can read, but only the caller operating on the current version succeeds.
+### Current
 
-## 7. Offer approval and transactional outbox
-
-### Approval flow
-
-```text
-interviewing candidate
-  -> create pending offer + candidate.offer_pending_approval
-  -> hiring_manager approves step 1
-  -> tenant_admin approves step 2
-  -> offer approved + candidate.offer_approved
+```mermaid
+flowchart LR
+  client["API client"] --> api["API<br/>FastAPI / Uvicorn"]
+  migrate["migrate<br/>alembic upgrade head (one-shot)"] --> pg
+  api --> pg[("PostgreSQL 17")]
+  api --> redis[("Redis<br/>rate limits")]
+  api --> fs[("Attachment volume<br/>local filesystem")]
+  api -. "clamscan (when ATTACHMENT_SCAN_MODE=clamav)" .-> clam["ClamAV CLI"]
+  ow["notification worker<br/>one-shot: outbox → deliveries"] --> pg
+  ew["email worker<br/>one-shot: leased delivery"] --> pg
+  ew --> sg["SendGrid"]
+  rw["retention worker<br/>one-shot purge"] --> pg
+  rw --> fs
 ```
 
-A rejection at either step rejects the offer and moves the candidate to `offer_rejected`.
+Workers are bounded one-shot commands meant for an external scheduler. `docker-compose.yml` today runs PostgreSQL, Redis, `migrate`, `api`, the outbox publisher and the retention worker with `AUTH_MODE=development_headers` and `ATTACHMENT_SCAN_MODE=noop`.
 
-### Reliable event flow
+### Target
 
-```text
-Offer decision handler
-   | single database transaction
-   +-> Offer update
-   +-> Candidate update where needed
-   +-> ApprovalDecision insert
-   +-> OutboxEvent(topic=offer.approval_recorded.v1)
-
-Outbox publisher -> NotificationDelivery (idempotent materialization)
-Delivery worker -> SendGrid adapter -> delivered | retry | dead_letter
+```mermaid
+flowchart LR
+  subgraph app["TalentFlow (one image for API and workers)"]
+    web["web<br/>Next.js (stage 3)"]
+    api["api<br/>FastAPI"]
+    relay["outbox relay (stage 5)"]
+    consumers["consumers: notifications, webhooks,<br/>search projector, saga, AI jobs"]
+    sched["scheduled workers<br/>retention (stage 2)"]
+  end
+  web --> api
+  api --> pg[("PostgreSQL + pgvector")]
+  api --> redis[("Redis")]
+  api --> s3[("SeaweedFS (S3)")]
+  api --> clam["ClamAV clamd"]
+  api --> flags["flagd (stage 6)"]
+  api --> os[("OpenSearch (stage 7)")]
+  api --> bao["OpenBao transit (stage 7)"]
+  api --> kc["Keycloak"]
+  web --> kc
+  relay --> pg
+  relay --> mq[["RabbitMQ (stage 5)"]]
+  mq --> consumers
+  consumers --> pg
+  consumers --> os
+  consumers --> mail["Mailpit"]
+  consumers --> llm["Ollama (stage 8)"]
+  consumers --> kc
+  sched --> pg
+  sched --> s3
+  app -. "OTLP" .-> otel["OTel Collector"] --> lgtm["Grafana LGTM"]
+  app -. "Sentry SDK (stage 9)" .-> gt["GlitchTip"]
 ```
 
-The system intentionally provides **at-least-once**, not exactly-once, delivery. The outbox publisher or worker may replay work after failure. Idempotency is enforced with durable uniqueness (`notification_deliveries.outbox_event_id`) so replay cannot create another delivery record for the same outbox event.
+## 4. Bounded contexts
 
-This follows the [AWS transactional outbox pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html).
+| Context | Responsibility | Status | Key patterns |
+| --- | --- | --- | --- |
+| Organization | tenants, memberships, requisitions | implemented | application service, unit of work, audit |
+| Identity | JWT validation, actor context, RBAC permissions | implemented | ports/adapters, JWKS rotation |
+| Candidates | case creation, list/filter, lifecycle transitions | implemented | aggregate, state machine (`workflow`), optimistic locking, CQRS-lite |
+| Interviews | scheduling, structured feedback | implemented | authorization policy, one-feedback-per-interview |
+| Offers | staged approvals | implemented | aggregate, policy object, immutable decisions, outbox |
+| Notifications | outbox materialization, email delivery | implemented | outbox, leased worker, retry, dead letter |
+| Audit | tenant-scoped append-only evidence | implemented | same-transaction audit write; hash chain planned (stage 7) |
+| Attachments | upload, scan, private storage, download | implemented (filesystem) | file-signature checks, malware-scan port; S3 + presigned URLs planned (stage 2) |
+| Calendar | revocable iCalendar feeds | implemented | capability URL, hashed tokens, expiry |
+| Reporting | PII-free pipeline read model | implemented | read model |
+| Retention | retention policy, legal hold, purge | implemented | bounded purge worker, anonymization |
+| Search | candidate full-text search and facets | **planned — stage 7** | event-fed OpenSearch projection, alias swap rebuild |
+| Webhooks | tenant subscriptions, signed delivery | **planned — stage 5** | HMAC signing, retry/DLQ, SSRF guard |
+| Onboarding saga | hire → employee record, account, day-1 tasks | **planned — stage 6** | process manager, compensation |
+| Feature flags | per-tenant/role targeting, kill switches | **planned — stage 6** | OpenFeature, flagd |
+| AI assistant | resume parsing, matching, feedback summary | **planned — stage 8** | LLM gateway port, guardrails, eval harness, pgvector |
 
-## 8. Tenancy, authorization, and audit
+Known gaps in today's boundaries (fixed by DUTH-45 in stage 2): tenant, candidate, interview and offer routes still live in `app/main.py`, other routers in `app/api/`, and all ORM records are shared in `app/shared/models.py`.
 
-All protected request paths obtain an `ActorContext` containing tenant, actor, and role. The current development identity adapter validates `X-Tenant-Id` and `X-Actor-Id` against memberships and role permissions. Every aggregate lookup and business write uses tenant scope.
+## 5. Candidate workflow and concurrency
 
-This header mechanism is not production authentication. Production deployment requires an OIDC/JWT adapter with signature validation, issuer/audience validation, expiry checks, key rotation, and mapping of external subject claims to local membership.
+```mermaid
+stateDiagram-v2
+  [*] --> applied
+  applied --> screening
+  screening --> interviewing
+  interviewing --> offer_pending_approval
+  offer_pending_approval --> offer_approved
+  offer_pending_approval --> offer_rejected
+  offer_approved --> hired
+  offer_rejected --> rejected
+  applied --> rejected
+  screening --> rejected
+  interviewing --> rejected
+  applied --> withdrawn
+  screening --> withdrawn
+  interviewing --> withdrawn
+  offer_pending_approval --> withdrawn
+  offer_approved --> withdrawn
+  offer_rejected --> withdrawn
+  hired --> [*]
+  rejected --> [*]
+  withdrawn --> [*]
+```
 
-Correlation IDs are accepted through `X-Correlation-Id`; a generated identifier provides a fallback for write commands. They let audit and operational events be joined across asynchronous processing.
+Transitions are defined in `app/modules/workflow/domain/candidate_state_machine.py`. Every write carries `expected_version`; the repository issues a version-guarded `UPDATE` and a `rowcount` of 0 becomes a 409 conflict instead of a lost update. Stage 5 adds `ETag`/`If-Match` as an HTTP-native alternative.
 
-## 9. Persistence strategy
+Offer approval is ordered by `ApprovalPolicy.standard()`: hiring manager, then tenant admin. A rejection at either step moves the candidate to `offer_rejected`.
 
-SQLAlchemy ORM records are persistence models, not domain aggregates. Infrastructure repositories translate records into domain entities or application read DTOs. PostgreSQL is the intended production database; SQLite is used in tests.
+## 6. Command flow and transaction ownership
 
-The application creates schema metadata only for development/test convenience. Production starts against an explicitly migrated database; Alembic revisions, review, backup, rollback compatibility, and restore drills are required deployment controls.
+```mermaid
+sequenceDiagram
+  participant R as Route
+  participant H as Application handler
+  participant D as Domain
+  participant P as Ports (repo, audit, outbox)
+  participant DB as PostgreSQL
+  R->>H: command (tenant, actor, correlation id)
+  H->>P: load aggregate
+  H->>D: apply rule / policy
+  H->>P: save (version-guarded), audit, outbox event
+  H->>DB: commit (one transaction)
+  H-->>R: result or domain error
+```
 
-## 10. Operational model
+The application handler owns the transaction, so a state change, its audit record and its outbox event commit together or not at all.
 
-### HTTP process
+## 7. Event flow
 
-The API runs through Uvicorn and exposes `/health`. The process serves synchronous command/query endpoints.
+### Current: outbox → notification deliveries
 
-### Background processes
+```mermaid
+flowchart LR
+  cmd["Offer decision handler"] -- "same transaction" --> ob[("outbox_events<br/>offer.approval_recorded.v1")]
+  ob --> pub["outbox publisher"] -- "unique outbox_event_id" --> nd[("notification_deliveries")]
+  nd --> w["email worker<br/>lease, retry"] --> sg["SendGrid"]
+  w --> dl["dead_letter after max attempts"]
+```
 
-- **Outbox publisher:** materializes pending outbox events into notification deliveries.
-- **Email worker:** claims delivery work, sends through SendGrid, applies retry scheduling, and marks exhausted work as `dead_letter`.
+Delivery is **at-least-once**. Idempotency comes from the unique `notification_deliveries.outbox_event_id`; a crashed worker's expired lease is reclaimed and only the lease holder can finalize ([ADR 002](adr/002-transactional-outbox.md)).
 
-### Configuration and secrets
+### Target: outbox → RabbitMQ → consumers with inbox dedup (stage 5)
 
-Provider credentials are loaded from environment settings. Secrets must be supplied through deployment secret management; they must never enter Git, fixtures, logs, ADRs, or README examples.
+```mermaid
+flowchart LR
+  h["Command handler"] -- "same transaction" --> ob[("outbox")]
+  ob --> relay["outbox relay<br/>publisher confirms"]
+  relay --> ex{{"RabbitMQ topic exchange<br/>routing key = event type"}}
+  ex --> q1["notifications queue"] --> c1["notification consumer"]
+  ex --> q2["webhooks queue"] --> c2["webhook dispatcher"]
+  ex --> q3["search queue"] --> c3["search projector"]
+  ex --> q4["saga queue"] --> c4["onboarding process manager"]
+  c1 & c2 & c3 & c4 --> inbox[("inbox table<br/>(consumer, event_id) unique")]
+  q1 & q2 & q3 & q4 -. "after N retries" .-> dlq["dead-letter queues"]
+```
+
+Each consumer records `(consumer, event_id)` in an inbox table in the same transaction as its side effect, so a redelivered event is applied once. The envelope, event catalog and topology are defined by DUTH-58 (`docs/events/asyncapi.yaml`). Payloads carry identifiers, not free-text PII.
+
+## 8. Identity and tenancy
+
+### Current
+
+- `AUTH_MODE=oidc_jwt`: the API validates signature, issuer, audience and expiry against the configured JWKS (`app/modules/identity/infrastructure/jwt_validator.py`), refreshing keys once on an unknown `kid`. The token must carry `sub` and a `tenant_id` claim; `sub` is used as the local actor id, then tenant membership and role permissions are checked (`app/modules/identity/security.py`).
+- `AUTH_MODE=development_headers`: `X-Tenant-Id` and `X-Actor-Id`, rejected by settings validation in production.
+- Every aggregate lookup and write is tenant-scoped in the application; Row-Level Security adds a database-level guard in stage 7.
+
+### Target: login through Keycloak (stages 2–3)
+
+```mermaid
+sequenceDiagram
+  actor U as User (browser)
+  participant W as Web app (Next.js)
+  participant K as Keycloak
+  participant A as TalentFlow API
+  participant DB as PostgreSQL
+  U->>W: open app
+  W->>K: redirect, authorization code + PKCE
+  U->>K: log in (demo realm)
+  K-->>W: code
+  W->>K: exchange code + verifier
+  K-->>W: access token (JWT), refresh token
+  W->>A: API call, Authorization: Bearer JWT (sub, tenant_id)
+  A->>K: JWKS (cached)
+  A->>DB: actor = sub, check tenant membership + role
+  A-->>W: response or 401/403 Problem Details
+```
+
+Keycloak owns authentication; TalentFlow owns authorization (tenant membership and role permissions stay in the app database). Because the API uses `sub` as the actor id and requires a `tenant_id` claim, the Keycloak realm needs a `tenant_id` protocol mapper and the seed step (DUTH-50) must create each demo user with the same id in Keycloak and the app database. The onboarding saga (stage 6) uses the Keycloak admin API to provision accounts.
+
+## 9. Persistence
+
+- SQLAlchemy ORM records are persistence models, not domain objects; repositories translate between them.
+- PostgreSQL is the system of record; tests run on SQLite, CI also applies migrations to PostgreSQL.
+- Schema changes go through Alembic (`migrations/versions/`) with expand/contract compatibility. The app creates tables only outside production.
+- Database constraints back the invariants: tenant-unique candidate email, one feedback per interview, one decision per approval step, unique outbox materialization.
+
+## 10. Operations (local)
+
+- Probes: `/health/live`, `/health/ready` (database), `/metrics` (Prometheus: HTTP RED, conflicts, outbox backlog, delivery outcomes, dead letters, worker claims).
+- Logs: JSON with `correlation_id`. Tracing: FastAPI OpenTelemetry instrumentation propagates trace context; an OTLP exporter, the Collector and Grafana arrive in stage 2 (DUTH-50).
+- Backups: [backup and restore runbook](runbooks/backup-restore.md).
+- Configuration is validated at startup (`app/shared/settings.py`); secrets are typed and redacted. Local credentials are dev-only values in `.env.example`.
 
 ## 11. Quality controls
 
-The repository enforces:
-
-- Ruff formatting and linting.
-- Pytest integration/unit tests.
-- Coverage threshold of 85%.
-- Architecture dependency tests.
-- Database constraints for tenant-scoped candidate email, feedback cardinality, approval step cardinality, and notification materialization idempotency.
-
-The last local verification ran **41 tests** with **93.44% coverage**.
+- `ruff format --check`, `ruff check`, `python -m pytest` with coverage ≥ 85%, architecture tests.
+- CI (`.github/workflows/ci.yml`): migrations on PostgreSQL, tests, image build, API readiness, worker smoke command. Security (`.github/workflows/security.yml`): CodeQL, Trivy dependency and image scan.
+- Last local run (2026-11-24, `uv run python -m pytest`): **63 passed, 87.94% coverage**.
 
 ## 12. Service extraction criteria
 
-No context should be split merely because it has a folder. A module becomes a microservice only when evidence supports the operational cost:
-
-1. materially different scaling or availability needs;
-2. an independent release cadence or dedicated owning team;
-3. a hard security/isolation boundary;
-4. stable integration contracts and low cross-context transaction coupling; or
-5. operational economics better than in-process integration.
-
-Likely order if justified: Notifications first, then Reporting/read projections, and finally isolated workflow capabilities. Candidate and Offer remain in-process while their aggregate boundaries and approval contracts evolve.
-
-## 13. Production gap register
-
-The architecture is intentionally production-oriented, not a claim that every deployment control is already provisioned. Before public production launch, complete:
-
-- OIDC/JWT authentication and authorization integration;
-- managed PostgreSQL, encrypted backups, restore exercises, and migration pipeline;
-- secrets manager and credential rotation;
-- structured logs, metrics, tracing, alerting, and correlation propagation;
-- API rate limits, CORS policy, request-size limits, and security headers;
-- CI/CD with dependency/license/vulnerability scanning and deployment promotion;
-- real provider sender verification and end-to-end email delivery verification;
-- container/runtime health, readiness, and graceful worker shutdown verification.
+A module becomes a separate service only with evidence of: materially different scaling or availability needs; an independent release cadence or owning team; a hard security boundary; stable contracts with low cross-context transaction coupling; or better operational economics than in-process integration. Likely order if justified: Notifications, then read projections (Reporting, Search), then AI jobs. Stage 5's RabbitMQ events create the seam; they do not by themselves justify a split.
