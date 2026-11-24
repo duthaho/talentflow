@@ -47,7 +47,7 @@ docker compose up -d
 make seed        # demo tenant + admin, recruiter, hiring manager, interviewer in Keycloak and the app
 ```
 
-Then log in through Keycloak, see email in Mailpit and traces, metrics and logs in Grafana. The web app joins in stage 3.
+Use the seeded local accounts with Keycloak's token endpoint to call the API. Mailpit joins in DUTH-48 and local telemetry in DUTH-92; the web app joins in stage 3.
 
 ## Pattern catalog
 
@@ -86,7 +86,7 @@ Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `imple
 | Long-running workers, graceful shutdown, advisory-lock scheduling (DUTH-47) | No lost leases on deploy; one retention run at a time | — | — | — | planned — stage 2 |
 | SMTP adapter to Mailpit (DUTH-48) | Email visible locally without a provider account | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
 | S3 storage with presigned downloads (DUTH-49) | Bytes never stream through the API; short-lived links after authz | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
-| One-command stack, Keycloak, OTel → Grafana (DUTH-50) | Runnable by anyone; real IdP; traces, metrics and logs in one place | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
+| One-command stack and Keycloak (DUTH-50) | Runnable by anyone with real OIDC tokens and seeded roles | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
 | Browser OIDC (code + PKCE), generated typed API client (DUTH-51) | Secure SPA login; client and API cannot drift | — | — | — | planned — stage 3 |
 | Conflict-aware UI for optimistic locking (DUTH-52) | Users see "changed by someone else" instead of losing work | — | — | — | planned — stage 3 |
 | End-to-end tests against the real stack (DUTH-57) | The hiring flow is proven in a browser on every PR | — | — | — | planned — stage 4 |

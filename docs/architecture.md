@@ -253,6 +253,8 @@ sequenceDiagram
 
 Keycloak owns authentication; TalentFlow owns authorization (tenant membership and role permissions stay in the app database). Because the API uses `sub` as the actor id and requires a `tenant_id` claim, the Keycloak realm needs a `tenant_id` protocol mapper and the seed step (DUTH-50) must create each demo user with the same id in Keycloak and the app database. The onboarding saga (stage 6) uses the Keycloak admin API to provision accounts.
 
+The local realm's `tenant_id` mapper is hardcoded only for its single demo tenant; a multi-tenant realm must derive the claim from a user attribute or tenant mapping.
+
 ## 9. Persistence
 
 - SQLAlchemy ORM records are persistence models, not domain objects; repositories translate between them.
@@ -264,7 +266,7 @@ Keycloak owns authentication; TalentFlow owns authorization (tenant membership a
 ## 10. Operations (local)
 
 - Probes: `/health/live`, `/health/ready` (database), `/metrics` (Prometheus: HTTP RED, conflicts, outbox backlog, delivery outcomes, dead letters, worker claims).
-- Logs: JSON with `correlation_id`. Tracing: FastAPI OpenTelemetry instrumentation propagates trace context; an OTLP exporter, the Collector and Grafana arrive in stage 2 (DUTH-50).
+- Logs: JSON with `correlation_id`. Tracing: FastAPI OpenTelemetry instrumentation propagates trace context; an OTLP exporter, the Collector and Grafana arrive in stage 2 (DUTH-92, after the core compose stack).
 - Backups: [backup and restore runbook](runbooks/backup-restore.md).
 - Configuration is validated at startup (`app/shared/settings.py`); secrets are typed and redacted. Local credentials are dev-only values in `.env.example`.
 
