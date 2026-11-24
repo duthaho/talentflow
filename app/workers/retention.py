@@ -45,6 +45,10 @@ class ScheduledRetentionCycle:
                     extra={"event": "retention_worker_lock_contended"},
                 )
                 return 0
+            # pg_try_advisory_lock starts a transaction. Commit it before binding the
+            # ORM session so its per-tenant commits are durable; session-level locks
+            # remain held across the commit on this dedicated connection.
+            connection.commit()
             try:
                 with Session(bind=connection, autoflush=False, expire_on_commit=False) as session:
                     repository = SqlAlchemyRetentionRepository(
