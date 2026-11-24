@@ -25,7 +25,7 @@ flowchart LR
 
 ## Stage 2 — Foundation
 
-**Outcome:** real module boundaries, one error model, long-running workers, and `docker compose up -d && make seed` gives a healthy stack with Keycloak login and telemetry in Grafana.
+**Outcome:** real module boundaries, one error model, long-running workers, and `docker compose up -d && make seed` gives a healthy stack with Keycloak login. Local telemetry follows in DUTH-92.
 
 | Issue | Deliverable |
 | --- | --- |
@@ -34,7 +34,7 @@ flowchart LR
 | DUTH-47 | Long-running workers: poll loop with backoff, SIGTERM drain, scheduled retention with an advisory lock, worker health and metrics |
 | DUTH-48 | SMTP email adapter to Mailpit; SendGrid stays optional |
 | DUTH-49 | S3 attachment storage (SeaweedFS) with presigned downloads after authorization and audit |
-| DUTH-50 | One-command compose stack: Postgres+pgvector, Redis, Keycloak realm import, Mailpit, ClamAV, SeaweedFS, OTel Collector + Grafana LGTM, API, workers, seed data, compose smoke job in CI |
+| DUTH-50 | One-command compose stack: Postgres, Redis, Keycloak realm import, API, profile-gated one-shot workers, seed data and an authenticated compose smoke job in CI |
 
 **Teaches:** modular-monolith boundaries enforced by tests, standard error contracts, graceful shutdown, singleton scheduling with advisory locks, ports and adapters for email and storage, presigned URLs, OIDC with a real IdP, OpenTelemetry pipeline and RED dashboards.
 

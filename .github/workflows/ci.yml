@@ -30,7 +30,7 @@ jobs:
           --health-timeout 3s
           --health-retries 20
       redis:
-        image: redis:7-alpine
+        image: redis:8.0.2-alpine
         ports:
           - 6379:6379
         options: >-
@@ -71,7 +71,7 @@ jobs:
           --health-timeout 3s
           --health-retries 20
       redis:
-        image: redis:7-alpine
+        image: redis:8.0.2-alpine
         ports:
           - 6379:6379
         options: >-
@@ -120,3 +120,28 @@ jobs:
           --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL --env REDIS_URL
           --env ATTACHMENT_STORAGE_ROOT --env ATTACHMENT_SCAN_MODE --env CALENDAR_PUBLIC_BASE_URL
           talentflow:${{ github.sha }} uv run python -m app.modules.notifications.application.run_outbox_publisher
+
+  compose-oidc-smoke:
+    needs: quality-and-migrations
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the local OIDC stack and seed demo data
+        run: |
+          docker compose up --detach --build --wait
+          make seed
+      - name: Obtain a demo token and call an authenticated endpoint
+        run: |
+          token=$(curl --fail --silent --show-error \
+            --data 'grant_type=password' --data 'client_id=talentflow-api' \
+            --data 'username=admin@talentflow.local' --data 'password=dev-demo-password' \
+            http://127.0.0.1:8081/realms/talentflow/protocol/openid-connect/token \
+            | python -c 'import json, sys; print(json.load(sys.stdin)["access_token"])')
+          curl --fail --silent --show-error --header "Authorization: Bearer $token" \
+            http://127.0.0.1:8000/v1/candidate-cases
+      - name: Print compose logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Stop the local stack
+        if: always()
+        run: docker compose down --volumes

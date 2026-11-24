@@ -263,7 +263,7 @@ Keycloak owns authentication; TalentFlow owns authorization (tenant membership a
 ## 10. Operations (local)
 
 - Probes: `/health/live`, `/health/ready` (database), `/metrics` (Prometheus: HTTP RED, conflicts, outbox backlog, delivery outcomes, dead letters, worker claims).
-- Logs: JSON with `correlation_id`. Tracing: FastAPI OpenTelemetry instrumentation propagates trace context; an OTLP exporter, the Collector and Grafana arrive in stage 2 (DUTH-50).
+- Logs: JSON with `correlation_id`. Tracing: FastAPI OpenTelemetry instrumentation propagates trace context; an OTLP exporter, the Collector and Grafana arrive in stage 2 (DUTH-92, after the core compose stack).
 - Backups: [backup and restore runbook](runbooks/backup-restore.md).
 - Configuration is validated at startup (`app/shared/settings.py`); secrets are typed and redacted. Local credentials are dev-only values in `.env.example`.
 

@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17.2-alpine
     environment:
       POSTGRES_DB: talentflow
       POSTGRES_USER: talentflow
@@ -16,7 +16,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   redis:
-    image: redis:7-alpine
+    image: redis:8.0.2-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -24,14 +24,34 @@ services:
       timeout: 3s
       retries: 20
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1.4
+    command: ["start-dev", "--import-realm", "--health-enabled=true"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-dev-keycloak-admin-password}
+      KC_HTTP_PORT: 8080
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./keycloak/realm-talentflow.json:/opt/keycloak/data/import/realm-talentflow.json:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   migrate:
     build: .
     command: ["alembic", "upgrade", "head"]
     environment: &runtime_environment
       APP_ENV: development
-      AUTH_MODE: development_headers
+      AUTH_MODE: oidc_jwt
       DATABASE_URL: postgresql+psycopg://talentflow:talentflow@postgres:5432/talentflow
       CORS_ALLOWED_ORIGINS: http://localhost:3000
+      OIDC_ISSUER: http://localhost:8081/realms/talentflow
+      OIDC_AUDIENCE: talentflow-api
+      OIDC_JWKS_URL: http://keycloak:8080/realms/talentflow/protocol/openid-connect/certs
       REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_REQUESTS_PER_MINUTE: 120
       ATTACHMENT_STORAGE_ROOT: /app/data/attachments
@@ -42,6 +62,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     restart: "no"
 
@@ -69,6 +91,7 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: "no"
+    profiles: ["workers"]
 
   retention-worker:
     build: .
@@ -80,6 +103,23 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: "no"
+    profiles: ["workers"]
+
+  seed:
+    build: .
+    command: ["python", "scripts/seed_demo.py"]
+    profiles: ["tools"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://talentflow:talentflow@postgres:5432/talentflow
+      KEYCLOAK_ADMIN_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-dev-keycloak-admin-password}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-dev-demo-password}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
 
 volumes:
   postgres_data:

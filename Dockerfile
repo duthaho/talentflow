@@ -11,6 +11,7 @@ RUN apt-get update \
     && uv sync --frozen --no-dev --no-install-project
 COPY app ./app
 COPY migrations ./migrations
+COPY scripts ./scripts
 RUN uv sync --frozen --no-dev \
     && groupadd --system talentflow \
     && useradd --system --gid talentflow --home-dir /app talentflow \
