@@ -31,6 +31,8 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-dev-keycloak-admin-password}
       KC_HTTP_PORT: 8080
+      KC_HOSTNAME: http://localhost:8081
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     ports:
       - "8081:8080"
     volumes:
@@ -107,7 +109,7 @@ services:
 
   seed:
     build: .
-    command: ["python", "scripts/seed_demo.py"]
+    command: ["python", "-m", "scripts.seed_demo"]
     profiles: ["tools"]
     environment:
       DATABASE_URL: postgresql+psycopg://talentflow:talentflow@postgres:5432/talentflow

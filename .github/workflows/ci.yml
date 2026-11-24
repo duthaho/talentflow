@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17.2-alpine
         env:
           POSTGRES_DB: talentflow
           POSTGRES_USER: talentflow
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17.2-alpine
         env:
           POSTGRES_DB: talentflow
           POSTGRES_USER: talentflow
@@ -130,15 +130,27 @@ jobs:
         run: |
           docker compose up --detach --build --wait
           make seed
-      - name: Obtain a demo token and call an authenticated endpoint
+          make seed
+      - name: Obtain all demo tokens and verify API authorization
         run: |
-          token=$(curl --fail --silent --show-error \
-            --data 'grant_type=password' --data 'client_id=talentflow-api' \
-            --data 'username=admin@talentflow.local' --data 'password=dev-demo-password' \
-            http://127.0.0.1:8081/realms/talentflow/protocol/openid-connect/token \
-            | python -c 'import json, sys; print(json.load(sys.stdin)["access_token"])')
-          curl --fail --silent --show-error --header "Authorization: Bearer $token" \
-            http://127.0.0.1:8000/v1/candidate-cases
+          get_token() {
+            curl --fail --silent --show-error \
+              --data 'grant_type=password' --data 'client_id=talentflow-api' \
+              --data "username=$1" --data 'password=dev-demo-password' \
+              http://localhost:8081/realms/talentflow/protocol/openid-connect/token \
+              | python -c 'import json, sys; print(json.load(sys.stdin)["access_token"])'
+          }
+          assert_status() {
+            expected=$1
+            token=$2
+            actual=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --header "Authorization: Bearer $token" http://localhost:8000/v1/candidate-cases)
+            test "$actual" = "$expected"
+          }
+          assert_status 200 "$(get_token admin@talentflow.local)"
+          assert_status 200 "$(get_token recruiter@talentflow.local)"
+          assert_status 200 "$(get_token manager@talentflow.local)"
+          assert_status 403 "$(get_token interviewer@talentflow.local)"
       - name: Print compose logs on failure
         if: failure()
         run: docker compose logs

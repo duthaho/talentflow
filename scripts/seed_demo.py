@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -15,10 +14,34 @@ from app.shared.models import Membership, Tenant, User
 
 TENANT_ID = "00000000-0000-4000-8000-000000000001"
 USERS = (
-    ("00000000-0000-4000-8000-000000000011", "admin@talentflow.local", "tenant_admin"),
-    ("00000000-0000-4000-8000-000000000012", "recruiter@talentflow.local", "recruiter"),
-    ("00000000-0000-4000-8000-000000000013", "manager@talentflow.local", "hiring_manager"),
-    ("00000000-0000-4000-8000-000000000014", "interviewer@talentflow.local", "interviewer"),
+    (
+        "00000000-0000-4000-8000-000000000011",
+        "admin@talentflow.local",
+        "Admin",
+        "Demo",
+        "tenant_admin",
+    ),
+    (
+        "00000000-0000-4000-8000-000000000012",
+        "recruiter@talentflow.local",
+        "Recruiter",
+        "Demo",
+        "recruiter",
+    ),
+    (
+        "00000000-0000-4000-8000-000000000013",
+        "manager@talentflow.local",
+        "Manager",
+        "Demo",
+        "hiring_manager",
+    ),
+    (
+        "00000000-0000-4000-8000-000000000014",
+        "interviewer@talentflow.local",
+        "Interviewer",
+        "Demo",
+        "interviewer",
+    ),
 )
 
 
@@ -56,30 +79,26 @@ def seed_keycloak() -> None:
     base_url = os.environ["KEYCLOAK_ADMIN_URL"]
     token = admin_token(base_url)
     password = os.environ["DEMO_USER_PASSWORD"]
-    for user_id, email, _role in USERS:
-        payload = {
-            "id": user_id,
-            "username": email,
-            "email": email,
-            "enabled": True,
-            "emailVerified": True,
-            "attributes": {"tenant_id": [TENANT_ID]},
-            "credentials": [{"type": "password", "value": password, "temporary": False}],
-        }
-        user_url = f"{base_url}/admin/realms/talentflow/users/{user_id}"
-        try:
-            request_json(user_url, token=token)
-        except HTTPError as error:
-            if error.code != 404:
-                raise
-            request_json(
-                f"{base_url}/admin/realms/talentflow/users",
-                method="POST",
-                payload=payload,
-                token=token,
-            )
-        else:
-            request_json(user_url, method="PUT", payload=payload, token=token)
+    users = []
+    for user_id, email, first_name, last_name, _role in USERS:
+        users.append(
+            {
+                "id": user_id,
+                "username": email,
+                "email": email,
+                "firstName": first_name,
+                "lastName": last_name,
+                "enabled": True,
+                "emailVerified": True,
+                "credentials": [{"type": "password", "value": password, "temporary": False}],
+            }
+        )
+    request_json(
+        f"{base_url}/admin/realms/talentflow/partialImport",
+        method="POST",
+        payload={"ifResourceExists": "OVERWRITE", "users": users},
+        token=token,
+    )
 
 
 def seed_database() -> None:
@@ -88,7 +107,7 @@ def seed_database() -> None:
         tenant = session.get(Tenant, TENANT_ID)
         if tenant is None:
             session.add(Tenant(id=TENANT_ID, name="TalentFlow Demo", slug="talentflow-demo"))
-        for user_id, email, role in USERS:
+        for user_id, email, _first_name, _last_name, role in USERS:
             if session.get(User, user_id) is None:
                 session.add(User(id=user_id, email=email))
             membership = session.scalar(
