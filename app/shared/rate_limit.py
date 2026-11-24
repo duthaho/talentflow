@@ -8,9 +8,10 @@ from dataclasses import dataclass
 
 from fastapi import FastAPI, Request
 from redis import Redis
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
 
 from app.shared.observability import rate_limit_rejections
+from app.shared.problem_details import problem_response, problem_type
 
 _EXEMPT_PATHS = {"/health", "/health/live", "/health/ready", "/metrics", "/docs", "/openapi.json"}
 
@@ -112,8 +113,12 @@ def install_rate_limit_middleware(
         if not decision.allowed:
             rate_limit_rejections.inc()
             headers["Retry-After"] = str(decision.retry_after)
-            return JSONResponse(
-                status_code=429, content={"detail": "Rate limit exceeded"}, headers=headers
+            return problem_response(
+                request,
+                status=429,
+                detail="Rate limit exceeded",
+                type_uri=problem_type("rate-limited"),
+                headers=headers,
             )
         response = await call_next(request)
         response.headers.update(headers)

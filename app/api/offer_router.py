@@ -19,6 +19,7 @@ from app.modules.offers.application.decide_offer import (
     OfferNotFoundError,
 )
 from app.modules.offers.domain.approval_policy import ApprovalPolicy
+from app.modules.offers.infrastructure.models import Offer
 from app.modules.offers.infrastructure.sqlalchemy_repository import (
     SqlAlchemyOfferRepository,
     SqlAlchemyUnitOfWork,
@@ -97,7 +98,12 @@ def approve_offer(
     except OfferConcurrencyConflictError as error:
         command_conflicts.labels("offer").inc()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Offer has changed; refresh and retry"
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detail": "Offer has changed; refresh and retry",
+                "problem_type": "version-conflict",
+                "current_version": session.get(Offer, offer_id).version,
+            },
         ) from error
     except InvalidOfferApprovalError as error:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error)) from error

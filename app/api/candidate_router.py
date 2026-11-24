@@ -145,7 +145,11 @@ def transition_candidate_case_stage(
         command_conflicts.labels("candidate_case").inc()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Candidate case has changed; refresh and retry",
+            detail={
+                "detail": "Candidate case has changed; refresh and retry",
+                "problem_type": "version-conflict",
+                "current_version": session.get(CandidateCase, candidate_case_id).version,
+            },
         ) from error
     except (InvalidTransitionError, ValueError) as error:
         raise HTTPException(

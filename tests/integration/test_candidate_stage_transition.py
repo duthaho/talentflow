@@ -73,8 +73,11 @@ def test_transition_rejects_invalid_stage_and_stale_version() -> None:
         )
 
     assert invalid.json()["detail"] == "Invalid candidate stage transition: applied -> hired"
+    assert invalid.json()["type"].endswith("validation-error")
     assert stale.status_code == 409
     assert stale.json()["detail"] == "Candidate case has changed; refresh and retry"
+    assert stale.json()["type"].endswith("version-conflict")
+    assert stale.json()["current_version"] == 2
 
 
 def test_transition_requires_tenant_member_with_permission() -> None:
