@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.shared.problem_details import PROBLEM_TYPE_BASE
 
 
 def candidate_context(client: TestClient) -> tuple[dict[str, str], str]:
@@ -73,8 +74,11 @@ def test_transition_rejects_invalid_stage_and_stale_version() -> None:
         )
 
     assert invalid.json()["detail"] == "Invalid candidate stage transition: applied -> hired"
+    assert invalid.json()["type"] == f"{PROBLEM_TYPE_BASE}validation-error"
     assert stale.status_code == 409
     assert stale.json()["detail"] == "Candidate case has changed; refresh and retry"
+    assert stale.json()["type"] == f"{PROBLEM_TYPE_BASE}version-conflict"
+    assert stale.json()["current_version"] == 2
 
 
 def test_transition_requires_tenant_member_with_permission() -> None:

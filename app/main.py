@@ -18,6 +18,7 @@ from app.api.retention_router import router as retention_router
 from app.modules.identity.infrastructure.jwt_validator import HttpJwksProvider, JwtValidator
 from app.shared.database import Base, build_engine
 from app.shared.observability import configure_logging, instrument_app
+from app.shared.problem_details import install_problem_details_handlers
 from app.shared.rate_limit import (
     MemoryFixedWindowRateLimiter,
     RedisFixedWindowRateLimiter,
@@ -58,6 +59,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
     app.state.rate_limiter = rate_limiter
     app.state.auth_mode = runtime_settings.auth_mode
     app.state.runtime_settings = runtime_settings
+    install_problem_details_handlers(app)
     install_rate_limit_middleware(
         app,
         limiter=rate_limiter,

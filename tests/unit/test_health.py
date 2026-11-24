@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.shared.problem_details import PROBLEM_TYPE_BASE
 from app.shared.settings import Settings
 
 
@@ -48,6 +49,22 @@ def test_liveness_readiness_and_metrics_expose_operational_signals() -> None:
     assert ready.json() == {"status": "ok"}
     assert metrics.status_code == 200
     assert "talentflow_http_requests_total" in metrics.text
+
+
+def test_readiness_failure_returns_problem_details() -> None:
+    app = create_app("sqlite://")
+    with TestClient(app) as client:
+
+        def unavailable() -> None:
+            raise RuntimeError("rate limiter is unavailable")
+
+        app.state.rate_limiter.ping = unavailable
+        response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["type"] == f"{PROBLEM_TYPE_BASE}service-unavailable"
+    assert response.json()["correlation_id"] == response.headers["x-correlation-id"]
 
 
 def test_rate_limiter_returns_429_and_standard_headers() -> None:

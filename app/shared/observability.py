@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from contextvars import ContextVar
 from uuid import uuid4
@@ -12,6 +13,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, ge
 from starlette.responses import Response
 
 correlation_id_context: ContextVar[str | None] = ContextVar("correlation_id", default=None)
+_CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 http_requests = Counter(
     "talentflow_http_requests",
@@ -79,7 +81,14 @@ def instrument_app(app: FastAPI) -> None:
 
     @app.middleware("http")
     async def observe_request(request: Request, call_next):
-        correlation_id = request.headers.get("X-Correlation-Id") or str(uuid4())
+        requested_correlation_id = request.headers.get("X-Correlation-Id")
+        correlation_id = (
+            requested_correlation_id
+            if requested_correlation_id
+            and _CORRELATION_ID_PATTERN.fullmatch(requested_correlation_id)
+            else str(uuid4())
+        )
+        request.state.correlation_id = correlation_id
         token = correlation_id_context.set(correlation_id)
         started_at = time.perf_counter()
         try:
