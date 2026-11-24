@@ -2,10 +2,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import update
 
+from app.api import attachment_router, retention_router
 from app.main import create_app
+from app.modules.attachments.infrastructure.s3_storage import S3AttachmentStorage
 from app.shared.models import CandidateCase
 from app.shared.settings import Settings
 from tests.integration.test_tenant_rbac import bootstrap_tenant
@@ -115,3 +118,52 @@ def test_retention_purge_deletes_private_attachment_metadata_and_content() -> No
     assert purge.json() == {"purged_count": 1}
     assert attachments.json() == []
     assert remaining_files == []
+
+
+class FakeS3Client:
+    def __init__(self) -> None:
+        self.objects: dict[tuple[str, str], bytes] = {}
+
+    def put_object(self, *, Bucket: str, Key: str, Body: bytes) -> None:
+        self.objects[(Bucket, Key)] = Body
+
+    def head_object(self, *, Bucket: str, Key: str) -> None:
+        assert (Bucket, Key) in self.objects
+
+    def delete_object(self, *, Bucket: str, Key: str) -> None:
+        self.objects.pop((Bucket, Key), None)
+
+    def generate_presigned_url(self, *_: object, **__: object) -> str:
+        return "http://s3.example.test/presigned"
+
+
+def test_retention_purge_deletes_s3_attachment_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeS3Client()
+    storage = S3AttachmentStorage(bucket="attachments", client=client)
+    monkeypatch.setattr(attachment_router, "build_attachment_storage", lambda _: storage)
+    monkeypatch.setattr(retention_router, "build_attachment_storage", lambda _: storage)
+    app = create_app("sqlite://", Settings(app_env="test"))
+    with TestClient(app) as client_http:
+        tenant = bootstrap_tenant(client_http, "acme", "admin-1")
+        headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "admin-1"}
+        candidate = _create_rejected_candidate(client_http, headers, "delete-s3@example.com")
+        upload = client_http.post(
+            f"/v1/candidate-cases/{candidate['id']}/attachments",
+            headers=headers,
+            data={"document_type": "resume"},
+            files={"file": ("resume.pdf", b"%PDF-1.7\nresume", "application/pdf")},
+        )
+        assert upload.status_code == 201
+        assert client.objects
+        client_http.put("/v1/retention-policy", headers=headers, json={"retention_days": 1})
+        with app.state.session_factory() as session:
+            session.execute(
+                update(CandidateCase)
+                .where(CandidateCase.id == candidate["id"])
+                .values(terminal_at=datetime.now(UTC) - timedelta(days=2))
+            )
+            session.commit()
+        purge = client_http.post("/v1/retention/purge", headers=headers)
+
+    assert purge.json() == {"purged_count": 1}
+    assert client.objects == {}

@@ -84,7 +84,12 @@ class ClamdMalwareScanner:
                 connection.sendall(
                     b"zINSTREAM\0" + pack("!I", len(content)) + content + pack("!I", 0)
                 )
-                response = connection.recv(4096)
+                response = b""
+                while not response.endswith(b"\0"):
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        raise OSError("Clamd closed the stream without a response")
+                    response += chunk
         except OSError as error:
             raise MalwareScannerUnavailableError(
                 "Attachment malware scanner is unavailable"
