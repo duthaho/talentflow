@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17.2-alpine
+    image: postgres:17.12-alpine
     environment:
       POSTGRES_DB: talentflow
       POSTGRES_USER: talentflow
@@ -11,12 +11,12 @@ services:
       timeout: 3s
       retries: 20
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   redis:
-    image: redis:8.0.2-alpine
+    image: redis:8.12.0-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -25,7 +25,7 @@ services:
       retries: 20
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.1.4
+    image: quay.io/keycloak/keycloak:26.8.2
     command: ["start-dev", "--import-realm", "--health-enabled=true"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
@@ -34,7 +34,7 @@ services:
       KC_HOSTNAME: http://localhost:8081
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     volumes:
       - ./keycloak/realm-talentflow.json:/opt/keycloak/data/import/realm-talentflow.json:ro
     healthcheck:
@@ -76,7 +76,7 @@ services:
       migrate:
         condition: service_completed_successfully
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - attachment_data:/app/data/attachments
     healthcheck:
@@ -108,7 +108,9 @@ services:
     profiles: ["workers"]
 
   seed:
-    build: .
+    build:
+      context: .
+      target: seed
     command: ["python", "-m", "scripts.seed_demo"]
     profiles: ["tools"]
     environment:
