@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.shared.models import Membership, User
+from app.shared.problem_details import PROBLEM_TYPE_BASE
 
 
 def test_offer_approval_requires_ordered_roles() -> None:
@@ -70,3 +71,67 @@ def test_offer_approval_requires_ordered_roles() -> None:
         )
     assert final.json()["status"] == "approved"
     assert final.json()["candidate_stage"] == "offer_approved"
+
+
+def test_offer_approval_rejects_a_stale_version_with_current_version() -> None:
+    app = create_app("sqlite://")
+    with TestClient(app) as client:
+        tenant = client.post(
+            "/v1/tenants", json={"name": "Acme HR", "slug": "acme", "admin_id": "admin"}
+        ).json()
+        admin_headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "admin"}
+        with app.state.session_factory() as session:
+            session.add_all(
+                [
+                    User(id="manager"),
+                    Membership(tenant_id=tenant["id"], user_id="manager", role="hiring_manager"),
+                ]
+            )
+            session.commit()
+        requisition = client.post(
+            "/v1/requisitions",
+            headers=admin_headers,
+            json={"title": "Staff Engineer", "department": "Engineering"},
+        ).json()
+        candidate = client.post(
+            "/v1/candidate-cases",
+            headers=admin_headers,
+            json={
+                "requisition_id": requisition["id"],
+                "first_name": "Ada",
+                "last_name": "Lovelace",
+                "email": "ada@example.com",
+            },
+        ).json()
+        for stage, version in (("screening", 1), ("interviewing", 2)):
+            assert (
+                client.patch(
+                    f"/v1/candidate-cases/{candidate['id']}/stage",
+                    headers=admin_headers,
+                    json={"target_stage": stage, "expected_version": version},
+                ).status_code
+                == 200
+            )
+        offer = client.post(
+            f"/v1/candidate-cases/{candidate['id']}/offers",
+            headers=admin_headers,
+            json={"title": "Staff Engineer", "annual_salary": 180000, "currency": "USD"},
+        ).json()
+        manager_headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "manager"}
+        assert (
+            client.post(
+                f"/v1/offers/{offer['id']}/approvals",
+                headers=manager_headers,
+                json={"decision": "approved", "expected_version": 1},
+            ).status_code
+            == 200
+        )
+        stale = client.post(
+            f"/v1/offers/{offer['id']}/approvals",
+            headers=admin_headers,
+            json={"decision": "approved", "expected_version": 1},
+        )
+
+    assert stale.status_code == 409
+    assert stale.json()["type"] == f"{PROBLEM_TYPE_BASE}version-conflict"
+    assert stale.json()["current_version"] == 2

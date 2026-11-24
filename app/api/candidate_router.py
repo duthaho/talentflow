@@ -143,12 +143,17 @@ def transition_candidate_case_stage(
         ) from error
     except ConcurrencyConflictError as error:
         command_conflicts.labels("candidate_case").inc()
+        current = session.get(CandidateCase, candidate_case_id)
+        if current is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
+            ) from error
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "detail": "Candidate case has changed; refresh and retry",
                 "problem_type": "version-conflict",
-                "current_version": session.get(CandidateCase, candidate_case_id).version,
+                "current_version": current.version,
             },
         ) from error
     except (InvalidTransitionError, ValueError) as error:

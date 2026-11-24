@@ -80,6 +80,7 @@ def instrument_app(app: FastAPI) -> None:
     @app.middleware("http")
     async def observe_request(request: Request, call_next):
         correlation_id = request.headers.get("X-Correlation-Id") or str(uuid4())
+        request.state.correlation_id = correlation_id
         token = correlation_id_context.set(correlation_id)
         started_at = time.perf_counter()
         try:

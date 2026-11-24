@@ -14,6 +14,10 @@ with JSON Pointer `pointer` and human-readable `detail` fields.
 
 The request did not satisfy the endpoint's input contract.
 
+## unauthorized
+
+The caller must authenticate or present valid credentials before retrying.
+
 ## version-conflict
 
 An optimistic-lock version was stale. The response includes `current_version`.
@@ -28,7 +32,7 @@ The requested resource does not exist or is not visible to the caller.
 
 ## forbidden
 
-The caller is not authenticated or is not authorized for the requested operation.
+The caller is authenticated but is not authorized for the requested operation.
 
 ## conflict
 

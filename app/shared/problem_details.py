@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -14,6 +15,7 @@ PROBLEM_TYPE_BASE = "https://github.com/duthaho/talentflow/blob/main/docs/api-er
 PROBLEM_TYPES = frozenset(
     {
         "validation-error",
+        "unauthorized",
         "version-conflict",
         "rate-limited",
         "not-found",
@@ -37,7 +39,7 @@ _STATUS_TITLES = {
     503: "Service Unavailable",
 }
 _STATUS_TYPES = {
-    401: "forbidden",
+    401: "unauthorized",
     403: "forbidden",
     404: "not-found",
     409: "conflict",
@@ -106,19 +108,30 @@ def problem_response(
     extensions: Mapping[str, Any] | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
+    correlation_id = (
+        correlation_id_context.get()
+        or getattr(request.state, "correlation_id", None)
+        or request.headers.get("X-Correlation-Id")
+        or str(uuid4())
+    )
+    request.state.correlation_id = correlation_id
+    response_headers = dict(headers or {})
+    response_headers["X-Correlation-Id"] = correlation_id
     body: dict[str, Any] = {
         "type": type_uri,
         "title": _STATUS_TITLES.get(status, "HTTP Error"),
         "status": status,
         "detail": detail,
         "instance": request.url.path,
-        "correlation_id": correlation_id_context.get()
-        or request.headers.get("X-Correlation-Id", ""),
+        "correlation_id": correlation_id,
     }
     if extensions:
         body.update(extensions)
     return JSONResponse(
-        status_code=status, content=body, headers=headers, media_type="application/problem+json"
+        status_code=status,
+        content=body,
+        headers=response_headers,
+        media_type="application/problem+json",
     )
 
 

@@ -97,12 +97,17 @@ def approve_offer(
         ) from error
     except OfferConcurrencyConflictError as error:
         command_conflicts.labels("offer").inc()
+        current = session.get(Offer, offer_id)
+        if current is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found"
+            ) from error
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "detail": "Offer has changed; refresh and retry",
                 "problem_type": "version-conflict",
-                "current_version": session.get(Offer, offer_id).version,
+                "current_version": current.version,
             },
         ) from error
     except InvalidOfferApprovalError as error:

@@ -7,7 +7,9 @@ from app.shared.problem_details import PROBLEM_TYPE_BASE, PROBLEM_TYPES
 from app.shared.settings import Settings
 
 
-def assert_problem(response, *, status: int, slug: str) -> None:
+def assert_problem(
+    response, *, status: int, slug: str, correlation_id: str = "test-correlation"
+) -> None:
     body = response.json()
     assert response.status_code == status
     assert response.headers["content-type"].startswith("application/problem+json")
@@ -16,7 +18,7 @@ def assert_problem(response, *, status: int, slug: str) -> None:
     assert body["title"]
     assert body["detail"]
     assert body["instance"]
-    assert body["correlation_id"] == "test-correlation"
+    assert body["correlation_id"] == correlation_id
 
 
 def test_validation_errors_are_problem_details_with_field_pointers() -> None:
@@ -61,9 +63,15 @@ def test_unhandled_errors_hide_exception_details() -> None:
         raise RuntimeError("candidate@example.com secret stack detail")
 
     with TestClient(app, raise_server_exceptions=False) as client:
-        response = client.get("/boom", headers={"X-Correlation-Id": "test-correlation"})
+        response = client.get("/boom")
 
-    assert_problem(response, status=500, slug="internal-error")
+    assert_problem(
+        response,
+        status=500,
+        slug="internal-error",
+        correlation_id=response.headers["x-correlation-id"],
+    )
+    assert response.json()["correlation_id"]
     assert "candidate@example.com" not in response.text
     assert "stack detail" not in response.text
 
