@@ -3,16 +3,19 @@ from datetime import datetime, timedelta
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
+from app.modules.attachments.application.ports import AttachmentStorage
+from app.modules.attachments.persistence import Attachment
+from app.modules.audit.persistence import AuditEvent
+from app.modules.candidates.persistence import CandidateCase
 from app.modules.retention.application.retention import RetentionPolicy
-from app.shared.attachment_storage import LocalAttachmentStorage
-from app.shared.models import Attachment, AuditEvent, CandidateCase, CandidateLegalHold
-from app.shared.models import RetentionPolicy as RetentionPolicyRecord
+from app.modules.retention.persistence import CandidateLegalHold
+from app.modules.retention.persistence import RetentionPolicy as RetentionPolicyRecord
 
 
 class SqlAlchemyRetentionRepository:
-    def __init__(self, session: Session, *, attachment_storage_root: str) -> None:
+    def __init__(self, session: Session, *, attachment_storage: AttachmentStorage) -> None:
         self._session = session
-        self._storage = LocalAttachmentStorage(attachment_storage_root)
+        self._storage = attachment_storage
 
     def set_policy(self, *, tenant_id: str, retention_days: int) -> RetentionPolicy:
         record = self._session.get(RetentionPolicyRecord, tenant_id)

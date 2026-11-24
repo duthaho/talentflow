@@ -5,8 +5,8 @@ from fastapi import Depends, Header, Request
 from sqlalchemy import select
 
 from app.modules.identity.application.authentication import AuthenticationError, TokenValidator
+from app.modules.organization.persistence import Membership
 from app.shared.database import forbidden
-from app.shared.models import Membership
 
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "tenant_admin": frozenset(

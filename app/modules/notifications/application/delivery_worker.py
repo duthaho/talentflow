@@ -8,7 +8,7 @@ from opentelemetry import trace
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import sessionmaker
 
-from app.shared.models import NotificationDelivery
+from app.modules.notifications.persistence import NotificationDelivery
 from app.shared.observability import dead_letters, delivery_attempts, worker_claims
 
 Sender = Callable[[NotificationDelivery], None]

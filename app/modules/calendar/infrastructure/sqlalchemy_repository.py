@@ -3,12 +3,14 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.modules.audit.persistence import AuditEvent
 from app.modules.calendar.application.calendar_subscription import (
     CalendarEvent,
     CalendarSubscription,
 )
-from app.shared.models import AuditEvent, Interview, Membership
-from app.shared.models import CalendarSubscription as CalendarSubscriptionRecord
+from app.modules.calendar.persistence import CalendarSubscription as CalendarSubscriptionRecord
+from app.modules.interviews.persistence import Interview
+from app.modules.organization.persistence import Membership
 
 
 class SqlAlchemyCalendarRepository:

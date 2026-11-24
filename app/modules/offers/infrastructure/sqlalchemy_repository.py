@@ -1,9 +1,10 @@
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from app.modules.notifications.persistence import OutboxEvent
 from app.modules.offers.domain.offer import Offer
-from app.shared.models import ApprovalDecision, OutboxEvent
-from app.shared.models import Offer as OfferRecord
+from app.modules.offers.persistence import ApprovalDecision
+from app.modules.offers.persistence import Offer as OfferRecord
 
 
 class SqlAlchemyOfferRepository:

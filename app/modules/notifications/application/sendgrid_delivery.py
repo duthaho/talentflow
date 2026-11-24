@@ -1,7 +1,8 @@
 from sqlalchemy.orm import sessionmaker
 
 from app.modules.notifications.infrastructure.sendgrid_email import SendGridEmailAdapter
-from app.shared.models import NotificationDelivery, User
+from app.modules.notifications.persistence import NotificationDelivery
+from app.modules.organization.persistence import User
 
 
 class SendGridDeliverySender:

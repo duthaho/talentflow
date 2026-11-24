@@ -10,7 +10,7 @@ from sqlalchemy.pool import StaticPool
 
 
 class Base(DeclarativeBase):
-    """Shared SQLAlchemy registry; bounded contexts own their mapped records."""
+    pass
 
 
 def build_engine(database_url: str):

@@ -30,6 +30,17 @@ def test_modules_do_not_reach_into_another_modules_infrastructure() -> None:
     assert not violations, "Cross-module infrastructure imports: " + ", ".join(violations)
 
 
+def test_modules_do_not_import_shared_model_exports() -> None:
+    violations = [
+        str(path)
+        for path in DOMAIN_ROOT.glob("*/**/*.py")
+        if "app.shared.models" in path.read_text()
+    ]
+    assert not violations, "Module records must use a context persistence interface: " + ", ".join(
+        violations
+    )
+
+
 def test_app_factory_only_composes_routers() -> None:
     source = Path("app/main.py").read_text()
     assert "@app." not in source

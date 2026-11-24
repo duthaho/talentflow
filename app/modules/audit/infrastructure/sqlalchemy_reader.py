@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.modules.audit.application.list_events import AuditEventView
-from app.shared.models import AuditEvent
+from app.modules.audit.persistence import AuditEvent
 
 
 class SqlAlchemyAuditEventReader:

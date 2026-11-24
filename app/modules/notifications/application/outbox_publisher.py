@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
-from app.shared.models import NotificationDelivery, OutboxEvent
+from app.modules.notifications.persistence import NotificationDelivery, OutboxEvent
 from app.shared.observability import outbox_backlog
 
 
