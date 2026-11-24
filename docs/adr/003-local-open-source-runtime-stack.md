@@ -1,4 +1,4 @@
-# ADR 005: Local open-source runtime stack
+# ADR 003: Local open-source runtime stack
 
 - **Status:** Accepted
 - **Date:** 2026-11-24
@@ -81,7 +81,7 @@ Test tooling from DUTH-43 that does not run as a stack service: **k6** (AGPLv3, 
 ## Consequences
 
 - One `docker compose up` brings the stack up on a developer machine. Resource use grows by stage; heavy services (OpenSearch, Ollama, GlitchTip) go behind compose profiles so the stage 2 core stays light.
-- Every licence above is OSI-approved. Four are copyleft for network use (AGPLv3: Redis 8 as chosen, Grafana/Loki/Tempo, k6). We run them unmodified as separate services, which triggers no source-disclosure obligation for TalentFlow's own code. The licence policy check in stage 9 (DUTH-77) covers our dependencies, not these service images.
+- Every licence above is OSI-approved. Redis 8 (as chosen), Grafana, Loki, Tempo and k6 are under AGPLv3, which is copyleft for network use. We run them unmodified as separate services, which triggers no source-disclosure obligation for TalentFlow's own code. The licence policy check in stage 9 (DUTH-77) covers our dependencies, not these service images.
 - Image tags are pinned (never `latest`) and every service has a healthcheck (DUTH-50).
 - Credentials in compose and `.env.example` are local-only dev values, clearly marked; nothing in this stack is a production secret.
 - The vendor-neutral production-hardening contract still holds: immutable images, migrations before rollout, readiness probes, OTel as the telemetry contract, no secrets in Git.
@@ -98,5 +98,6 @@ Test tooling from DUTH-43 that does not run as a stack service: **k6** (AGPLv3, 
 - Redis licensing: <https://redis.io/legal/licenses/>
 - Elasticsearch AGPL option: <https://www.elastic.co/blog/elasticsearch-is-open-source-again>
 - Garage S3 compatibility: <https://garagehq.deuxfleurs.fr/documentation/reference-manual/s3-compatibility/>
+- MinIO community repository (archived; see its README for the maintenance notice): <https://github.com/minio/minio>
 - Grafana `otel-lgtm` scope: <https://grafana.com/docs/opentelemetry/docker-lgtm/>
 - Sentry licensing: <https://open.sentry.io/licensing>

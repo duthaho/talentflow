@@ -1,6 +1,6 @@
 # Roadmap: TalentFlow v2 enterprise showcase
 
-This roadmap tracks DUTH-43: turn TalentFlow into a complete, runnable showcase where `docker compose up` brings up the API, workers, web app and a fully open-source supporting stack ([ADR 005](adr/005-local-open-source-runtime-stack.md)), and every pattern is backed by code, tests and docs.
+This roadmap tracks DUTH-43: turn TalentFlow into a complete, runnable showcase where `docker compose up` brings up the API, workers, web app and a fully open-source supporting stack ([ADR 003](adr/003-local-open-source-runtime-stack.md)), and every pattern is backed by code, tests and docs.
 
 Ground rules:
 
@@ -19,7 +19,7 @@ flowchart LR
 
 | Issue | Deliverable |
 | --- | --- |
-| DUTH-44 | README with pattern catalog, architecture (current + target), this roadmap, ADR 005, removal of AWS-track docs, compose backup/restore runbook |
+| DUTH-44 | README with pattern catalog, architecture (current + target), this roadmap, ADRs 001–003 rewritten and renumbered, removal of AWS-track docs, compose backup/restore runbook |
 
 **Teaches:** architecture decision records, C4 diagrams, docs-as-code.
 
@@ -132,4 +132,4 @@ flowchart LR
 ## Out of scope
 
 - Cloud provisioning and the AWS/OpenTofu track. `infra/opentofu/` and the `Infrastructure` workflow are not maintained and stay in place until a separate issue removes them.
-- Splitting the monolith into services. The extraction criteria in [architecture](architecture.md#service-extraction-criteria) still apply.
+- Splitting the monolith into services. The extraction criteria in [architecture](architecture.md#12-service-extraction-criteria) still apply.

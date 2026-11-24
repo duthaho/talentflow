@@ -12,7 +12,7 @@ The v2 plan (DUTH-43) makes TalentFlow fully runnable on a laptop: `docker compo
 
 - [Roadmap](docs/roadmap.md) — nine stages, their issues and the patterns each one teaches
 - [Architecture](docs/architecture.md) — current and target, with C4 diagrams
-- [ADR 005: Local open-source runtime stack](docs/adr/005-local-open-source-runtime-stack.md) — why each service, its licence and the rejected alternative
+- [ADR 003: Local open-source runtime stack](docs/adr/003-local-open-source-runtime-stack.md) — why each service, its licence and the rejected alternative
 - [All docs](docs/README.md)
 
 ## Quick start
@@ -84,30 +84,30 @@ Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `imple
 | Module-owned routers and persistence | Boundaries enforced, not just foldered (DUTH-45) | — | — | [001](docs/adr/001-modular-monolith-clean-architecture.md) | planned — stage 2 |
 | RFC 9457 Problem Details | One machine-readable error contract (DUTH-46) | — | — | — | planned — stage 2 |
 | Long-running workers, graceful shutdown, advisory-lock scheduling (DUTH-47) | No lost leases on deploy; one retention run at a time | — | — | — | planned — stage 2 |
-| SMTP adapter to Mailpit (DUTH-48) | Email visible locally without a provider account | — | — | [005](docs/adr/005-local-open-source-runtime-stack.md) | planned — stage 2 |
-| S3 storage with presigned downloads (DUTH-49) | Bytes never stream through the API; short-lived links after authz | — | — | [005](docs/adr/005-local-open-source-runtime-stack.md) | planned — stage 2 |
-| One-command stack, Keycloak, OTel → Grafana (DUTH-50) | Runnable by anyone; real IdP; traces, metrics and logs in one place | — | — | [005](docs/adr/005-local-open-source-runtime-stack.md) | planned — stage 2 |
+| SMTP adapter to Mailpit (DUTH-48) | Email visible locally without a provider account | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
+| S3 storage with presigned downloads (DUTH-49) | Bytes never stream through the API; short-lived links after authz | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
+| One-command stack, Keycloak, OTel → Grafana (DUTH-50) | Runnable by anyone; real IdP; traces, metrics and logs in one place | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
 | Browser OIDC (code + PKCE), generated typed API client (DUTH-51) | Secure SPA login; client and API cannot drift | — | — | — | planned — stage 3 |
 | Conflict-aware UI for optimistic locking (DUTH-52) | Users see "changed by someone else" instead of losing work | — | — | — | planned — stage 3 |
 | End-to-end tests against the real stack (DUTH-57) | The hiring flow is proven in a browser on every PR | — | — | — | planned — stage 4 |
 | Versioned event envelope and AsyncAPI catalog (DUTH-58) | Explicit integration contracts and evolution rules | — | — | planned with DUTH-58 | planned — stage 5 |
-| Outbox relay to RabbitMQ, inbox dedup, DLQ (DUTH-59) | At-least-once delivery, exactly-once effect | — | — | [005](docs/adr/005-local-open-source-runtime-stack.md) | planned — stage 5 |
+| Outbox relay to RabbitMQ, inbox dedup, DLQ (DUTH-59) | At-least-once delivery, exactly-once effect | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 5 |
 | Idempotency keys (DUTH-60) | Safe client retries for POST commands | — | — | — | planned — stage 5 |
 | ETag / If-Match conditional requests (DUTH-61) | HTTP-native optimistic concurrency | — | — | — | planned — stage 5 |
 | Signed outbound webhooks with SSRF guard (DUTH-62) | Verifiable integrations that cannot reach internal hosts | — | — | — | planned — stage 5 |
 | Public self-apply with abuse controls (DUTH-63) | Handling anonymous, untrusted input and consent | — | — | — | planned — stage 5 |
 | Saga / process manager with compensation (DUTH-64) | Multi-step workflows that undo cleanly on failure | — | — | planned with DUTH-64 | planned — stage 6 |
-| Feature flags via OpenFeature + flagd (DUTH-65) | Per-tenant rollout and kill switches without redeploy | — | — | [005](docs/adr/005-local-open-source-runtime-stack.md) | planned — stage 6 |
-| Search read projection in OpenSearch (DUTH-66) | Full-text search, rebuildable with zero downtime | — | — | [005](docs/adr/005-local-open-source-runtime-stack.md) | planned — stage 7 |
+| Feature flags via OpenFeature + flagd (DUTH-65) | Per-tenant rollout and kill switches without redeploy | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 6 |
+| Search read projection in OpenSearch (DUTH-66) | Full-text search, rebuildable with zero downtime | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 7 |
 | PostgreSQL Row-Level Security (DUTH-67) | Tenant isolation even when a query forgets its predicate | — | — | — | planned — stage 7 |
-| Envelope encryption and crypto-shredding with OpenBao (DUTH-68) | PII unreadable at rest; deletion by destroying keys | — | — | [005](docs/adr/005-local-open-source-runtime-stack.md) | planned — stage 7 |
+| Envelope encryption and crypto-shredding with OpenBao (DUTH-68) | PII unreadable at rest; deletion by destroying keys | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 7 |
 | Data subject access export (DUTH-69) | Privacy rights as a product feature | — | — | — | planned — stage 7 |
 | Hash-chained, tamper-evident audit (DUTH-70) | Detects edited or deleted audit rows | — | — | — | planned — stage 7 |
 | LLM gateway with guardrails and offline evals (DUTH-71) | AI behind one port: redaction, budgets, audit, testable | — | — | planned with DUTH-71 | planned — stage 8 |
 | AI resume parsing with human confirmation (DUTH-72) | Assistive AI, a human decides | — | — | — | planned — stage 8 |
-| Semantic matching with pgvector (DUTH-73) | Embeddings in the system of record; advisory scores only | — | — | [005](docs/adr/005-local-open-source-runtime-stack.md) | planned — stage 8 |
+| Semantic matching with pgvector (DUTH-73) | Embeddings in the system of record; advisory scores only | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 8 |
 | Cited feedback summaries (DUTH-74) | Summaries traceable to their sources | — | — | — | planned — stage 8 |
-| Error tracking with PII scrubbing (DUTH-75) | Crashes reported without leaking candidate data | — | — | [005](docs/adr/005-local-open-source-runtime-stack.md) | planned — stage 9 |
+| Error tracking with PII scrubbing (DUTH-75) | Crashes reported without leaking candidate data | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 9 |
 | SLO-based load tests (DUTH-76) | Performance claims backed by a baseline | — | — | — | planned — stage 9 |
 | SBOM, image signing, licence policy (DUTH-77) | Verifiable supply chain | — | — | — | planned — stage 9 |
 | STRIDE threat model and audit (DUTH-78) | Security reasoning written down and checked | — | — | — | planned — stage 9 |

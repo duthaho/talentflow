@@ -15,9 +15,9 @@ Start with the [project README](../README.md) for what TalentFlow is, the quick 
 | --- | --- | --- |
 | [001](adr/001-modular-monolith-clean-architecture.md) | Modular monolith with Clean/Hexagonal layering | Accepted |
 | [002](adr/002-transactional-outbox.md) | Transactional outbox and at-least-once delivery | Accepted |
-| [005](adr/005-local-open-source-runtime-stack.md) | Local open-source runtime stack | Accepted |
+| [003](adr/003-local-open-source-runtime-stack.md) | Local open-source runtime stack | Accepted |
 
-ADR numbers 003 and 004 belonged to the retired AWS track and are not reused. New ADRs use the next number (006), the same header fields (status, date) and sections (context, decision, consequences, rejected alternatives). A superseded ADR is not edited beyond its status line.
+New ADRs use the next number (004), the same header fields (status, date, issue) and sections (context, decision, consequences, rejected alternatives, revisit when). An ADR that is replaced gets the status `Superseded by ADR NNN` and is otherwise left unchanged.
 
 ## Runbooks
 

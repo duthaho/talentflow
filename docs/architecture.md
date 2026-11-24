@@ -1,6 +1,6 @@
 # TalentFlow architecture
 
-This document describes the architecture **as built today** (baseline commit `db1f7bc`, 2026-11-24) and the **target** architecture of the [roadmap](roadmap.md). Every target element is labelled with the stage that delivers it. Runtime services are chosen in [ADR 005](adr/005-local-open-source-runtime-stack.md).
+This document describes the architecture **as built today** (baseline commit `db1f7bc`, 2026-11-24) and the **target** architecture of the [roadmap](roadmap.md). Every target element is labelled with the stage that delivers it. Runtime services are chosen in [ADR 003](adr/003-local-open-source-runtime-stack.md).
 
 ## 1. Thesis
 
