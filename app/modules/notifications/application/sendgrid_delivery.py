@@ -1,3 +1,0 @@
-from app.modules.notifications.application.email_delivery import EmailDeliverySender
-
-SendGridDeliverySender = EmailDeliverySender

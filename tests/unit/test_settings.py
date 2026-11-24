@@ -80,6 +80,12 @@ def test_settings_rejects_incomplete_smtp_configuration() -> None:
         Settings(notification_smtp_host="")
 
 
+@pytest.mark.parametrize("port", [0, 65536])
+def test_settings_rejects_smtp_port_outside_tcp_range(port: int) -> None:
+    with pytest.raises(ValidationError, match="NOTIFICATION_SMTP_PORT"):
+        Settings(notification_smtp_port=port)
+
+
 def test_settings_redacts_database_url_and_sendgrid_secret_in_repr() -> None:
     settings = Settings(
         database_url="postgresql+psycopg://user:db-password@db/talentflow",

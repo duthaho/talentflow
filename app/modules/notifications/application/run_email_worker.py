@@ -7,27 +7,29 @@ from app.modules.notifications.infrastructure.sendgrid_email import SendGridEmai
 from app.modules.notifications.infrastructure.smtp_email import SmtpEmailAdapter
 from app.shared.database import build_session_factory
 from app.shared.observability import configure_logging
-from app.shared.settings import settings
+from app.shared.settings import Settings, settings
 
 logger = logging.getLogger(__name__)
 
 
+def build_email_adapter(runtime_settings: Settings) -> EmailAdapter:
+    if runtime_settings.notification_email_adapter == "sendgrid":
+        return SendGridEmailAdapter(
+            api_key=runtime_settings.sendgrid_api_key.get_secret_value()
+            if runtime_settings.sendgrid_api_key
+            else "",
+            sender=runtime_settings.notification_from_email,
+        )
+    return SmtpEmailAdapter(
+        host=runtime_settings.notification_smtp_host,
+        port=runtime_settings.notification_smtp_port,
+        sender=runtime_settings.notification_from_email,
+    )
+
+
 def main() -> None:
     configure_logging()
-    adapter: EmailAdapter
-    if settings.notification_email_adapter == "sendgrid":
-        adapter = SendGridEmailAdapter(
-            api_key=settings.sendgrid_api_key.get_secret_value()
-            if settings.sendgrid_api_key
-            else "",
-            sender=settings.notification_from_email,
-        )
-    else:
-        adapter = SmtpEmailAdapter(
-            host=settings.notification_smtp_host,
-            port=settings.notification_smtp_port,
-            sender=settings.notification_from_email,
-        )
+    adapter = build_email_adapter(settings)
     sessions = build_session_factory(settings.database_url)
     try:
         published = OutboxPublisher(sessions).publish_pending()
