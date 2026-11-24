@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Callable
 from uuid import uuid4
 
 from sqlalchemy import Connection, Engine, text
@@ -33,10 +34,11 @@ class ScheduledRetentionCycle:
         self._storage = LocalAttachmentStorage(storage)
         self._next_run = 0.0
 
-    def __call__(self) -> int:
+    def __call__(self, *, should_stop: Callable[[], bool] | None = None) -> int:
         if time.monotonic() < self._next_run:
             return 0
         self._next_run = time.monotonic() + self._schedule_seconds
+        stopping = should_stop or (lambda: False)
         engine: Engine = self._sessions.kw["bind"]
         with engine.connect() as connection:
             if not self._acquire_lock(connection):
@@ -56,6 +58,8 @@ class ScheduledRetentionCycle:
                     )
                     purged = 0
                     for tenant_id in repository.policy_tenant_ids(limit=self._batch_size):
+                        if stopping():
+                            break
                         service = RetentionService(
                             repository=repository,
                             audit=SqlAlchemyAuditRecorder(session),
@@ -104,21 +108,26 @@ def main() -> None:
         batch_size=settings.retention_worker_batch_size,
         storage=settings.attachment_storage_root,
     )
+    loop: WorkerLoop
+
+    def run_cycle() -> int:
+        return cycle(should_stop=loop.stopping)
 
     def ready() -> None:
         with sessions() as session:
             session.execute(text("SELECT 1"))
 
     try:
-        WorkerLoop(
+        loop = WorkerLoop(
             name="retention",
-            cycle=cycle,
+            cycle=run_cycle,
             readiness_check=ready,
             poll_seconds=settings.worker_poll_seconds,
             max_backoff_seconds=settings.worker_max_backoff_seconds,
             grace_seconds=settings.worker_shutdown_grace_seconds,
             probe_port=8003,
-        ).run()
+        )
+        loop.run()
     finally:
         sessions.kw["bind"].dispose()
 
