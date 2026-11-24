@@ -1,4 +1,5 @@
 import logging
+import os
 
 from sqlalchemy import text
 
@@ -38,7 +39,7 @@ def main() -> None:
             max_backoff_seconds=settings.worker_max_backoff_seconds,
             grace_seconds=settings.worker_shutdown_grace_seconds,
             probe_port=8001,
-        ).run()
+        ).run(once=os.getenv("WORKER_RUN_ONCE") == "1")
     finally:
         sessions.kw["bind"].dispose()
 

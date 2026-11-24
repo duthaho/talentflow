@@ -2,8 +2,8 @@ import logging
 import time
 from uuid import uuid4
 
-from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Connection, Engine, text
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.modules.attachments.infrastructure.filesystem_storage import LocalAttachmentStorage
 from app.modules.retention.application.retention import RetentionService
@@ -37,52 +37,56 @@ class ScheduledRetentionCycle:
         if time.monotonic() < self._next_run:
             return 0
         self._next_run = time.monotonic() + self._schedule_seconds
-        with self._sessions() as session:
-            if not self._acquire_lock(session):
+        engine: Engine = self._sessions.kw["bind"]
+        with engine.connect() as connection:
+            if not self._acquire_lock(connection):
                 logger.info(
                     "retention_worker_lock_contended",
                     extra={"event": "retention_worker_lock_contended"},
                 )
                 return 0
             try:
-                repository = SqlAlchemyRetentionRepository(
-                    session, attachment_storage=self._storage
-                )
-                purged = 0
-                for tenant_id in repository.policy_tenant_ids(limit=self._batch_size):
-                    service = RetentionService(
-                        repository=repository,
-                        audit=SqlAlchemyAuditRecorder(session),
-                        unit_of_work=SqlAlchemyUnitOfWork(session),
+                with Session(bind=connection, autoflush=False, expire_on_commit=False) as session:
+                    repository = SqlAlchemyRetentionRepository(
+                        session, attachment_storage=self._storage
                     )
-                    purged += service.purge_due(
-                        tenant_id=tenant_id,
-                        actor_id="system:retention",
-                        correlation_id=str(uuid4()),
-                    )
+                    purged = 0
+                    for tenant_id in repository.policy_tenant_ids(limit=self._batch_size):
+                        service = RetentionService(
+                            repository=repository,
+                            audit=SqlAlchemyAuditRecorder(session),
+                            unit_of_work=SqlAlchemyUnitOfWork(session),
+                        )
+                        purged += service.purge_due(
+                            tenant_id=tenant_id,
+                            actor_id="system:retention",
+                            correlation_id=str(uuid4()),
+                        )
                 logger.info(
                     "retention_worker_completed",
                     extra={"event": "retention_worker_completed", "purged": purged},
                 )
                 return purged
             finally:
-                self._release_lock(session)
+                if connection.in_transaction():
+                    connection.rollback()
+                self._release_lock(connection)
 
     @staticmethod
-    def _acquire_lock(session: object) -> bool:
+    def _acquire_lock(connection: Connection) -> bool:
         # SQLite is used only for local unit tests; PostgreSQL coordinates compose replicas.
-        if session.bind.dialect.name != "postgresql":
+        if connection.dialect.name != "postgresql":
             return True
         return bool(
-            session.scalar(
+            connection.scalar(
                 text("SELECT pg_try_advisory_lock(hashtext(:name))"), {"name": _LOCK_NAME}
             )
         )
 
     @staticmethod
-    def _release_lock(session: object) -> None:
-        if session.bind.dialect.name == "postgresql":
-            session.execute(
+    def _release_lock(connection: Connection) -> None:
+        if connection.dialect.name == "postgresql":
+            connection.execute(
                 text("SELECT pg_advisory_unlock(hashtext(:name))"), {"name": _LOCK_NAME}
             )
 

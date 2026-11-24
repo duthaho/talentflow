@@ -107,7 +107,10 @@ class WorkerLoop:
     def request_stop(self) -> None:
         self._stop.set()
 
-    def run(self) -> None:
+    def stopping(self) -> bool:
+        return self._stop.is_set()
+
+    def run(self, *, once: bool = False) -> None:
         self._install_signal_handlers()
         self._probe_server.start()
         try:
@@ -127,6 +130,8 @@ class WorkerLoop:
                     delay = (
                         self._poll_seconds if backlog else min(delay * 2, self._max_backoff_seconds)
                     )
+                if once:
+                    break
                 self._stop.wait(delay)
         finally:
             signal.setitimer(signal.ITIMER_REAL, 0)
@@ -141,12 +146,12 @@ class WorkerLoop:
             logger.info("worker_shutdown_requested", extra={"event": "worker_shutdown_requested"})
             self.request_stop()
 
-            def force_stop(_signum: int, _frame: object) -> None:
-                self._shutdown()
-                raise SystemExit(0)
-
-            signal.signal(signal.SIGALRM, force_stop)
+            signal.signal(signal.SIGALRM, self._force_stop)
             signal.setitimer(signal.ITIMER_REAL, self._grace_seconds)
 
         signal.signal(signal.SIGTERM, stop)
         signal.signal(signal.SIGINT, stop)
+
+    def _force_stop(self, _signum: int, _frame: object) -> None:
+        self._shutdown()
+        raise SystemExit(0)

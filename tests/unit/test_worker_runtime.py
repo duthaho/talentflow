@@ -1,5 +1,7 @@
 import signal
 
+import pytest
+
 from app.shared import worker_runtime
 from app.shared.worker_runtime import WorkerLoop
 
@@ -41,6 +43,20 @@ def test_worker_loop_drains_current_cycle_before_stopping() -> None:
     assert probe.started and probe.closed
 
 
+def test_worker_loop_runs_one_bounded_smoke_cycle() -> None:
+    cycles: list[str] = []
+    loop = WorkerLoop(
+        name="test",
+        cycle=lambda: cycles.append("completed") or 0,
+        readiness_check=lambda: None,
+        probe_server=Probe(),  # type: ignore[arg-type]
+    )
+
+    loop.run(once=True)
+
+    assert cycles == ["completed"]
+
+
 def test_sigterm_requests_a_graceful_worker_stop(monkeypatch) -> None:
     handlers = {}
     loop = WorkerLoop(
@@ -60,3 +76,19 @@ def test_sigterm_requests_a_graceful_worker_stop(monkeypatch) -> None:
     handlers[signal.SIGTERM](signal.SIGTERM, None)
 
     assert loop._stop.is_set()
+
+
+def test_grace_period_force_stop_releases_work() -> None:
+    released: list[str] = []
+    loop = WorkerLoop(
+        name="test",
+        cycle=lambda: 0,
+        readiness_check=lambda: None,
+        shutdown=lambda: released.append("released"),
+        probe_server=Probe(),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(SystemExit):
+        loop._force_stop(signal.SIGALRM, None)
+
+    assert released == ["released"]

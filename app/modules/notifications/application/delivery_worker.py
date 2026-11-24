@@ -31,9 +31,10 @@ class DeliveryWorker:
         self.lease_seconds = lease_seconds
         self.worker_id = worker_id or str(uuid4())
 
-    def deliver_pending(self) -> int:
+    def deliver_pending(self, *, should_stop: Callable[[], bool] | None = None) -> int:
         delivered = 0
-        while delivery := self._claim_next():
+        stopping = should_stop or (lambda: False)
+        while not stopping() and (delivery := self._claim_next()):
             with tracer.start_as_current_span("notification.delivery") as span:
                 span.set_attribute("notification.delivery_id", delivery.id)
                 try:
