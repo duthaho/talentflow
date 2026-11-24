@@ -7,6 +7,11 @@ from app.shared.observability import prometheus_response
 router = APIRouter(tags=["operations"])
 
 
+@router.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 @router.get("/health/live")
 def liveness() -> dict[str, str]:
     return {"status": "ok"}

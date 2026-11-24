@@ -1,293 +1,32 @@
-from __future__ import annotations
+"""Compatibility imports for persistence records owned by bounded contexts."""
 
-from datetime import UTC, datetime
-from uuid import uuid4
+from app.modules.attachments.infrastructure.models import Attachment
+from app.modules.audit.infrastructure.models import AuditEvent
+from app.modules.calendar.infrastructure.models import CalendarSubscription
+from app.modules.candidates.infrastructure.models import CandidateCase
+from app.modules.interviews.infrastructure.models import Interview, InterviewFeedback
+from app.modules.notifications.infrastructure.models import NotificationDelivery, OutboxEvent
+from app.modules.offers.infrastructure.models import ApprovalDecision, Offer
+from app.modules.organization.infrastructure.models import Membership, Requisition, Tenant, User
+from app.modules.retention.infrastructure.models import CandidateLegalHold, RetentionPolicy
+from app.shared.database import Base
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
-
-def now_utc() -> datetime:
-    return datetime.now(UTC)
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class Tenant(Base):
-    __tablename__ = "tenants"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-    slug: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    email: Mapped[str | None] = mapped_column(String(320), nullable=True, unique=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-
-
-class Membership(Base):
-    __tablename__ = "memberships"
-    __table_args__ = (UniqueConstraint("tenant_id", "user_id", name="uq_membership_tenant_user"),)
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
-    )
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    role: Mapped[str] = mapped_column(String(32), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-
-
-class Requisition(Base):
-    __tablename__ = "requisitions"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    title: Mapped[str] = mapped_column(String(160), nullable=False)
-    department: Mapped[str] = mapped_column(String(120), nullable=False)
-    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-
-
-class CandidateCase(Base):
-    __tablename__ = "candidate_cases"
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "email", name="uq_candidate_case_tenant_email"),
-    )
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    requisition_id: Mapped[str] = mapped_column(
-        ForeignKey("requisitions.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    email: Mapped[str] = mapped_column(String(320), nullable=False)
-    stage: Mapped[str] = mapped_column(String(40), nullable=False, default="applied")
-    version: Mapped[int] = mapped_column(default=1, nullable=False)
-    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-    anonymized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    terminal_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class RetentionPolicy(Base):
-    __tablename__ = "retention_policies"
-
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
-    )
-    retention_days: Mapped[int] = mapped_column(Integer, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False
-    )
-
-
-class CandidateLegalHold(Base):
-    __tablename__ = "candidate_legal_holds"
-
-    candidate_case_id: Mapped[str] = mapped_column(
-        ForeignKey("candidate_cases.id", ondelete="CASCADE"), primary_key=True
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    reason: Mapped[str] = mapped_column(String(500), nullable=False)
-    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-
-
-class Attachment(Base):
-    __tablename__ = "candidate_attachments"
-    __table_args__ = (UniqueConstraint("storage_key", name="uq_candidate_attachment_storage_key"),)
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    candidate_case_id: Mapped[str] = mapped_column(
-        ForeignKey("candidate_cases.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    document_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    content_type: Mapped[str] = mapped_column(String(127), nullable=False)
-    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
-    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    storage_key: Mapped[str] = mapped_column(String(32), nullable=False)
-    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-
-
-class Interview(Base):
-    __tablename__ = "interviews"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    candidate_case_id: Mapped[str] = mapped_column(
-        ForeignKey("candidate_cases.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    interviewer_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-
-
-class CalendarSubscription(Base):
-    __tablename__ = "calendar_subscriptions"
-
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    interviewer_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class InterviewFeedback(Base):
-    __tablename__ = "interview_feedback"
-    __table_args__ = (UniqueConstraint("interview_id", name="uq_interview_feedback_interview"),)
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    interview_id: Mapped[str] = mapped_column(
-        ForeignKey("interviews.id", ondelete="CASCADE"), nullable=False
-    )
-    interviewer_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    score: Mapped[int] = mapped_column(Integer, nullable=False)
-    recommendation: Mapped[str] = mapped_column(String(40), nullable=False)
-    comments: Mapped[str] = mapped_column(Text, nullable=False)
-    submitted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-
-
-class Offer(Base):
-    __tablename__ = "offers"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    candidate_case_id: Mapped[str] = mapped_column(
-        ForeignKey("candidate_cases.id", ondelete="CASCADE"), nullable=False, unique=True
-    )
-    title: Mapped[str] = mapped_column(String(160), nullable=False)
-    annual_salary: Mapped[int] = mapped_column(Integer, nullable=False)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False)
-    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending_approval")
-    approval_step: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-
-
-class ApprovalDecision(Base):
-    __tablename__ = "approval_decisions"
-    __table_args__ = (UniqueConstraint("offer_id", "step", name="uq_approval_decision_offer_step"),)
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    offer_id: Mapped[str] = mapped_column(
-        ForeignKey("offers.id", ondelete="CASCADE"), nullable=False
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
-    )
-    step: Mapped[int] = mapped_column(Integer, nullable=False)
-    actor_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    decision: Mapped[str] = mapped_column(String(16), nullable=False)
-
-
-class OutboxEvent(Base):
-    __tablename__ = "outbox_events"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
-    )
-    topic: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
-    payload_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-
-
-class NotificationDelivery(Base):
-    __tablename__ = "notification_deliveries"
-    __table_args__ = (UniqueConstraint("outbox_event_id", name="uq_notification_delivery_outbox"),)
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    outbox_event_id: Mapped[str] = mapped_column(
-        ForeignKey("outbox_events.id", ondelete="CASCADE"), nullable=False
-    )
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
-    )
-    recipient_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
-    channel: Mapped[str] = mapped_column(String(32), nullable=False, default="in_app")
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
-    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    payload_json: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
-    lease_owner: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
-    lease_expires_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
-
-
-class AuditEvent(Base):
-    __tablename__ = "audit_events"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    tenant_id: Mapped[str] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    actor_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    action: Mapped[str] = mapped_column(String(120), nullable=False)
-    aggregate_type: Mapped[str] = mapped_column(String(80), nullable=False)
-    aggregate_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    correlation_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    metadata_json: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=now_utc, nullable=False
-    )
+__all__ = [
+    "ApprovalDecision",
+    "Attachment",
+    "AuditEvent",
+    "Base",
+    "CalendarSubscription",
+    "CandidateCase",
+    "CandidateLegalHold",
+    "Interview",
+    "InterviewFeedback",
+    "Membership",
+    "NotificationDelivery",
+    "Offer",
+    "OutboxEvent",
+    "Requisition",
+    "RetentionPolicy",
+    "Tenant",
+    "User",
+]

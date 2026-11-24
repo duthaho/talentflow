@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
-from app.modules.attachments.infrastructure.filesystem_storage import LocalAttachmentStorage
 from app.modules.retention.application.retention import RetentionPolicy
+from app.shared.attachment_storage import LocalAttachmentStorage
 from app.shared.models import Attachment, AuditEvent, CandidateCase, CandidateLegalHold
 from app.shared.models import RetentionPolicy as RetentionPolicyRecord
 

@@ -16,6 +16,25 @@ CLEAN_ARCHITECTURE_MODULES = (
 )
 
 
+def test_modules_do_not_reach_into_another_modules_infrastructure() -> None:
+    violations: list[str] = []
+    for path in DOMAIN_ROOT.glob("*/**/*.py"):
+        owner = path.relative_to(DOMAIN_ROOT).parts[0]
+        for line in path.read_text().splitlines():
+            if (
+                "app.modules." in line
+                and ".infrastructure" in line
+                and f"app.modules.{owner}." not in line
+            ):
+                violations.append(f"{path}: {line.strip()}")
+    assert not violations, "Cross-module infrastructure imports: " + ", ".join(violations)
+
+
+def test_app_factory_only_composes_routers() -> None:
+    source = Path("app/main.py").read_text()
+    assert "@app." not in source
+
+
 def test_domain_layer_does_not_depend_on_frameworks_or_infrastructure() -> None:
     violations: list[str] = []
     for path in DOMAIN_ROOT.glob("*/domain/**/*.py"):

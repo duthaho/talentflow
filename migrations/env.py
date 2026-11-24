@@ -6,7 +6,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.shared.models import Base
+import app.shared.models  # noqa: F401 - load every bounded-context mapping
+from app.shared.database import Base
 
 config = context.config
 if config.config_file_name is not None:
