@@ -1,6 +1,6 @@
 # Roadmap: TalentFlow v2 enterprise showcase
 
-This roadmap tracks DUTH-43: turn TalentFlow into a complete, runnable showcase where `docker compose up` brings up the API, workers, web app and a fully open-source supporting stack ([ADR 005](adr/005-local-open-source-runtime-stack.md)), and every pattern is backed by code, tests and docs. It replaces the archived [AWS production infrastructure roadmap](archive/production-infrastructure-roadmap.md).
+This roadmap tracks DUTH-43: turn TalentFlow into a complete, runnable showcase where `docker compose up` brings up the API, workers, web app and a fully open-source supporting stack ([ADR 005](adr/005-local-open-source-runtime-stack.md)), and every pattern is backed by code, tests and docs.
 
 Ground rules:
 
@@ -15,13 +15,13 @@ flowchart LR
 
 ## Stage 1 — Docs and ADRs rewritten for the plan
 
-**Outcome:** README, architecture, roadmap and ADRs describe the local open-source plan; the AWS track is archived.
+**Outcome:** README, architecture, roadmap and ADRs describe the local open-source plan; the old AWS-track docs are removed.
 
 | Issue | Deliverable |
 | --- | --- |
-| DUTH-44 | README with pattern catalog, architecture (current + target), this roadmap, ADR 005, archive of AWS docs, compose backup/restore runbook |
+| DUTH-44 | README with pattern catalog, architecture (current + target), this roadmap, ADR 005, removal of AWS-track docs, compose backup/restore runbook |
 
-**Teaches:** architecture decision records, superseding decisions, C4 diagrams, docs-as-code.
+**Teaches:** architecture decision records, C4 diagrams, docs-as-code.
 
 ## Stage 2 — Foundation
 
@@ -131,5 +131,5 @@ flowchart LR
 
 ## Out of scope
 
-- Cloud provisioning and the AWS/OpenTofu track. `infra/opentofu/` and the `Infrastructure` workflow are archived in place; see [docs/archive](archive/README.md).
+- Cloud provisioning and the AWS/OpenTofu track. `infra/opentofu/` and the `Infrastructure` workflow are not maintained and stay in place until a separate issue removes them.
 - Splitting the monolith into services. The extraction criteria in [architecture](architecture.md#service-extraction-criteria) still apply.

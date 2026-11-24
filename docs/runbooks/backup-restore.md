@@ -1,6 +1,6 @@
 # Backup and restore (Docker Compose stack)
 
-This runbook backs up and restores the local Compose stack: the PostgreSQL database and the attachment files. It replaces the cloud-oriented version (KMS, managed PITR), which belonged to the archived AWS track.
+This runbook backs up and restores the local Compose stack: the PostgreSQL database and the attachment files.
 
 The data here is local demo data. Still treat a dump as sensitive: it contains candidate PII from the seed or from anything you entered. Never commit a dump. The commands write to `data/backups/`, which `.gitignore` already excludes (`data/`).
 

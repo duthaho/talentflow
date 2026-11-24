@@ -8,7 +8,7 @@ It is a **learning showcase**: one complete, runnable application that shows how
 
 ## Where it is going
 
-The v2 plan (DUTH-43) makes TalentFlow fully runnable on a laptop: `docker compose up` brings up the API, workers, a Next.js web app and an all-open-source supporting stack — Keycloak, PostgreSQL + pgvector, Redis, RabbitMQ, OpenSearch, SeaweedFS (S3), ClamAV, Mailpit, OpenBao, flagd, OpenTelemetry + Grafana, GlitchTip and Ollama. There is no cloud deployment; the earlier AWS track is archived.
+The v2 plan (DUTH-43) makes TalentFlow fully runnable on a laptop: `docker compose up` brings up the API, workers, a Next.js web app and an all-open-source supporting stack — Keycloak, PostgreSQL + pgvector, Redis, RabbitMQ, OpenSearch, SeaweedFS (S3), ClamAV, Mailpit, OpenBao, flagd, OpenTelemetry + Grafana, GlitchTip and Ollama. There is no cloud deployment.
 
 - [Roadmap](docs/roadmap.md) — nine stages, their issues and the patterns each one teaches
 - [Architecture](docs/architecture.md) — current and target, with C4 diagrams
@@ -137,7 +137,7 @@ Candidate lifecycle: `applied → screening → interviewing → offer_pending_a
 app/            FastAPI app, modules (domain / application / infrastructure), shared kernel
 migrations/     Alembic revisions
 tests/          unit, integration and architecture tests
-docs/           architecture, roadmap, ADRs, runbooks, archive
+docs/           architecture, roadmap, ADRs, runbooks
 scripts/        PostgreSQL backup and restore helpers
-infra/opentofu/ archived AWS foundation — out of scope, see docs/archive
+infra/opentofu/ legacy AWS foundation — out of scope, not maintained
 ```

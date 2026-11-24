@@ -2,12 +2,11 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-24
-- **Supersedes:** [ADR 003](003-production-operating-model.md), [ADR 004](004-select-aws-sentry-datadog-pagerduty.md)
 - **Issue:** DUTH-44 (parent DUTH-43)
 
 ## Context
 
-TalentFlow is a learning showcase: one runnable application that shows how an enterprise system is designed, built, operated and evolved. ADR 003 and ADR 004 aimed at an operated AWS production environment (ECS Fargate, RDS, ElastiCache, S3, Sentry, Datadog, PagerDuty). That track needs cloud accounts, budgets and vendor contracts that a showcase does not have, and a reader cannot run it.
+TalentFlow is a learning showcase: one runnable application that shows how an enterprise system is designed, built, operated and evolved. An earlier plan aimed at an operated AWS production environment (ECS Fargate, RDS, ElastiCache, S3, Sentry, Datadog, PagerDuty). That track needs cloud accounts, budgets and vendor contracts that a showcase does not have, and a reader cannot run it.
 
 On 2026-11-24 the project owner decided (DUTH-43):
 
@@ -85,8 +84,8 @@ Test tooling from DUTH-43 that does not run as a stack service: **k6** (AGPLv3, 
 - Every licence above is OSI-approved. Four are copyleft for network use (AGPLv3: Redis 8 as chosen, Grafana/Loki/Tempo, k6). We run them unmodified as separate services, which triggers no source-disclosure obligation for TalentFlow's own code. The licence policy check in stage 9 (DUTH-77) covers our dependencies, not these service images.
 - Image tags are pinned (never `latest`) and every service has a healthcheck (DUTH-50).
 - Credentials in compose and `.env.example` are local-only dev values, clearly marked; nothing in this stack is a production secret.
-- The production-hardening contract from ADR 003 that does not depend on a cloud vendor still holds: immutable images, migrations before rollout, readiness probes, OTel as the telemetry contract, no secrets in Git.
-- `infra/opentofu/` and the `Infrastructure` CI workflow are archived and out of scope. They stay in the repository for history until a separate issue removes them.
+- The vendor-neutral production-hardening contract still holds: immutable images, migrations before rollout, readiness probes, OTel as the telemetry contract, no secrets in Git.
+- `infra/opentofu/` and the `Infrastructure` CI workflow are out of scope and not maintained. They stay in the repository until a separate issue removes them.
 
 ## Revisit when
 
