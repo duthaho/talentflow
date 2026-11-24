@@ -111,7 +111,6 @@ def problem_response(
     correlation_id = (
         correlation_id_context.get()
         or getattr(request.state, "correlation_id", None)
-        or request.headers.get("X-Correlation-Id")
         or str(uuid4())
     )
     request.state.correlation_id = correlation_id

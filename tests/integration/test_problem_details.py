@@ -76,6 +76,17 @@ def test_unhandled_errors_hide_exception_details() -> None:
     assert "stack detail" not in response.text
 
 
+def test_invalid_correlation_id_is_replaced() -> None:
+    invalid_correlation_id = "x" * 129
+    with TestClient(create_app("sqlite://")) as client:
+        response = client.get("/missing", headers={"X-Correlation-Id": invalid_correlation_id})
+
+    correlation_id = response.headers["x-correlation-id"]
+    assert_problem(response, status=404, slug="not-found", correlation_id=correlation_id)
+    assert correlation_id != invalid_correlation_id
+    assert len(correlation_id) == 36
+
+
 def test_documentation_has_a_heading_for_each_registered_problem_type() -> None:
     documentation = Path("docs/api-errors.md").read_text()
 

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Request, status
 from sqlalchemy import text
-from starlette.responses import JSONResponse
 
 from app.shared.observability import prometheus_response
+from app.shared.problem_details import problem_response, problem_type
 
 router = APIRouter()
 
@@ -24,8 +24,11 @@ def readiness(request: Request):
             session.execute(text("SELECT 1"))
         request.app.state.rate_limiter.ping()
     except Exception:
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content={"status": "unavailable"}
+        return problem_response(
+            request,
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service is unavailable",
+            type_uri=problem_type("service-unavailable"),
         )
     return {"status": "ok"}
 
