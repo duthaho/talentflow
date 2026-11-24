@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 DOMAIN_ROOT = Path("app/modules")
@@ -14,6 +15,31 @@ CLEAN_ARCHITECTURE_MODULES = (
     "reporting",
     "retention",
 )
+ALLOWED_CROSS_CONTEXT_PERSISTENCE_IMPORTS = {
+    ("attachments", "audit"): "attachment lifecycle writes an audit event in the same transaction",
+    ("attachments", "candidates"): "attachment ownership is checked against the candidate record",
+    ("calendar", "audit"): "calendar lifecycle writes an audit event in the same transaction",
+    ("calendar", "interviews"): "calendar feed projects interviewer appointments",
+    ("calendar", "organization"): "calendar subscriptions validate interviewer membership",
+    ("candidates", "audit"): "candidate lifecycle writes an audit event in the same transaction",
+    ("candidates", "organization"): "candidate creation validates a requisition",
+    ("identity", "organization"): "authorization resolves the tenant membership record",
+    ("interviews", "audit"): "interview lifecycle writes an audit event in the same transaction",
+    ("interviews", "candidates"): "interview scheduling validates candidate ownership",
+    ("interviews", "organization"): "interview scheduling validates interviewer membership",
+    ("notifications", "organization"): "email delivery resolves the recipient address",
+    ("offers", "notifications"): "offer approval writes its transactional outbox event",
+    (
+        "organization",
+        "audit",
+    ): "organization lifecycle writes an audit event in the same transaction",
+    ("reporting", "candidates"): "CQRS-lite reporting read model projects candidate state",
+    ("reporting", "interviews"): "CQRS-lite reporting read model projects interview state",
+    ("reporting", "offers"): "CQRS-lite reporting read model projects offer state",
+    ("retention", "attachments"): "retention purge deletes candidate attachments",
+    ("retention", "audit"): "retention lifecycle writes an audit event in the same transaction",
+    ("retention", "candidates"): "retention purge selects terminal candidate cases",
+}
 
 
 def test_modules_do_not_reach_into_another_modules_infrastructure() -> None:
@@ -39,6 +65,22 @@ def test_modules_do_not_import_shared_model_exports() -> None:
     assert not violations, "Module records must use a context persistence interface: " + ", ".join(
         violations
     )
+
+
+def test_cross_context_persistence_imports_are_explicitly_allowed() -> None:
+    violations: list[str] = []
+    pattern = re.compile(r"from app\.modules\.([a-z_]+)\.persistence import")
+    for path in DOMAIN_ROOT.glob("*/**/*.py"):
+        importer = path.relative_to(DOMAIN_ROOT).parts[0]
+        for line in path.read_text().splitlines():
+            match = pattern.match(line)
+            if (
+                match
+                and match.group(1) != importer
+                and (importer, match.group(1)) not in ALLOWED_CROSS_CONTEXT_PERSISTENCE_IMPORTS
+            ):
+                violations.append(f"{path}: {line.strip()}")
+    assert not violations, "Unapproved cross-context persistence imports: " + ", ".join(violations)
 
 
 def test_app_factory_only_composes_routers() -> None:

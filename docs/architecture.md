@@ -22,7 +22,7 @@ flowchart LR
 | Infrastructure | repositories, persistence records, provider clients, workers | presentation concerns |
 | Presentation | routes, DTOs, dependency wiring, error mapping | business invariants |
 
-`tests/architecture/test_dependency_rule.py` enforces the domain rule for every module and the application rule for `attachments`, `audit`, `calendar`, `candidates`, `interviews`, `offers`, `organization`, `reporting` and `retention`.
+`tests/architecture/test_dependency_rule.py` enforces the domain rule for every module and the application rule for `attachments`, `audit`, `calendar`, `candidates`, `interviews`, `offers`, `organization`, `reporting` and `retention`. It also forbids direct cross-module infrastructure imports and requires each cross-context persistence import to be a documented allow-list entry.
 
 ## 2. System context (C4 level 1)
 
@@ -256,6 +256,7 @@ Keycloak owns authentication; TalentFlow owns authorization (tenant membership a
 ## 9. Persistence
 
 - SQLAlchemy ORM records are persistence models, not domain objects; repositories translate between them.
+- A context owns mapped records in `app/modules/<context>/infrastructure/models.py`. Its `persistence.py` publishes only the records that an explicitly allow-listed cross-context dependency needs. The allow-list covers transactional audit writes, identity membership lookup, ownership validation, notification recipient/outbox handling, retention purge, and Reporting's CQRS-lite projection; all other cross-context access uses an application port or an integration event.
 - PostgreSQL is the system of record; tests run on SQLite, CI also applies migrations to PostgreSQL.
 - Schema changes go through Alembic (`migrations/versions/`) with expand/contract compatibility. The app creates tables only outside production.
 - Database constraints back the invariants: tenant-unique candidate email, one feedback per interview, one decision per approval step, unique outbox materialization.

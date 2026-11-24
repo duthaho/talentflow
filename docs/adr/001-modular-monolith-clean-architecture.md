@@ -23,7 +23,7 @@ Reads use **CQRS-lite**: commands own invariants and transactions; queries may r
 
 Contexts talk to each other through application ports in-process, and through versioned integration events (outbox, then RabbitMQ in stage 5) when the reaction can be asynchronous.
 
-`tests/architecture/test_dependency_rule.py` enforces the inward rule today. Two gaps remain from the baseline: most routes still live in `app/main.py` and ORM records are shared in `app/shared/models.py`. DUTH-45 (stage 2) moves both into their modules and extends the architecture test to forbid cross-module infrastructure imports.
+Each context owns its mapped records under `infrastructure/models.py` and publishes the small record surface other contexts need through `<context>/persistence.py`. `tests/architecture/test_dependency_rule.py` forbids direct cross-module infrastructure imports and requires every cross-context persistence import to appear in a reasoned allow-list. The current allow-list is intentionally limited to transactional audit writes, identity membership lookup, ownership validation, notification recipient/outbox handling, retention purge, and Reporting's CQRS-lite read model. New table coupling must be justified there or replaced with an application port or integration event.
 
 ## Consequences
 
