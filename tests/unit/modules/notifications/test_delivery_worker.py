@@ -77,3 +77,40 @@ def test_expired_processing_lease_is_reclaimed_once() -> None:
         assert delivery.lease_owner is None
         assert delivery.lease_expires_at is None
     engine.dispose()
+
+
+def test_shutdown_releases_the_current_worker_lease() -> None:
+    sessions = build_session_factory("sqlite://")
+    engine = sessions.kw["bind"]
+    Base.metadata.create_all(engine)
+    with sessions() as session:
+        session.add_all(
+            [
+                Tenant(id="tenant", name="Acme", slug="acme"),
+                User(id="user"),
+                OutboxEvent(id="event", tenant_id="tenant", topic="test", payload_json={}),
+            ]
+        )
+        session.flush()
+        session.add(
+            NotificationDelivery(
+                outbox_event_id="event",
+                tenant_id="tenant",
+                recipient_id="user",
+                payload_json={},
+                status="processing",
+                lease_owner="draining-worker",
+                lease_expires_at=datetime.now(UTC) + timedelta(minutes=1),
+            )
+        )
+        session.commit()
+
+    worker = DeliveryWorker(sessions, sender=lambda _: None, worker_id="draining-worker")
+    worker.release_leases()
+
+    with sessions() as session:
+        delivery = session.query(NotificationDelivery).one()
+        assert delivery.status == "retry"
+        assert delivery.lease_owner is None
+        assert delivery.lease_expires_at is None
+    engine.dispose()

@@ -96,3 +96,11 @@ def test_settings_redacts_database_url_and_sendgrid_secret_in_repr() -> None:
 
     assert "db-password" not in repr(settings)
     assert "super-secret-value" not in repr(settings)
+
+
+def test_settings_rejects_invalid_worker_timing() -> None:
+    with pytest.raises(ValidationError, match="worker polling intervals"):
+        Settings(worker_poll_seconds=10, worker_max_backoff_seconds=1)
+
+    with pytest.raises(ValidationError, match="RETENTION_SCHEDULE_SECONDS"):
+        Settings(retention_schedule_seconds=0)

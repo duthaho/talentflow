@@ -108,20 +108,31 @@ services:
         condition: service_completed_successfully
       mailpit:
         condition: service_healthy
-    restart: "no"
+    restart: unless-stopped
+    stop_grace_period: 35s
     profiles: ["workers"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   retention-worker:
     build: .
-    command: ["python", "-m", "app.modules.retention.application.run_retention_worker"]
+    command: ["python", "-m", "app.workers.retention"]
     environment: *runtime_environment
     volumes:
       - attachment_data:/app/data/attachments
     depends_on:
       migrate:
         condition: service_completed_successfully
-    restart: "no"
+    restart: unless-stopped
     profiles: ["workers"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
 
   seed:
     build:

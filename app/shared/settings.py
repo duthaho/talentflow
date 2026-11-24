@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     notification_smtp_port: int = 1025
     worker_lease_seconds: int = 60
     worker_max_attempts: int = 5
+    worker_poll_seconds: float = 1.0
+    worker_max_backoff_seconds: float = 30.0
+    worker_shutdown_grace_seconds: float = 30.0
     redis_url: str = Field(default="", repr=False)
     rate_limit_enabled: bool = True
     rate_limit_requests_per_minute: int = 120
@@ -34,6 +37,7 @@ class Settings(BaseSettings):
     calendar_interview_duration_minutes: int = 60
     calendar_public_base_url: str = ""
     retention_worker_batch_size: int = 100
+    retention_schedule_seconds: float = 3600.0
 
     @property
     def cors_origins(self) -> tuple[str, ...]:
@@ -75,6 +79,15 @@ class Settings(BaseSettings):
             raise ValueError("CALENDAR_INTERVIEW_DURATION_MINUTES must be positive")
         if self.retention_worker_batch_size < 1:
             raise ValueError("RETENTION_WORKER_BATCH_SIZE must be positive")
+        if (
+            self.worker_poll_seconds <= 0
+            or self.worker_max_backoff_seconds < self.worker_poll_seconds
+        ):
+            raise ValueError("worker polling intervals must be positive and ordered")
+        if self.worker_shutdown_grace_seconds <= 0:
+            raise ValueError("WORKER_SHUTDOWN_GRACE_SECONDS must be positive")
+        if self.retention_schedule_seconds <= 0:
+            raise ValueError("RETENTION_SCHEDULE_SECONDS must be positive")
         if self.auth_mode == "oidc_jwt" and not all(
             (self.oidc_issuer, self.oidc_audience, self.oidc_jwks_url)
         ):
