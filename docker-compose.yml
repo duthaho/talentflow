@@ -24,6 +24,16 @@ services:
       timeout: 3s
       retries: 20
 
+  mailpit:
+    image: axllent/mailpit:v1.28.1
+    ports:
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.2
     command: ["start-dev", "--import-realm", "--health-enabled=true"]
@@ -60,6 +70,10 @@ services:
       ATTACHMENT_MAX_BYTES: 5242880
       ATTACHMENT_SCAN_MODE: noop
       CALENDAR_PUBLIC_BASE_URL: http://localhost:8000
+      NOTIFICATION_EMAIL_ADAPTER: smtp
+      NOTIFICATION_FROM_EMAIL: notifications@talentflow.local
+      NOTIFICATION_SMTP_HOST: mailpit
+      NOTIFICATION_SMTP_PORT: 1025
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,11 +101,13 @@ services:
 
   notification-worker:
     build: .
-    command: ["python", "-m", "app.modules.notifications.application.run_outbox_publisher"]
+    command: ["python", "-m", "app.modules.notifications.application.run_email_worker"]
     environment: *runtime_environment
     depends_on:
       migrate:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
     restart: "no"
     profiles: ["workers"]
 

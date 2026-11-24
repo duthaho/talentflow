@@ -1,12 +1,19 @@
+from typing import Protocol
+
 from sqlalchemy.orm import sessionmaker
 
-from app.modules.notifications.infrastructure.sendgrid_email import SendGridEmailAdapter
 from app.modules.notifications.persistence import NotificationDelivery
 from app.modules.organization.persistence import User
 
 
-class SendGridDeliverySender:
-    def __init__(self, sessions: sessionmaker, adapter: SendGridEmailAdapter):
+class EmailAdapter(Protocol):
+    def send(self, *, recipient: str, subject: str, text: str) -> None: ...
+
+
+class EmailDeliverySender:
+    """Maps a notification delivery into an email through the application port."""
+
+    def __init__(self, sessions: sessionmaker, adapter: EmailAdapter):
         self.sessions = sessions
         self.adapter = adapter
 

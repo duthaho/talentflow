@@ -1,4 +1,4 @@
-from app.modules.notifications.application.sendgrid_delivery import SendGridDeliverySender
+from app.modules.notifications.application.email_delivery import EmailDeliverySender
 from app.shared.database import build_session_factory
 from app.shared.models import Base, NotificationDelivery, OutboxEvent, Tenant, User
 
@@ -11,7 +11,7 @@ class FakeAdapter:
         self.calls.append({"recipient": recipient, "subject": subject, "text": text})
 
 
-def test_sendgrid_delivery_sender_uses_recipient_user_email() -> None:
+def test_email_delivery_sender_maps_offer_decision_for_recipient() -> None:
     sessions = build_session_factory("sqlite://")
     engine = sessions.kw["bind"]
     Base.metadata.create_all(engine)
@@ -40,7 +40,7 @@ def test_sendgrid_delivery_sender_uses_recipient_user_email() -> None:
         session.commit()
         delivery = session.query(NotificationDelivery).one()
         adapter = FakeAdapter()
-        SendGridDeliverySender(sessions, adapter)(delivery)
+        EmailDeliverySender(sessions, adapter)(delivery)
     assert adapter.calls[0]["recipient"] == "manager@example.com"
     assert "approved" in adapter.calls[0]["text"]
     engine.dispose()

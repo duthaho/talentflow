@@ -15,8 +15,11 @@ class Settings(BaseSettings):
     oidc_audience: str = ""
     oidc_jwks_url: str = ""
     oidc_jwks_cache_ttl_seconds: int = 300
+    notification_email_adapter: Literal["smtp", "sendgrid"] = "smtp"
     sendgrid_api_key: SecretStr | None = None
-    notification_from_email: str = ""
+    notification_from_email: str = "notifications@talentflow.local"
+    notification_smtp_host: str = "mailpit"
+    notification_smtp_port: int = 1025
     worker_lease_seconds: int = 60
     worker_max_attempts: int = 5
     redis_url: str = Field(default="", repr=False)
@@ -81,10 +84,19 @@ class Settings(BaseSettings):
                 "https://"
             ):
                 raise ValueError("Production OIDC issuer and JWKS URL must use HTTPS")
-        if bool(self.sendgrid_api_key) != bool(self.notification_from_email):
+        if not self.notification_from_email:
+            raise ValueError("NOTIFICATION_FROM_EMAIL is required")
+        if self.notification_email_adapter == "sendgrid" and not self.sendgrid_api_key:
             raise ValueError(
-                "SENDGRID_API_KEY and NOTIFICATION_FROM_EMAIL must be configured together"
+                "SENDGRID_API_KEY is required when NOTIFICATION_EMAIL_ADAPTER=sendgrid"
             )
+        if self.notification_email_adapter == "smtp":
+            if not self.notification_smtp_host:
+                raise ValueError(
+                    "NOTIFICATION_SMTP_HOST is required when NOTIFICATION_EMAIL_ADAPTER=smtp"
+                )
+            if not 1 <= self.notification_smtp_port <= 65535:
+                raise ValueError("NOTIFICATION_SMTP_PORT must be between 1 and 65535")
         return self
 
 

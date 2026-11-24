@@ -1,28 +1,41 @@
 import logging
 
 from app.modules.notifications.application.delivery_worker import DeliveryWorker
+from app.modules.notifications.application.email_delivery import EmailAdapter, EmailDeliverySender
 from app.modules.notifications.application.outbox_publisher import OutboxPublisher
-from app.modules.notifications.application.sendgrid_delivery import SendGridDeliverySender
 from app.modules.notifications.infrastructure.sendgrid_email import SendGridEmailAdapter
+from app.modules.notifications.infrastructure.smtp_email import SmtpEmailAdapter
 from app.shared.database import build_session_factory
 from app.shared.observability import configure_logging
-from app.shared.settings import settings
+from app.shared.settings import Settings, settings
 
 logger = logging.getLogger(__name__)
 
 
+def build_email_adapter(runtime_settings: Settings) -> EmailAdapter:
+    if runtime_settings.notification_email_adapter == "sendgrid":
+        return SendGridEmailAdapter(
+            api_key=runtime_settings.sendgrid_api_key.get_secret_value()
+            if runtime_settings.sendgrid_api_key
+            else "",
+            sender=runtime_settings.notification_from_email,
+        )
+    return SmtpEmailAdapter(
+        host=runtime_settings.notification_smtp_host,
+        port=runtime_settings.notification_smtp_port,
+        sender=runtime_settings.notification_from_email,
+    )
+
+
 def main() -> None:
     configure_logging()
-    adapter = SendGridEmailAdapter(
-        api_key=settings.sendgrid_api_key.get_secret_value() if settings.sendgrid_api_key else "",
-        sender=settings.notification_from_email,
-    )
+    adapter = build_email_adapter(settings)
     sessions = build_session_factory(settings.database_url)
     try:
         published = OutboxPublisher(sessions).publish_pending()
         worker = DeliveryWorker(
             sessions,
-            sender=SendGridDeliverySender(sessions, adapter),
+            sender=EmailDeliverySender(sessions, adapter),
             max_attempts=settings.worker_max_attempts,
             lease_seconds=settings.worker_lease_seconds,
         )

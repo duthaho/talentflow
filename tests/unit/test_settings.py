@@ -70,14 +70,26 @@ def test_production_requires_https_calendar_public_base_url() -> None:
         )
 
 
-def test_settings_rejects_partial_notification_secret_configuration() -> None:
-    with pytest.raises(ValidationError, match="must be configured together"):
-        Settings(sendgrid_api_key="super-secret-value")
+def test_settings_rejects_sendgrid_without_an_api_key() -> None:
+    with pytest.raises(ValidationError, match="SENDGRID_API_KEY"):
+        Settings(notification_email_adapter="sendgrid")
+
+
+def test_settings_rejects_incomplete_smtp_configuration() -> None:
+    with pytest.raises(ValidationError, match="NOTIFICATION_SMTP_HOST"):
+        Settings(notification_smtp_host="")
+
+
+@pytest.mark.parametrize("port", [0, 65536])
+def test_settings_rejects_smtp_port_outside_tcp_range(port: int) -> None:
+    with pytest.raises(ValidationError, match="NOTIFICATION_SMTP_PORT"):
+        Settings(notification_smtp_port=port)
 
 
 def test_settings_redacts_database_url_and_sendgrid_secret_in_repr() -> None:
     settings = Settings(
         database_url="postgresql+psycopg://user:db-password@db/talentflow",
+        notification_email_adapter="sendgrid",
         sendgrid_api_key="super-secret-value",
         notification_from_email="notifications@example.test",
     )

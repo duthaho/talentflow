@@ -84,7 +84,7 @@ Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `imple
 | Module-owned routers and persistence | Boundaries enforced, not just foldered (DUTH-45) | — | — | [001](docs/adr/001-modular-monolith-clean-architecture.md) | planned — stage 2 |
 | RFC 9457 Problem Details | One machine-readable error contract (DUTH-46) | — | — | — | planned — stage 2 |
 | Long-running workers, graceful shutdown, advisory-lock scheduling (DUTH-47) | No lost leases on deploy; one retention run at a time | — | — | — | planned — stage 2 |
-| SMTP adapter to Mailpit (DUTH-48) | Email visible locally without a provider account | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
+| SMTP adapter to Mailpit (DUTH-48) | Email visible locally without a provider account | [`app/modules/notifications/infrastructure/smtp_email.py`](app/modules/notifications/infrastructure/smtp_email.py) | [`tests/integration/test_smtp_email.py`](tests/integration/test_smtp_email.py) | [003](docs/adr/003-local-open-source-runtime-stack.md) | implemented |
 | S3 storage with presigned downloads (DUTH-49) | Bytes never stream through the API; short-lived links after authz | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
 | One-command stack and Keycloak (DUTH-50) | Runnable by anyone with real OIDC tokens and seeded roles | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
 | Browser OIDC (code + PKCE), generated typed API client (DUTH-51) | Secure SPA login; client and API cannot drift | — | — | — | planned — stage 3 |
@@ -129,7 +129,7 @@ Candidate lifecycle: `applied → screening → interviewing → offer_pending_a
 
 - Settings are validated at startup (`app/shared/settings.py`). With `APP_ENV=production` the app requires `AUTH_MODE=oidc_jwt`, PostgreSQL, Redis, explicit HTTPS CORS origins, HTTPS OIDC and calendar URLs, an absolute attachment root and ClamAV scanning.
 - Variable names are listed in [`.env.example`](.env.example). Values there are local development defaults only. Never commit real credentials.
-- `SENDGRID_API_KEY` and `NOTIFICATION_FROM_EMAIL` are optional and must be set together; stage 2 makes SMTP to Mailpit the local default.
+- `NOTIFICATION_EMAIL_ADAPTER=smtp` is the local default and sends to Mailpit at `mailpit:1025`; set `NOTIFICATION_EMAIL_ADAPTER=sendgrid` with `SENDGRID_API_KEY` to use SendGrid instead. `NOTIFICATION_FROM_EMAIL` is always required.
 
 ## Repository layout
 
