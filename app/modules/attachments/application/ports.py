@@ -19,6 +19,12 @@ class Attachment:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class AttachmentDownload:
+    local_path: Path | None = None
+    presigned_url: str | None = None
+
+
 class AttachmentRepository(Protocol):
     def candidate_exists(self, *, candidate_case_id: str, tenant_id: str) -> bool: ...
 
@@ -34,7 +40,7 @@ class AttachmentRepository(Protocol):
 class AttachmentStorage(Protocol):
     def save(self, *, storage_key: str, content: bytes) -> None: ...
 
-    def open(self, *, storage_key: str) -> Path: ...
+    def download(self, *, storage_key: str, expires_in_seconds: int) -> AttachmentDownload: ...
 
     def delete(self, *, storage_key: str) -> None: ...
 

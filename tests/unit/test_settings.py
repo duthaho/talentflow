@@ -96,11 +96,16 @@ def test_settings_redacts_database_url_and_sendgrid_secret_in_repr() -> None:
 
     assert "db-password" not in repr(settings)
     assert "super-secret-value" not in repr(settings)
-
-
 def test_settings_rejects_invalid_worker_timing() -> None:
     with pytest.raises(ValidationError, match="worker polling intervals"):
         Settings(worker_poll_seconds=10, worker_max_backoff_seconds=1)
 
     with pytest.raises(ValidationError, match="RETENTION_SCHEDULE_SECONDS"):
         Settings(retention_schedule_seconds=0)
+
+
+def test_s3_attachment_storage_requires_credentials_and_bounded_download_ttl() -> None:
+    with pytest.raises(ValidationError, match="S3 attachment storage requires"):
+        Settings(attachment_storage_backend="s3")
+    with pytest.raises(ValidationError, match="ATTACHMENT_DOWNLOAD_TTL_SECONDS"):
+        Settings(attachment_download_ttl_seconds=301)

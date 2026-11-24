@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
-from pathlib import Path, PurePath
+from pathlib import PurePath
 from uuid import uuid4
 
 from app.modules.attachments.application.ports import (
     Attachment,
+    AttachmentDownload,
     AttachmentRepository,
     AttachmentStorage,
     AuditRecorder,
@@ -135,7 +136,8 @@ class AttachmentService:
         tenant_id: str,
         actor_id: str,
         correlation_id: str,
-    ) -> tuple[Attachment, Path]:
+        expires_in_seconds: int,
+    ) -> tuple[Attachment, AttachmentDownload]:
         attachment = self._repository.get(
             attachment_id=attachment_id,
             candidate_case_id=candidate_case_id,
@@ -143,7 +145,9 @@ class AttachmentService:
         )
         if attachment is None:
             raise AttachmentNotFoundError(attachment_id)
-        content = self._storage.open(storage_key=attachment.storage_key)
+        download = self._storage.download(
+            storage_key=attachment.storage_key, expires_in_seconds=expires_in_seconds
+        )
         self._audit.record(
             tenant_id=tenant_id,
             actor_id=actor_id,
@@ -154,7 +158,7 @@ class AttachmentService:
             metadata={"candidate_case_id": candidate_case_id, "sha256": attachment.sha256},
         )
         self._unit_of_work.commit()
-        return attachment, content
+        return attachment, download
 
 
 def _validate(command: UploadAttachmentCommand, *, max_bytes: int) -> str:

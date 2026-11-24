@@ -53,6 +53,53 @@ services:
       timeout: 3s
       retries: 30
 
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.88
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        sed -e "s#__ACCESS_KEY__#$SEAWEEDFS_ACCESS_KEY#g"
+        -e "s#__SECRET_KEY__#$SEAWEEDFS_SECRET_KEY#g"
+        /etc/seaweedfs/s3.json.tmpl > /tmp/s3.json &&
+        exec weed server -ip=seaweedfs -ip.bind=0.0.0.0 -dir=/data -s3 -s3.config=/tmp/s3.json
+    environment:
+      SEAWEEDFS_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY:?Set SEAWEEDFS_ACCESS_KEY in your environment}
+      SEAWEEDFS_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY:?Set SEAWEEDFS_SECRET_KEY in your environment}
+    volumes:
+      - seaweedfs_data:/data
+      - ./seaweedfs/s3.json.tmpl:/etc/seaweedfs/s3.json.tmpl:ro
+    ports:
+      - "127.0.0.1:8333:8333"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -S --spider http://127.0.0.1:8333/ 2>&1 | grep -Eq 'HTTP/1.1 (200|403)' "]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  seaweedfs-init:
+    image: amazon/aws-cli:2.32.4
+    environment:
+      AWS_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY:?Set SEAWEEDFS_ACCESS_KEY in your environment}
+      AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_KEY:?Set SEAWEEDFS_SECRET_KEY in your environment}
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        aws --endpoint-url http://seaweedfs:8333 s3api head-bucket --bucket talentflow-attachments
+        || aws --endpoint-url http://seaweedfs:8333 s3api create-bucket --bucket talentflow-attachments
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    restart: "no"
+
+  clamav:
+    image: clamav/clamav-debian:1.4.4
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --version"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
   migrate:
     build: .
     command: ["alembic", "upgrade", "head"]
@@ -67,8 +114,18 @@ services:
       REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_REQUESTS_PER_MINUTE: 120
       ATTACHMENT_STORAGE_ROOT: /app/data/attachments
+      ATTACHMENT_STORAGE_BACKEND: s3
+      ATTACHMENT_S3_ENDPOINT_URL: http://seaweedfs:8333
+      ATTACHMENT_S3_PUBLIC_ENDPOINT_URL: http://localhost:8333
+      ATTACHMENT_S3_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY:?Set SEAWEEDFS_ACCESS_KEY in your environment}
+      ATTACHMENT_S3_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_KEY:?Set SEAWEEDFS_SECRET_KEY in your environment}
+      ATTACHMENT_S3_BUCKET: talentflow-attachments
+      ATTACHMENT_S3_REGION: us-east-1
+      ATTACHMENT_DOWNLOAD_TTL_SECONDS: 300
       ATTACHMENT_MAX_BYTES: 5242880
-      ATTACHMENT_SCAN_MODE: noop
+      ATTACHMENT_SCAN_MODE: clamav
+      ATTACHMENT_CLAMAV_HOST: clamav
+      ATTACHMENT_CLAMAV_PORT: 3310
       CALENDAR_PUBLIC_BASE_URL: http://localhost:8000
       NOTIFICATION_EMAIL_ADAPTER: smtp
       NOTIFICATION_FROM_EMAIL: notifications@talentflow.local
@@ -81,6 +138,10 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+      seaweedfs-init:
+        condition: service_completed_successfully
+      clamav:
+        condition: service_healthy
     restart: "no"
 
   api:
@@ -91,8 +152,6 @@ services:
         condition: service_completed_successfully
     ports:
       - "127.0.0.1:8000:8000"
-    volumes:
-      - attachment_data:/app/data/attachments
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"]
       interval: 10s
@@ -121,8 +180,6 @@ services:
     build: .
     command: ["python", "-m", "app.workers.retention"]
     environment: *runtime_environment
-    volumes:
-      - attachment_data:/app/data/attachments
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -155,4 +212,4 @@ services:
 
 volumes:
   postgres_data:
-  attachment_data:
+  seaweedfs_data:

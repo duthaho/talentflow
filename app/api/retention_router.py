@@ -8,7 +8,6 @@ from app.api.schemas import (
     RetentionPolicyResponse,
     RetentionPurgeResponse,
 )
-from app.modules.attachments.infrastructure.filesystem_storage import LocalAttachmentStorage
 from app.modules.identity.security import ActorContext, require
 from app.modules.retention.application.retention import CandidateNotFoundError, RetentionService
 from app.modules.retention.infrastructure.sqlalchemy_repository import (
@@ -16,6 +15,7 @@ from app.modules.retention.infrastructure.sqlalchemy_repository import (
     SqlAlchemyRetentionRepository,
     SqlAlchemyUnitOfWork,
 )
+from app.shared.attachment_storage import build_attachment_storage
 from app.shared.database import SessionDep
 
 router = APIRouter(tags=["retention"])
@@ -25,9 +25,7 @@ def _service(session: SessionDep, request: Request) -> RetentionService:
     return RetentionService(
         repository=SqlAlchemyRetentionRepository(
             session,
-            attachment_storage=LocalAttachmentStorage(
-                request.app.state.runtime_settings.attachment_storage_root
-            ),
+            attachment_storage=build_attachment_storage(request.app.state.runtime_settings),
         ),
         audit=SqlAlchemyAuditRecorder(session),
         unit_of_work=SqlAlchemyUnitOfWork(session),

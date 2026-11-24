@@ -30,9 +30,19 @@ class Settings(BaseSettings):
     rate_limit_requests_per_minute: int = 120
     rate_limit_trusted_proxy_cidrs: str = ""
     attachment_storage_root: str = "./data/attachments"
+    attachment_storage_backend: Literal["filesystem", "s3"] = "filesystem"
+    attachment_s3_endpoint_url: str = ""
+    attachment_s3_public_endpoint_url: str = ""
+    attachment_s3_access_key_id: str = ""
+    attachment_s3_secret_access_key: SecretStr | None = None
+    attachment_s3_bucket: str = "talentflow-attachments"
+    attachment_s3_region: str = "us-east-1"
+    attachment_download_ttl_seconds: int = 300
     attachment_max_bytes: int = 5 * 1024 * 1024
     attachment_scan_mode: Literal["noop", "clamav"] = "noop"
     attachment_scan_command: str = "clamscan"
+    attachment_clamav_host: str = ""
+    attachment_clamav_port: int = 3310
     calendar_subscription_lifetime_days: int = 90
     calendar_interview_duration_minutes: int = 60
     calendar_public_base_url: str = ""
@@ -65,7 +75,10 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires a Redis REDIS_URL for rate limiting")
             if self.attachment_scan_mode != "clamav":
                 raise ValueError("Production requires ATTACHMENT_SCAN_MODE=clamav")
-            if not self.attachment_storage_root.startswith("/"):
+            if (
+                self.attachment_storage_backend == "filesystem"
+                and not self.attachment_storage_root.startswith("/")
+            ):
                 raise ValueError("Production requires an absolute ATTACHMENT_STORAGE_ROOT")
             if not self.calendar_public_base_url.startswith("https://"):
                 raise ValueError("Production requires an HTTPS CALENDAR_PUBLIC_BASE_URL")
@@ -73,6 +86,20 @@ class Settings(BaseSettings):
             raise ValueError("RATE_LIMIT_REQUESTS_PER_MINUTE must be positive")
         if self.attachment_max_bytes < 1:
             raise ValueError("ATTACHMENT_MAX_BYTES must be positive")
+        if not 1 <= self.attachment_clamav_port <= 65535:
+            raise ValueError("ATTACHMENT_CLAMAV_PORT must be between 1 and 65535")
+        if not 1 <= self.attachment_download_ttl_seconds <= 300:
+            raise ValueError("ATTACHMENT_DOWNLOAD_TTL_SECONDS must be between 1 and 300")
+        if self.attachment_storage_backend == "s3" and not all(
+            (
+                self.attachment_s3_endpoint_url,
+                self.attachment_s3_public_endpoint_url,
+                self.attachment_s3_access_key_id,
+                self.attachment_s3_secret_access_key,
+                self.attachment_s3_bucket,
+            )
+        ):
+            raise ValueError("S3 attachment storage requires endpoint, credentials, and bucket")
         if self.calendar_subscription_lifetime_days < 1:
             raise ValueError("CALENDAR_SUBSCRIPTION_LIFETIME_DAYS must be positive")
         if self.calendar_interview_duration_minutes < 1:
