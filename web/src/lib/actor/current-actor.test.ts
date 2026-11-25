@@ -1,24 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const env = vi.hoisted(() => ({ actorSource: "api" as "api" | "mock" }));
+const env = vi.hoisted(() => ({ actorSource: "api" as "api" | "mock", sessionError: undefined as Error | undefined }));
 
 vi.mock("react", async (original) => ({ ...(await original<typeof import("react")>()), cache: <T>(fn: T) => fn }));
 vi.mock("@/lib/config", () => ({ config: () => ({ apiBaseUrl: "http://api:8000", actorSource: env.actorSource }) }));
 vi.mock("@/lib/auth/session", () => ({
-  requireSession: async () => ({
+  requireSession: async () => {
+    if (env.sessionError) throw env.sessionError;
+    return {
     subject: "00000000-0000-4000-8000-000000000014",
     tenantId: "00000000-0000-4000-8000-000000000001",
     email: "interviewer@talentflow.local",
     name: "Interviewer Demo",
     accessToken: "token-1",
-  }),
+    };
+  },
 }));
 
 const { getCurrentActor } = await import("./current-actor");
+const { IdentityProviderUnavailableError } = await import("@/lib/auth/identity-provider");
 
 describe("getCurrentActor", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
+    env.sessionError = undefined;
+  });
+
+  it("shows a service-unavailable problem when Keycloak is down instead of logging out", async () => {
+    env.sessionError = new IdentityProviderUnavailableError("down");
+    const result = await getCurrentActor();
+    expect(!result.ok && result.problem).toMatchObject({ status: 503, type: expect.stringMatching(/#service-unavailable$/) });
+  });
+
+  it("rethrows anything else, such as the sign-in redirect", async () => {
+    env.sessionError = new Error("NEXT_REDIRECT");
+    await expect(getCurrentActor()).rejects.toThrow("NEXT_REDIRECT");
   });
 
   it("uses the typed mock while the API has no /v1/me", async () => {

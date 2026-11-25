@@ -1,19 +1,20 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { LoginError } from "@/lib/auth/auth-service";
-import { authService, cookieOptions, LOGIN_COOKIE, SESSION_COOKIE } from "@/lib/auth/session";
+import { LOGIN_COOKIE, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/cookies";
+import { authService } from "@/lib/auth/session";
 import { config } from "@/lib/config";
 
 export async function GET(request: NextRequest) {
   const loginId = request.cookies.get(LOGIN_COOKIE)?.value;
   try {
-    const { sessionId, returnTo, ttlSeconds } = await authService().completeLogin(
+    const { sessionId, returnTo } = await authService().completeLogin(
       loginId,
       request.nextUrl.search,
     );
     const response = NextResponse.redirect(new URL(returnTo, config().appBaseUrl));
     response.cookies.delete(LOGIN_COOKIE);
-    response.cookies.set(SESSION_COOKIE, sessionId, cookieOptions(ttlSeconds));
+    response.cookies.set(SESSION_COOKIE, sessionId, sessionCookieOptions(config().secureCookies));
     return response;
   } catch (error) {
     const reason = error instanceof LoginError ? error.message : "The sign-in could not be completed.";

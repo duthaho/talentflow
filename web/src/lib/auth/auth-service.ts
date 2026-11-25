@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { calculatePKCECodeChallenge, randomNonce, randomPKCECodeVerifier, randomState } from "openid-client";
 
-import type { IdentityProvider, TokenSet } from "./identity-provider";
+import { IdentityProviderUnavailableError, RefreshRejectedError, type IdentityProvider, type TokenSet } from "./identity-provider";
 import type { SessionStore, StoredSession } from "./session-store";
 
 export const LOGIN_TTL_SECONDS = 600;
@@ -69,7 +69,7 @@ export class AuthService {
   async completeLogin(
     loginId: string | undefined,
     callbackSearch: string,
-  ): Promise<{ sessionId: string; returnTo: string; ttlSeconds: number }> {
+  ): Promise<{ sessionId: string; returnTo: string }> {
     const pending = loginId ? await this.deps.store.takePendingLogin(loginId) : null;
     if (!pending) {
       throw new LoginError("The sign-in attempt expired or was already used.");
@@ -86,7 +86,6 @@ export class AuthService {
       throw new LoginError("The identity token has no tenant or subject claim.");
     }
     const sessionId = newId();
-    const ttlSeconds = this.sessionTtl(tokens);
     await this.deps.store.saveSession(
       sessionId,
       {
@@ -96,9 +95,9 @@ export class AuthService {
         name: stringClaim(tokens.claims, "name") || stringClaim(tokens.claims, "preferred_username"),
         ...this.tokenFields(tokens),
       },
-      ttlSeconds,
+      this.sessionTtl(tokens),
     );
-    return { sessionId, returnTo: pending.returnTo, ttlSeconds };
+    return { sessionId, returnTo: pending.returnTo };
   }
 
   async currentSession(sessionId: string | undefined): Promise<StoredSession | null> {
@@ -120,9 +119,15 @@ export class AuthService {
       };
       await this.deps.store.saveSession(sessionId, refreshed, this.sessionTtl(tokens));
       return refreshed;
-    } catch {
-      await this.deps.store.deleteSession(sessionId);
-      return null;
+    } catch (error) {
+      if (error instanceof RefreshRejectedError) {
+        await this.deps.store.deleteSession(sessionId);
+        return null;
+      }
+      if (session.accessTokenExpiresAt > this.now()) return session;
+      throw error instanceof IdentityProviderUnavailableError
+        ? error
+        : new IdentityProviderUnavailableError("Token refresh failed", { cause: error });
     }
   }
 

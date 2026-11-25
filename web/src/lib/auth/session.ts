@@ -10,8 +10,7 @@ import { AuthService } from "./auth-service";
 import { KeycloakIdentityProvider } from "./identity-provider";
 import { RedisKeyValueStore, SessionStore, type StoredSession } from "./session-store";
 
-export const SESSION_COOKIE = "tf_session";
-export const LOGIN_COOKIE = "tf_login";
+import { SESSION_COOKIE } from "./cookies";
 
 let service: AuthService | undefined;
 
@@ -29,16 +28,6 @@ export function authService(): AuthService {
     });
   }
   return service;
-}
-
-export function cookieOptions(maxAgeSeconds: number) {
-  return {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    secure: config().secureCookies,
-    path: "/",
-    maxAge: maxAgeSeconds,
-  };
 }
 
 export const getSession = cache(async (): Promise<StoredSession | null> => {

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { KeycloakIdentityProvider, keycloakMetadata } from "./identity-provider";
+import { ResponseBodyError } from "openid-client";
+
+import {
+  classifyRefreshError,
+  IdentityProviderUnavailableError,
+  KeycloakIdentityProvider,
+  keycloakMetadata,
+  RefreshRejectedError,
+} from "./identity-provider";
 
 const endpoints = {
   publicIssuer: "http://localhost:8081/realms/talentflow",
@@ -43,5 +51,19 @@ describe("Keycloak endpoints", () => {
     expect(withHint.searchParams.get("id_token_hint")).toBe("id");
     const withoutHint = provider.endSessionUrl({ postLogoutRedirectUri: "http://localhost:3000/signed-out" });
     expect(withoutHint.searchParams.get("client_id")).toBe("talentflow-api");
+  });
+});
+
+describe("classifyRefreshError", () => {
+  const bodyError = (error: string, status: number) =>
+    new ResponseBodyError("token error", { cause: { error }, response: new Response(null, { status }) });
+
+  it("treats only invalid_grant as the end of the session", () => {
+    expect(classifyRefreshError(bodyError("invalid_grant", 400))).toBeInstanceOf(RefreshRejectedError);
+  });
+
+  it("treats other token errors and network failures as a transient outage", () => {
+    expect(classifyRefreshError(bodyError("temporarily_unavailable", 503))).toBeInstanceOf(IdentityProviderUnavailableError);
+    expect(classifyRefreshError(new TypeError("fetch failed"))).toBeInstanceOf(IdentityProviderUnavailableError);
   });
 });

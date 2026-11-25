@@ -1,3 +1,5 @@
+import { isSameOrigin } from "@/lib/http/same-origin";
+
 import { PROBLEM_TYPE_BASE, type ProblemDetails } from "./problem";
 
 const FORWARDED_REQUEST_HEADERS = ["accept", "content-type", "if-match", "if-none-match", "x-correlation-id", "idempotency-key"];
@@ -21,13 +23,6 @@ function isUnsafeSegment(segment: string): boolean {
   return segment === "" || segment === "." || segment === ".." || /[/\\]/.test(segment);
 }
 
-// SameSite=Lax still sends the cookie from other ports on the same host, which are same-site.
-function isSameOrigin(request: Request, appOrigin: string): boolean {
-  const origin = request.headers.get("origin");
-  if (origin) return origin === appOrigin;
-  return request.headers.get("sec-fetch-site") === "same-origin";
-}
-
 export function createBffProxy({ apiBaseUrl, appOrigin, accessToken, fetch: fetchImpl = fetch }: ProxyDeps) {
   const apiPrefix = `${new URL(apiBaseUrl).pathname.replace(/\/+$/, "")}/v1/`;
   return async function forward(request: Request, path: string[]): Promise<Response> {
@@ -39,7 +34,12 @@ export function createBffProxy({ apiBaseUrl, appOrigin, accessToken, fetch: fetc
     if (!SAFE_METHODS.has(request.method) && !isSameOrigin(request, appOrigin)) {
       return problem(403, "forbidden", "Forbidden", "Cross-origin requests are not allowed.", instance);
     }
-    const token = await accessToken();
+    let token: string | undefined;
+    try {
+      token = await accessToken();
+    } catch {
+      return problem(503, "service-unavailable", "Service Unavailable", "Sign-in service is temporarily unavailable. Try again shortly.", instance);
+    }
     if (!token) {
       return problem(401, "unauthorized", "Unauthorized", "Your session has ended. Sign in again.", instance);
     }

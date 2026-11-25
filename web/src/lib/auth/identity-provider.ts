@@ -9,6 +9,12 @@ export type TokenSet = {
   claims?: Record<string, unknown>;
 };
 
+// Keycloak rejected the refresh token (expired, revoked, or session ended): the session is over.
+export class RefreshRejectedError extends Error {}
+
+// Keycloak could not be reached or answered with a non-grant error: the session may still be valid.
+export class IdentityProviderUnavailableError extends Error {}
+
 export type AuthorizationChecks = {
   codeVerifier: string;
   state: string;
@@ -64,6 +70,13 @@ function toTokenSet(response: oidc.TokenEndpointResponse & oidc.TokenEndpointRes
   };
 }
 
+export function classifyRefreshError(error: unknown): Error {
+  if (error instanceof oidc.ResponseBodyError && error.error === "invalid_grant") {
+    return new RefreshRejectedError(error.error_description ?? "invalid_grant");
+  }
+  return new IdentityProviderUnavailableError("Token refresh failed", { cause: error });
+}
+
 export class KeycloakIdentityProvider implements IdentityProvider {
   private readonly configuration: oidc.Configuration;
 
@@ -102,7 +115,11 @@ export class KeycloakIdentityProvider implements IdentityProvider {
   }
 
   async refresh(refreshToken: string) {
-    return toTokenSet(await oidc.refreshTokenGrant(this.configuration, refreshToken));
+    try {
+      return toTokenSet(await oidc.refreshTokenGrant(this.configuration, refreshToken));
+    } catch (error) {
+      throw classifyRefreshError(error);
+    }
   }
 
   async revoke(refreshToken: string) {

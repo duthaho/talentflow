@@ -80,6 +80,16 @@ describe("BFF proxy", () => {
     expect(await response.json()).toEqual(body);
   });
 
+  it("returns a service-unavailable problem when the token cannot be refreshed", async () => {
+    const forward = createBffProxy({
+      apiBaseUrl: "http://api:8000",
+      appOrigin: "http://web",
+      accessToken: async () => Promise.reject(new Error("keycloak down")),
+    });
+    const response = await forward(new Request("http://web/api/tf/v1/candidate-cases"), ["v1", "candidate-cases"]);
+    expect(response.status).toBe(503);
+  });
+
   it("returns a service-unavailable problem when the API is unreachable", async () => {
     const { forward } = proxy("t", vi.fn(async () => Promise.reject(new TypeError("fetch failed"))));
     const response = await forward(new Request("http://web/api/tf/v1/candidate-cases"), ["v1", "candidate-cases"]);

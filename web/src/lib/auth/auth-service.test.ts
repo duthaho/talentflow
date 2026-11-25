@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthService, LoginError, safeReturnTo } from "./auth-service";
-import type { IdentityProvider, TokenSet } from "./identity-provider";
+import { IdentityProviderUnavailableError, RefreshRejectedError, type IdentityProvider, type TokenSet } from "./identity-provider";
 import { MemoryKeyValueStore, SessionStore } from "./session-store";
 
 const CLAIMS = { sub: "user-1", tenant_id: "tenant-1", email: "a@b.test", name: "Ada" };
@@ -74,7 +74,7 @@ describe("AuthService", () => {
     expect((callbackUrl as URL).href).toMatch(/^http:\/\/web\.test\/auth\/callback\?code=abc/);
     const challenge = provider.authorizationUrl.mock.calls[0][0].codeChallenge;
     expect(createHash("sha256").update(checks.codeVerifier).digest("base64url")).toBe(challenge);
-    expect(result).toMatchObject({ returnTo: "/candidates?stage=applied", ttlSeconds: 1800 });
+    expect(result).toMatchObject({ returnTo: "/candidates?stage=applied" });
     expect(await service.currentSession(result.sessionId)).toMatchObject({
       subject: "user-1",
       tenantId: "tenant-1",
@@ -116,12 +116,44 @@ describe("AuthService", () => {
     expect(session).toMatchObject({ accessToken: "access-2", refreshToken: "refresh-1", idToken: "id-1" });
   });
 
-  it("ends the session when refresh fails", async () => {
+  it("keeps an active session usable past the first 30-minute TTL", async () => {
     const { sessionId } = await login();
-    provider.refresh.mockRejectedValueOnce(new Error("invalid_grant"));
+    for (let minute = 5; minute <= 90; minute += 5) {
+      now = 1_000_000 + minute * 60_000;
+      expect(await service.currentSession(sessionId), `minute ${minute}`).not.toBeNull();
+    }
+    expect(provider.refresh.mock.calls.length).toBeGreaterThan(5);
+  });
+
+  it("expires an idle session when the refresh window passes without activity", async () => {
+    const { sessionId } = await login();
+    now += 1_801_000;
+    expect(await service.currentSession(sessionId)).toBeNull();
+    expect(provider.refresh).not.toHaveBeenCalled();
+  });
+
+  it("ends the session when Keycloak rejects the refresh token", async () => {
+    const { sessionId } = await login();
+    provider.refresh.mockRejectedValueOnce(new RefreshRejectedError("invalid_grant"));
     now += 299_000;
     expect(await service.currentSession(sessionId)).toBeNull();
     expect(await service.currentSession(sessionId)).toBeNull();
+  });
+
+  it("keeps the session through a transient refresh failure while the access token is still valid", async () => {
+    const { sessionId } = await login();
+    provider.refresh.mockRejectedValueOnce(new IdentityProviderUnavailableError("down"));
+    now += 280_000;
+    expect(await service.currentSession(sessionId)).toMatchObject({ accessToken: "access-1" });
+    expect(await service.currentSession(sessionId)).toMatchObject({ accessToken: "access-2" });
+  });
+
+  it("reports an outage, without logging out, when the access token has already expired", async () => {
+    const { sessionId } = await login();
+    provider.refresh.mockRejectedValueOnce(new TypeError("fetch failed"));
+    now += 301_000;
+    await expect(service.currentSession(sessionId)).rejects.toBeInstanceOf(IdentityProviderUnavailableError);
+    expect(await service.currentSession(sessionId)).toMatchObject({ accessToken: "access-2" });
   });
 
   it("returns no session without a cookie or for an unknown id", async () => {

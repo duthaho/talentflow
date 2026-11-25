@@ -2,12 +2,22 @@ import "server-only";
 
 import { cache } from "react";
 
-import { fallbackProblem, toProblem, type ProblemDetails } from "@/lib/api/problem";
+import { fallbackProblem, PROBLEM_TYPE_BASE, toProblem, type ProblemDetails } from "@/lib/api/problem";
+import { IdentityProviderUnavailableError } from "@/lib/auth/identity-provider";
 import { requireSession } from "@/lib/auth/session";
 import { config } from "@/lib/config";
 
 import type { Actor, Permission, Role } from "./actor";
 import { mockActor } from "./mock";
+
+function signInUnavailable(): ProblemDetails {
+  return {
+    type: `${PROBLEM_TYPE_BASE}service-unavailable`,
+    title: "Service Unavailable",
+    status: 503,
+    detail: "The sign-in service is temporarily unavailable. Your session is kept; try again shortly.",
+  };
+}
 
 type MeResponse = {
   user_id: string;
@@ -22,7 +32,13 @@ type MeResponse = {
 export type ActorResult = { ok: true; actor: Actor } | { ok: false; problem: ProblemDetails };
 
 export const getCurrentActor = cache(async (): Promise<ActorResult> => {
-  const session = await requireSession();
+  let session;
+  try {
+    session = await requireSession();
+  } catch (error) {
+    if (!(error instanceof IdentityProviderUnavailableError)) throw error;
+    return { ok: false, problem: signInUnavailable() };
+  }
   if (config().actorSource === "mock") {
     return { ok: true, actor: mockActor(session) };
   }
