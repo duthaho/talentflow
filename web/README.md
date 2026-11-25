@@ -48,3 +48,13 @@ CI fails when `openapi.json` or `src/lib/api/schema.ts` differ from a fresh gene
 - `src/lib/actor/`, `src/lib/nav.ts`: caller identity, permissions and role-aware navigation
 - `src/app/auth/*`: login, callback and logout route handlers; `src/app/api/tf/[...path]`: BFF proxy
 - `src/app/(app)/`: authenticated screens
+- `src/lib/pipeline/`, `src/components/pipeline/`: the candidate pipeline board (`/candidates`)
+
+## Pipeline board
+
+Each stage column loads its own cursor-paginated page from `GET /v1/candidate-cases?stage=…&requisition_id=…`. A move sends `PATCH /v1/candidate-cases/{id}/stage` with the card's `expected_version`; the card moves only after the API accepts it.
+
+- **Allowed moves**: `src/lib/pipeline/stages.ts` mirrors the backend state machine so the board can make illegal targets non-droppable and keep them out of the keyboard "Move to" menu. `stages.test.ts` parses `candidate_state_machine.py` and fails when the two drift. The API stays the authority (422 on an illegal move).
+- **Version conflicts**: a 409 opens a "Changed by someone else" prompt whose only action is to refresh the board. The move is never retried with a newer version, so another user's change is never silently overwritten.
+- **Permissions**: without `candidate:transition` the board is read-only; New candidate and New requisition need `candidate:create` and `requisition:create`.
+- **Requisitions**: the API has no requisition list yet, so the filter offers requisitions seen on loaded cards or created in this session, and the selected one is kept in `?requisition=`.
