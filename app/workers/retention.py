@@ -15,7 +15,7 @@ from app.modules.retention.infrastructure.sqlalchemy_repository import (
 )
 from app.shared.attachment_storage import build_attachment_storage
 from app.shared.database import build_session_factory
-from app.shared.observability import configure_logging
+from app.shared.observability import configure_logging, configure_telemetry
 from app.shared.settings import settings
 from app.shared.worker_runtime import WorkerLoop
 
@@ -106,6 +106,7 @@ class ScheduledRetentionCycle:
 
 
 def main() -> None:
+    configure_telemetry(settings)
     configure_logging()
     sessions = build_session_factory(settings.database_url)
     cycle = ScheduledRetentionCycle(

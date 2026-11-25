@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Event, Thread
 from typing import Any
 
+from opentelemetry import trace
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.shared.observability import worker_backlog, worker_last_success, worker_ready
@@ -120,7 +121,10 @@ class WorkerLoop:
             delay = self._poll_seconds
             while not self._stop.is_set():
                 try:
-                    backlog = self._cycle()
+                    with trace.get_tracer(__name__).start_as_current_span(
+                        "worker.cycle", attributes={"worker.name": self.name}
+                    ):
+                        backlog = self._cycle()
                 except Exception:
                     logger.exception("worker_cycle_failed", extra={"event": "worker_cycle_failed"})
                     delay = min(delay * 2, self._max_backoff_seconds)

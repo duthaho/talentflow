@@ -111,3 +111,13 @@ def test_s3_attachment_storage_requires_credentials_and_bounded_download_ttl() -
         Settings(attachment_storage_backend="s3")
     with pytest.raises(ValidationError, match="ATTACHMENT_DOWNLOAD_TTL_SECONDS"):
         Settings(attachment_download_ttl_seconds=301)
+
+
+def test_telemetry_export_is_disabled_by_default_and_configurable() -> None:
+    assert Settings().otel_exporter_otlp_endpoint == ""
+    configured = Settings(
+        otel_exporter_otlp_endpoint="otel-collector:4317",
+        otel_service_name="talentflow-retention-worker",
+    )
+    assert configured.otel_exporter_otlp_endpoint == "otel-collector:4317"
+    assert configured.otel_service_name == "talentflow-retention-worker"

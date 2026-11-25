@@ -17,7 +17,7 @@ from app.api.reporting_router import router as reporting_router
 from app.api.retention_router import router as retention_router
 from app.modules.identity.infrastructure.jwt_validator import HttpJwksProvider, JwtValidator
 from app.shared.database import Base, build_engine
-from app.shared.observability import configure_logging, instrument_app
+from app.shared.observability import configure_logging, configure_telemetry, instrument_app
 from app.shared.problem_details import install_problem_details_handlers
 from app.shared.rate_limit import (
     MemoryFixedWindowRateLimiter,
@@ -28,8 +28,9 @@ from app.shared.settings import Settings, settings
 
 
 def create_app(database_url: str | None = None, app_settings: Settings | None = None) -> FastAPI:
-    configure_logging()
     runtime_settings = app_settings or settings
+    configure_telemetry(runtime_settings)
+    configure_logging()
     engine = build_engine(database_url or runtime_settings.database_url)
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     rate_limiter = (

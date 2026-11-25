@@ -152,6 +152,15 @@ jobs:
           assert_status 200 "$(get_token recruiter@talentflow.local)"
           assert_status 200 "$(get_token manager@talentflow.local)"
           assert_status 403 "$(get_token interviewer@talentflow.local)"
+      - name: Verify the Collector received an API trace
+        run: |
+          curl --fail --silent --show-error http://localhost:8000/health/live >/dev/null
+          for attempt in $(seq 1 30); do
+            docker compose logs otel-collector | grep -q 'Traces' && exit 0
+            sleep 1
+          done
+          echo 'Collector did not receive a trace' >&2
+          exit 1
       - name: Print compose logs on failure
         if: failure()
         run: docker compose logs

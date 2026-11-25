@@ -8,12 +8,27 @@ from contextvars import ContextVar
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
+from opentelemetry import _logs, metrics, trace
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from starlette.responses import Response
 
+from app.shared.settings import Settings
+
 correlation_id_context: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+_telemetry_handler: LoggingHandler | None = None
+_telemetry_configured = False
 
 http_requests = Counter(
     "talentflow_http_requests",
@@ -73,13 +88,41 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
+def configure_telemetry(runtime_settings: Settings) -> None:
+    """Export telemetry only when an OTLP endpoint has been explicitly configured."""
+    global _telemetry_configured, _telemetry_handler
+    if _telemetry_configured or not runtime_settings.otel_exporter_otlp_endpoint:
+        return
+
+    resource = Resource.create({"service.name": runtime_settings.otel_service_name})
+    endpoint = runtime_settings.otel_exporter_otlp_endpoint
+    tracer_provider = TracerProvider(resource=resource)
+    tracer_provider.add_span_processor(
+        BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True))
+    )
+    trace.set_tracer_provider(tracer_provider)
+
+    metric_reader = PeriodicExportingMetricReader(
+        OTLPMetricExporter(endpoint=endpoint, insecure=True)
+    )
+    metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[metric_reader]))
+
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(
+        BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint, insecure=True))
+    )
+    _logs.set_logger_provider(logger_provider)
+    _telemetry_handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+    _telemetry_configured = True
+
+
 def configure_logging() -> None:
     root = logging.getLogger()
     if any(isinstance(handler.formatter, JsonFormatter) for handler in root.handlers):
         return
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
-    root.handlers = [handler]
+    root.handlers = [handler, *([_telemetry_handler] if _telemetry_handler else [])]
     root.setLevel(logging.INFO)
 
 

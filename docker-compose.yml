@@ -105,6 +105,34 @@ services:
       retries: 30
       start_period: 45s
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.143.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:8888:8888"
+    healthcheck:
+      test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol-contrib/config.yaml"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  grafana:
+    image: grafana/otel-lgtm:0.11.0
+    environment:
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   migrate:
     build: .
     command: ["alembic", "upgrade", "head"]
@@ -136,6 +164,8 @@ services:
       NOTIFICATION_FROM_EMAIL: notifications@talentflow.local
       NOTIFICATION_SMTP_HOST: mailpit
       NOTIFICATION_SMTP_PORT: 1025
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+      OTEL_SERVICE_NAME: talentflow-api
     depends_on:
       postgres:
         condition: service_healthy
@@ -146,6 +176,10 @@ services:
       seaweedfs-init:
         condition: service_completed_successfully
       clamav:
+        condition: service_healthy
+      otel-collector:
+        condition: service_healthy
+      grafana:
         condition: service_healthy
     restart: "no"
 
@@ -166,7 +200,9 @@ services:
   notification-worker:
     build: .
     command: ["python", "-m", "app.modules.notifications.application.run_email_worker"]
-    environment: *runtime_environment
+    environment:
+      <<: *runtime_environment
+      OTEL_SERVICE_NAME: talentflow-notification-worker
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -184,7 +220,9 @@ services:
   retention-worker:
     build: .
     command: ["python", "-m", "app.workers.retention"]
-    environment: *runtime_environment
+    environment:
+      <<: *runtime_environment
+      OTEL_SERVICE_NAME: talentflow-retention-worker
     depends_on:
       migrate:
         condition: service_completed_successfully
