@@ -11,6 +11,15 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
+  transform/redact_calendar_feed_tokens:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - replace_pattern(attributes["url.path"], "^/v1/calendar-feeds/[^/]+\\.ics$", "/v1/calendar-feeds/{token}.ics")
+          - replace_pattern(attributes["http.target"], "/v1/calendar-feeds/[^/?]+\\.ics", "/v1/calendar-feeds/{token}.ics")
+          - replace_pattern(attributes["http.url"], "/v1/calendar-feeds/[^/?]+\\.ics", "/v1/calendar-feeds/{token}.ics")
+          - replace_pattern(attributes["url.full"], "/v1/calendar-feeds/[^/?]+\\.ics", "/v1/calendar-feeds/{token}.ics")
   batch:
 
 exporters:
@@ -33,7 +42,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [transform/redact_calendar_feed_tokens, batch]
       exporters: [debug, otlphttp/grafana]
     metrics:
       receivers: [otlp]

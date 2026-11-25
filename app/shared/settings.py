@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     retention_worker_batch_size: int = 100
     retention_schedule_seconds: float = 3600.0
     otel_exporter_otlp_endpoint: str = ""
+    otel_exporter_otlp_insecure: bool | None = None
     otel_service_name: str = "talentflow-api"
 
     @property

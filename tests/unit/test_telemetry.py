@@ -53,3 +53,31 @@ def test_red_dashboard_uses_stable_http_semconv_metrics() -> None:
     assert all('\\\\"' not in expression for expression in expressions)
     assert 'http_response_status_code=~"5.."' in expressions[1]
     assert all("http_route" in expression for expression in expressions)
+
+
+def test_calendar_feed_token_is_redacted_before_span_export() -> None:
+    script = """
+from fastapi.testclient import TestClient
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+token = 'QA-CALENDAR-FEED-TOKEN-123'
+exporter = InMemorySpanExporter()
+provider = TracerProvider()
+provider.add_span_processor(SimpleSpanProcessor(exporter))
+trace.set_tracer_provider(provider)
+
+from app.main import create_app
+
+with TestClient(create_app('sqlite://')) as client:
+    response = client.get(f'/v1/calendar-feeds/{token}.ics')
+
+provider.force_flush()
+assert response.status_code == 404
+assert exporter.get_finished_spans()
+for span in exporter.get_finished_spans():
+    assert token not in str(span.attributes)
+"""
+    subprocess.run([sys.executable, "-c", script], check=True)
