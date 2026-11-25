@@ -123,7 +123,7 @@ Query parameters:
 ### 4. `GET /v1/retention-policy` — `retention:manage`
 
 - `{"retention_days": 90}` from the caller's tenant `retention_policies` row, or `{"retention_days": null}` with `200` when no row exists.
-- The response model is the same shape the `PUT` already returns, with `retention_days` made nullable for the `GET`. The `PUT` contract does not change.
+- Uses a separate response model, `RetentionPolicyReadResponse` (`retention_days: int | None`). The `PUT` keeps `RetentionPolicyResponse` (`retention_days: int`), so its OpenAPI schema and generated type do not change.
 
 ### 5. `GET /v1/attachment-policy` — `tenant:read`
 
@@ -187,4 +187,58 @@ None. The decisions above that go beyond the issue text (`sha256` dropped from m
 
 ## Plan
 
-(added at the `plan` step)
+### Design summary
+
+Five additive read routes over existing tables plus one expand-only index. No permission, column or public write-contract change. The contract above is the design; this table says where each piece lives.
+
+| Layer | File | Change |
+|---|---|---|
+| Candidates | `app/modules/candidates/application/get_candidate.py` (new), `ports.py` | `GetCandidateHandler(tenant_id, candidate_case_id)` returns a `CandidateDetail` view or raises `CandidateNotFoundError`. Repository gains `get_detail(tenant_id, id)`, filtering on both. |
+| Audit, application | `app/modules/audit/application/case_timeline.py` (new) | `CaseTimelineQuery(tenant_id, candidate_case_id, cursor, limit)`, handler, `TimelinePage`, the `METADATA_ALLOWLIST` dict and `redact(action, metadata)`, and cursor `encode`/`decode` raising `InvalidCursorError`. The cursor is base64url JSON `{"t": <UTC ISO>, "i": <id>}`. Framework-free. |
+| Audit, infrastructure | `app/modules/audit/infrastructure/sqlalchemy_reader.py` | `case_exists(tenant_id, id)` and `list_for_case(tenant_id, id, after, limit)`. One `SELECT` on `audit_events` with `tenant_id = :t AND ((aggregate_type='candidate_case' AND aggregate_id=:id) OR (aggregate_type='candidate_attachment' AND aggregate_id IN (SELECT id FROM candidate_attachments WHERE candidate_case_id=:id AND tenant_id=:t)))`, the keyset predicate from Constraints, `ORDER BY created_at DESC, id DESC`, `LIMIT limit+1`. |
+| Architecture rule | `tests/architecture/test_dependency_rule.py` | Two new documented entries: `("audit", "candidates")` "case timeline checks the case exists in the tenant" and `("audit", "attachments")` "case timeline joins attachment ids". This is the same read-side pattern `retention` already uses. |
+| Retention | `app/modules/retention/application/retention.py`, repository | `get_legal_hold(tenant_id, id)` returns a `LegalHoldView` (raises `CandidateNotFoundError` for unknown or foreign cases) and `get_policy(tenant_id)` returns `int \| None`. Reuses `candidate_exists`. |
+| Migration | `migrations/versions/<rev>_index_audit_events_by_aggregate.py` (new) | `create_index("ix_audit_events_tenant_aggregate_created", "audit_events", ["tenant_id", "aggregate_type", "aggregate_id", "created_at", "id"])`; `downgrade` drops it. The model's `__table_args__` declares the same index so autogenerate stays clean. |
+| API | `app/api/candidate_router.py`, `audit_router.py`, `retention_router.py`, `attachment_router.py` (or a small `policy` route next to it), `schemas.py` | Routes 1–5 with `require(...)`. `CandidateNotFoundError` → `404`, `InvalidCursorError` → `422`, through the existing problem+json handling. New models: `CandidateCaseDetailResponse`, `CaseAuditEventItem`, `CaseAuditEventPage`, `LegalHoldResponse`, `RetentionPolicyReadResponse`, `AttachmentPolicyResponse`. |
+| Client | `web/openapi.json`, `web/src/lib/api/schema.ts` | `make api-client`. |
+| Docs | `docs/architecture.md` (audit context read side), README pattern catalog | Add a "PII allowlist on audit read" row pointing at `case_timeline.py` and its tests. Check the keyset pagination row exists. |
+
+Route order: `GET /v1/candidate-cases/{id}` is registered after the static `GET /v1/candidate-cases`; no static sub-path collides with `{id}`.
+
+### Test plan
+
+| AC | Test | Level |
+|---|---|---|
+| AC1 | exact field set; `created_at` carries a UTC offset | integration `tests/integration/test_candidate_detail_read.py` |
+| AC2 | unknown id and tenant-B id on routes 1–3: both `404`, `type` `not-found`, bodies equal except `instance`/`correlation_id` | integration, parametrized over routes |
+| AC3 | `hiring_manager` on routes 2–4 and `auditor` on 3–4 → `403` `forbidden`, with both a real and an unknown id | integration, parametrized |
+| AC4 | 7 events, 3 with the same `created_at` (set explicitly); `limit=3` walk: no duplicates or gaps, strict `(created_at, id)` desc order, last `next_cursor` `null` | integration `tests/integration/test_case_timeline.py` |
+| AC5 | read page 1, transition the stage twice, read page 2 with the old cursor: no overlap, nothing skipped | integration |
+| AC6 | upload + download on case X, upload on case Y, schedule an interview on X: X's timeline has its two attachment events, none from Y, no `interview.*` | integration |
+| AC7 | seed `audit_events` rows directly with `first_name`, `last_name`, `email`, `original_filename`, `sha256`, `reason`, `candidate_case_id` and an unknown action; assert no forbidden key **or value** appears anywhere in the serialized response; unknown action → `{}` | integration + unit on `redact` for every allowlist row |
+| AC8 | bad cursors (`!!!`, base64 non-JSON, missing `i`, bad timestamp) and `limit=0`/`101` → `422` | integration + unit on the cursor codec |
+| AC9 | hold lifecycle: none → set → read → release → read | integration `tests/integration/test_candidate_retention.py` (extend) |
+| AC10 | none → `null`; `PUT 90` → `90`; tenant B policy invisible to A; PUT schema unchanged (`retention_days` still required in `openapi.json`) | integration |
+| AC11 | `create_app(..., app_settings=Settings(attachment_max_bytes=1234))` → `1234` and sorted types | integration |
+| AC12 | existing `GET /v1/audit-events` tests untouched and green | existing |
+| AC13 | `npm run api:check` (CI `web` job and locally) | CI |
+| AC14 | gates below | local + CI |
+| — | migration `upgrade`/`downgrade` round-trip on PostgreSQL, if the repo has a migration test harness; otherwise `alembic upgrade head` against the compose Postgres, with output in the PR | manual/CI |
+| — | architecture rule green with the two new entries | existing |
+
+Gates before hand-off: `ruff format --check`, `ruff check`, `uv run python -m pytest` (coverage ≥ 85%), `npm run api:check` and `npm run build` in `web/`.
+
+### Threat model
+
+Requested from Hoàng-Security on DUTH-110. It is added here before the plan goes to the requester.
+
+### Sub-issues by stage
+
+None. The five routes are one API slice for one page, with one PR to review and verify, so the work ships as one PR on DUTH-110 itself.
+
+| Stage | Work | Handler | ACs | Depends on |
+|---|---|---|---|---|
+| 1 | Implement routes 1–5, migration, tests, regenerated client and docs. PR titled `DUTH-110: Add candidate detail read APIs`, linking this spec | Quốc-BE | AC1–AC14 | spec PR #15 approved; requester approves this plan |
+| review | `code_review` → `security_review` (required: PII allowlist, cross-tenant join) → `qa` → `in_review` | Trung-PM, Hoàng-Security, Diễm-QA | — | stage 1 PR |
+
+Downstream: DUTH-53 stays `blocked` until this PR merges. Hiếu-FE then replaces the mocks with the generated types.
