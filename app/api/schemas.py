@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -15,6 +16,16 @@ class TenantResponse(BaseModel):
     id: str
     name: str
     slug: str
+
+
+class CurrentActorResponse(BaseModel):
+    user_id: str
+    email: str | None
+    display_name: None = None
+    tenant_id: str
+    tenant_name: str
+    role: Literal["tenant_admin", "recruiter", "auditor", "hiring_manager", "interviewer"]
+    permissions: list[str]
 
 
 class CreateRequisitionRequest(BaseModel):
