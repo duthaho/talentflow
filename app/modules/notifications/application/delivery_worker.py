@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from opentelemetry import trace
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.orm import sessionmaker
 
 from app.modules.notifications.persistence import NotificationDelivery
@@ -31,9 +31,10 @@ class DeliveryWorker:
         self.lease_seconds = lease_seconds
         self.worker_id = worker_id or str(uuid4())
 
-    def deliver_pending(self) -> int:
+    def deliver_pending(self, *, should_stop: Callable[[], bool] | None = None) -> int:
         delivered = 0
-        while delivery := self._claim_next():
+        stopping = should_stop or (lambda: False)
+        while not stopping() and (delivery := self._claim_next()):
             with tracer.start_as_current_span("notification.delivery") as span:
                 span.set_attribute("notification.delivery_id", delivery.id)
                 try:
@@ -44,6 +45,30 @@ class DeliveryWorker:
                     self._mark_delivered(delivery.id)
                     delivered += 1
         return delivered
+
+    def pending_count(self) -> int:
+        with self.sessions() as session:
+            return (
+                session.scalar(
+                    select(func.count())
+                    .select_from(NotificationDelivery)
+                    .where(NotificationDelivery.status.in_(("pending", "retry", "processing")))
+                )
+                or 0
+            )
+
+    def release_leases(self) -> None:
+        """Make work owned by this process immediately available during shutdown."""
+        with self.sessions() as session:
+            session.execute(
+                update(NotificationDelivery)
+                .where(
+                    NotificationDelivery.status == "processing",
+                    NotificationDelivery.lease_owner == self.worker_id,
+                )
+                .values(status="retry", lease_owner=None, lease_expires_at=None)
+            )
+            session.commit()
 
     def _claim_next(self) -> NotificationDelivery | None:
         now = datetime.now(UTC)

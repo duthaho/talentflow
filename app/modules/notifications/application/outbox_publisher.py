@@ -45,3 +45,14 @@ class OutboxPublisher:
                 or 0
             )
             return published
+
+    def pending_count(self) -> int:
+        with self.sessions() as session:
+            return (
+                session.scalar(
+                    select(func.count())
+                    .select_from(OutboxEvent)
+                    .where(OutboxEvent.status == "pending")
+                )
+                or 0
+            )

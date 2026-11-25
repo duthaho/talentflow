@@ -75,14 +75,14 @@ flowchart LR
   api --> redis[("Redis<br/>rate limits")]
   api --> fs[("Attachment volume<br/>local filesystem")]
   api -. "clamscan (when ATTACHMENT_SCAN_MODE=clamav)" .-> clam["ClamAV CLI"]
-  ow["notification worker<br/>one-shot: outbox → deliveries"] --> pg
-  ew["email worker<br/>one-shot: leased delivery"] --> pg
+  ow["notification worker<br/>poll loop: outbox → deliveries"] --> pg
+  ew["email worker<br/>poll loop: leased delivery"] --> pg
   ew --> sg["SendGrid"]
-  rw["retention worker<br/>one-shot purge"] --> pg
+  rw["retention worker<br/>scheduled purge + advisory lock"] --> pg
   rw --> fs
 ```
 
-Workers are bounded one-shot commands meant for an external scheduler. `docker-compose.yml` today runs PostgreSQL, Redis, `migrate`, `api`, the outbox publisher and the retention worker with `AUTH_MODE=development_headers` and `ATTACHMENT_SCAN_MODE=noop`.
+Workers are long-lived processes built from the API image. They poll with bounded exponential backoff, drain on SIGTERM (releasing email leases if the grace period expires), expose `/health/live`, `/health/ready` and `/metrics`, and record cycle-success and backlog metrics. Retention uses a configurable interval and PostgreSQL advisory lock, so only one replica purges at a time. `docker compose --profile workers up -d` starts the notification and retention services.
 
 ### Target
 

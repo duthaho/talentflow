@@ -28,7 +28,7 @@ uv run uvicorn app.main:app --reload          # SQLite, development header auth
 curl http://127.0.0.1:8000/health/ready
 ```
 
-In development mode requests authenticate with `X-Tenant-Id` and `X-Actor-Id` headers. With Docker, `docker compose up -d` runs PostgreSQL, Redis, migrations, the API on port 8000 and one-shot outbox and retention workers, still in development header-auth mode.
+In development mode requests authenticate with `X-Tenant-Id` and `X-Actor-Id` headers. With Docker, `docker compose up -d` runs PostgreSQL, Redis, migrations and the API on port 8000. `docker compose --profile workers up -d` also runs the long-lived notification and retention workers, still in development header-auth mode.
 
 Quality gates (same as CI):
 
@@ -83,7 +83,7 @@ Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `imple
 | --- | --- | --- | --- | --- | --- |
 | Module-owned routers and persistence | Boundaries enforced, not just foldered (DUTH-45) | — | — | [001](docs/adr/001-modular-monolith-clean-architecture.md) | planned — stage 2 |
 | RFC 9457 Problem Details | One machine-readable error contract (DUTH-46) | — | — | — | planned — stage 2 |
-| Long-running workers, graceful shutdown, advisory-lock scheduling (DUTH-47) | No lost leases on deploy; one retention run at a time | — | — | — | planned — stage 2 |
+| Long-running workers, graceful shutdown, advisory-lock scheduling (DUTH-47) | No lost leases on deploy; one retention run at a time | [`app/shared/worker_runtime.py`](app/shared/worker_runtime.py), [`app/workers/retention.py`](app/workers/retention.py) | [`tests/unit/test_worker_runtime.py`](tests/unit/test_worker_runtime.py), [`tests/unit/modules/notifications/test_delivery_worker.py`](tests/unit/modules/notifications/test_delivery_worker.py) | — | implemented |
 | SMTP adapter to Mailpit (DUTH-48) | Email visible locally without a provider account | [`app/modules/notifications/infrastructure/smtp_email.py`](app/modules/notifications/infrastructure/smtp_email.py) | [`tests/integration/test_smtp_email.py`](tests/integration/test_smtp_email.py) | [003](docs/adr/003-local-open-source-runtime-stack.md) | implemented |
 | S3 storage with presigned downloads (DUTH-49) | Bytes never stream through the API; short-lived links after authz | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
 | One-command stack and Keycloak (DUTH-50) | Runnable by anyone with real OIDC tokens and seeded roles | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |

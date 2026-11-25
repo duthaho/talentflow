@@ -42,6 +42,15 @@ worker_claims = Counter(
     "Worker delivery claim outcomes.",
     ("outcome",),
 )
+worker_last_success = Gauge(
+    "talentflow_worker_last_success_unixtime",
+    "Unix time of the last successful worker cycle.",
+    ("worker",),
+)
+worker_backlog = Gauge("talentflow_worker_backlog", "Items left after a worker cycle.", ("worker",))
+worker_ready = Gauge(
+    "talentflow_worker_ready", "Whether a worker is ready to process work.", ("worker",)
+)
 rate_limit_rejections = Counter(
     "talentflow_rate_limit_rejections",
     "HTTP requests rejected by the rate limiter.",
