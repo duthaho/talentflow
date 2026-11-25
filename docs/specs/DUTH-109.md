@@ -13,7 +13,7 @@ DUTH-54 AC2 says interviewers generate or revoke their own calendar subscription
 - An interviewer can create, list and revoke their own calendar links, and nobody else's.
 - The UI can show which links the interviewer has without ever seeing a feed token again.
 - Recruiters and tenant admins (`calendar:manage`) keep today's behavior and can also list links for an interviewer.
-- The permission model is written down in a matrix that the docs and the web app share.
+- The role/permission model is written down in a matrix in the docs, and a test keeps it equal to `ROLE_PERMISSIONS`.
 
 ## Non-goals
 
@@ -21,6 +21,7 @@ DUTH-54 AC2 says interviewers generate or revoke their own calendar subscription
 - Changing the feed endpoint `GET /v1/calendar-feeds/{token}.ics`, token format, hashing or lifetime.
 - Limiting how many active links an interviewer may hold, or rotating a link in one call.
 - Pagination of the list endpoint (an interviewer holds a handful of links at most).
+- Sharing one permission source between the API and the web app. `web/src/lib/actor/actor.ts` and `web/test/role-permissions.ts` stay hand copies; generating them from the API is a possible follow-up.
 - A general ownership/ABAC framework. This is one scoped permission, not a new authorization model.
 
 ## Users and use cases
@@ -39,11 +40,13 @@ Definitions: a subscription is **active** when `revoked_at` is null and `expires
 - AC5 (self-revoke): Given a self-only caller, when they `DELETE /v1/calendar-subscriptions/{id}` for one of their own non-revoked subscriptions, then it is revoked, the response is `204`, the audit trail records `calendar_subscription.revoked` with the caller as actor, and the feed URL returns `404` afterwards.
 - AC6 (revoke someone else's is hidden): Given a self-only caller, when they `DELETE` a subscription that belongs to another interviewer in the same tenant, then the response is `404` problem+json with the same body as for a non-existent id, and the subscription stays active.
 - AC7 (manage revoke unchanged): Given a caller with `calendar:manage`, when they `DELETE` any non-revoked subscription in their tenant, then it is revoked as today.
-- AC8 (list own): Given a self-only caller, when they `GET /v1/calendar-subscriptions?interviewer=me`, then the response is `200` with their active subscriptions as `[{id, created_at, expires_at}]`, newest first. Revoked and expired subscriptions are left out.
+- AC8 (list own): Given a self-only caller, when they `GET /v1/calendar-subscriptions?interviewer=me`, then the response is `200` with their active subscriptions as `[{id, created_at, expires_at}]`, newest first. Revoked and expired subscriptions are left out. The same shape, filter and order apply when a `calendar:manage` caller lists by `<user_id>` (AC10).
 - AC9 (list never leaks secrets): The list response schema has no `feed_url`, `token` or `token_hash` field, and a test asserts that the token returned at create time does not appear anywhere in the list response body.
-- AC10 (list scope): Given a self-only caller, when `interviewer` is any value other than `me` or their own id, then the response is `403`. Given a caller with `calendar:manage`, `interviewer` may be `me` or any user id; an id with no subscriptions in the tenant returns `200 []`. A missing `interviewer` parameter returns `422`. A caller with neither permission gets `403` on all three endpoints.
-- AC11 (tenant isolation): Given subscriptions in tenant A, when a caller in tenant B (any permission) lists, revokes or creates against those ids, then they see an empty list or `404`, never tenant A's data.
-- AC12 (contract and docs): The OpenAPI schema and `web/src/lib/api/schema.ts` are regenerated; `calendar:self` is added to the web app's known permissions (`web/src/lib/actor/actor.ts`, `web/test/role-permissions.ts`) so it is not dropped. A role/permission matrix is added to the docs with a short note on why `calendar:self` is scoped to the caller.
+- AC10 (list scope): `interviewer` takes `me` or a user id of 1–128 characters, the same bounds as `interviewer_id`; a missing, empty or longer value returns `422` before any query runs. Given a self-only caller, when `interviewer` is any value other than `me` or their own id, then the response is `403`. Given a caller with `calendar:manage`, `interviewer` may be `me` or any user id; an id with no subscriptions in the tenant returns `200 []`. A caller with neither permission gets `403` on all three endpoints.
+- AC11 (tenant isolation): Given subscriptions and interviewers in tenant A, when a caller in tenant B uses tenant A's ids, then the response never contains tenant A's data and tenant A's subscriptions stay active. Expected status per caller:
+  - self-only caller: create with a tenant-A `interviewer_id` → `403` (AC3); list with a tenant-A user id → `403` (AC10); revoke a tenant-A subscription id → `404` (AC6).
+  - `calendar:manage` caller: create with a tenant-A `interviewer_id` → `404` (AC4); list with a tenant-A user id → `200 []`; revoke a tenant-A subscription id → `404`.
+- AC12 (contract and docs): The OpenAPI schema and `web/src/lib/api/schema.ts` are regenerated; `calendar:self` is added to the web app's known permissions (`web/src/lib/actor/actor.ts`, `web/test/role-permissions.ts`) so it is not dropped. A role/permission matrix table is added to `docs/architecture.md` (identity section) with a short note on why `calendar:self` is scoped to the caller, and a pytest parses that table and asserts it equals `ROLE_PERMISSIONS`, so the doc fails CI when it drifts. The web allowlists stay hand-maintained in this issue (see Non-goals).
 - AC13 (quality gates): `ruff format --check`, `ruff check`, `uv run python -m pytest` with coverage ≥ 85%, the architecture tests, and the web typecheck/build pass.
 
 ## Constraints
@@ -69,7 +72,7 @@ None blocking. Decisions taken in this spec, open for spec review to challenge:
 - Omitted `interviewer_id` on create means "the caller" for every caller, not only self-only callers (AC4).
 - `interviewer=me` and the caller's own id are equivalent for self-only callers (AC10).
 - List returns active links only; there is no history view (AC8).
-- The permission matrix lives in `docs/architecture.md` next to the identity section, generated from or checked against `ROLE_PERMISSIONS` by a test so it cannot drift.
+- The permission matrix lives in `docs/architecture.md` next to the identity section and is checked against `ROLE_PERMISSIONS` by a pytest (AC12); it is hand-written, not generated.
 
 ## Rollout and rollback
 
@@ -79,3 +82,5 @@ None blocking. Decisions taken in this spec, open for spec review to challenge:
 ## Plan
 
 (added at the `plan` step)
+
+The plan's threat-model notes must cover the ownership and disclosure rules in AC3, AC6, AC10 and AC11, so Hoàng-Security can review the ownership check before code is written, not only at `security_review`.
