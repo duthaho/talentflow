@@ -13,8 +13,8 @@ from app.modules.retention.infrastructure.sqlalchemy_repository import (
     SqlAlchemyRetentionRepository,
     SqlAlchemyUnitOfWork,
 )
-from app.shared.database import build_session_factory
 from app.shared.attachment_storage import build_attachment_storage
+from app.shared.database import build_session_factory
 from app.shared.observability import configure_logging
 from app.shared.settings import settings
 from app.shared.worker_runtime import WorkerLoop
