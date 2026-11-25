@@ -12,7 +12,14 @@ from typing import Any
 from opentelemetry import trace
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from app.shared.observability import worker_backlog, worker_last_success, worker_ready
+from app.shared.observability import (
+    record_worker_cycle,
+    record_worker_failure,
+    record_worker_ready,
+    worker_backlog,
+    worker_last_success,
+    worker_ready,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,19 +125,23 @@ class WorkerLoop:
             self._readiness_check()
             self._status.ready = True
             worker_ready.labels(self.name).set(1)
+            record_worker_ready(self.name, True)
             delay = self._poll_seconds
             while not self._stop.is_set():
                 try:
+                    started_at = time.perf_counter()
                     with trace.get_tracer(__name__).start_as_current_span(
                         "worker.cycle", attributes={"worker.name": self.name}
                     ):
                         backlog = self._cycle()
                 except Exception:
                     logger.exception("worker_cycle_failed", extra={"event": "worker_cycle_failed"})
+                    record_worker_failure(self.name)
                     delay = min(delay * 2, self._max_backoff_seconds)
                 else:
                     worker_backlog.labels(self.name).set(backlog)
                     worker_last_success.labels(self.name).set(time.time())
+                    record_worker_cycle(self.name, backlog, time.perf_counter() - started_at)
                     delay = (
                         self._poll_seconds if backlog else min(delay * 2, self._max_backoff_seconds)
                     )
@@ -142,6 +153,7 @@ class WorkerLoop:
             self._status.ready = False
             self._status.live = False
             worker_ready.labels(self.name).set(0)
+            record_worker_ready(self.name, False)
             self._shutdown()
             self._probe_server.close()
 

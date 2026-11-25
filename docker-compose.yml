@@ -121,12 +121,11 @@ services:
 
   grafana:
     image: grafana/otel-lgtm:0.11.0
-    environment:
-      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
     volumes:
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/provisioning/dashboards/talentflow.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/talentflow.yaml:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards/talentflow:ro
     ports:
-      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:3000/api/health"]
       interval: 10s
@@ -166,6 +165,8 @@ services:
       NOTIFICATION_SMTP_PORT: 1025
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
       OTEL_SERVICE_NAME: talentflow-api
+      OTEL_SEMCONV_STABILITY_OPT_IN: http
+      OTEL_METRIC_EXPORT_INTERVAL: 5000
     depends_on:
       postgres:
         condition: service_healthy

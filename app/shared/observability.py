@@ -126,6 +126,29 @@ def configure_logging() -> None:
     root.setLevel(logging.INFO)
 
 
+def record_worker_ready(worker_name: str, ready: bool) -> None:
+    meter = metrics.get_meter("talentflow.workers")
+    meter.create_up_down_counter("talentflow.worker.ready").add(
+        1 if ready else -1, {"worker.name": worker_name}
+    )
+
+
+def record_worker_cycle(worker_name: str, backlog: int, duration_seconds: float) -> None:
+    meter = metrics.get_meter("talentflow.workers")
+    attributes = {"worker.name": worker_name}
+    meter.create_counter("talentflow.worker.cycles").add(1, attributes)
+    meter.create_histogram("talentflow.worker.backlog").record(backlog, attributes)
+    meter.create_histogram("talentflow.worker.cycle.duration", unit="s").record(
+        duration_seconds, attributes
+    )
+
+
+def record_worker_failure(worker_name: str) -> None:
+    metrics.get_meter("talentflow.workers").create_counter("talentflow.worker.failures").add(
+        1, {"worker.name": worker_name}
+    )
+
+
 def instrument_app(app: FastAPI) -> None:
     if not getattr(app.state, "otel_instrumented", False):
         FastAPIInstrumentor.instrument_app(app)
