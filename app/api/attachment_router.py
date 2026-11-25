@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from app.api.schemas import AttachmentResponse
 from app.modules.attachments.application.attachment_service import (
@@ -14,16 +14,14 @@ from app.modules.attachments.application.attachment_service import (
     MalwareScanRejectedError,
     UploadAttachmentCommand,
 )
-from app.modules.attachments.infrastructure.filesystem_storage import (
-    LocalAttachmentStorage,
-    build_scanner,
-)
+from app.modules.attachments.infrastructure.filesystem_storage import build_scanner
 from app.modules.attachments.infrastructure.sqlalchemy_repository import (
     SqlAlchemyAttachmentRepository,
     SqlAlchemyAuditRecorder,
     SqlAlchemyUnitOfWork,
 )
 from app.modules.identity.security import ActorContext, require
+from app.shared.attachment_storage import build_attachment_storage
 from app.shared.database import SessionDep
 from app.shared.settings import Settings
 
@@ -36,10 +34,12 @@ def _service(request: Request, session: SessionDep) -> AttachmentService:
     runtime_settings: Settings = request.app.state.runtime_settings
     return AttachmentService(
         repository=SqlAlchemyAttachmentRepository(session),
-        storage=LocalAttachmentStorage(runtime_settings.attachment_storage_root),
+        storage=build_attachment_storage(runtime_settings),
         scanner=build_scanner(
             mode=runtime_settings.attachment_scan_mode,
             command=runtime_settings.attachment_scan_command,
+            clamav_host=runtime_settings.attachment_clamav_host,
+            clamav_port=runtime_settings.attachment_clamav_port,
         ),
         audit=SqlAlchemyAuditRecorder(session),
         unit_of_work=SqlAlchemyUnitOfWork(session),
@@ -100,21 +100,22 @@ def list_attachments(
     return [_response(attachment) for attachment in attachments]
 
 
-@router.get("/{attachment_id}/download")
+@router.get("/{attachment_id}/download", response_model=None)
 def download_attachment(
     candidate_case_id: str,
     attachment_id: str,
     request: Request,
     service: AttachmentService = Depends(_service),
     actor: ActorContext = Depends(require("candidate:attachment")),
-) -> FileResponse:
+) -> Response:
     try:
-        attachment, file_path = service.download(
+        attachment, download = service.download(
             attachment_id=attachment_id,
             candidate_case_id=candidate_case_id,
             tenant_id=actor.tenant_id,
             actor_id=actor.actor_id,
             correlation_id=request.headers.get("X-Correlation-Id") or str(uuid4()),
+            expires_in_seconds=request.app.state.runtime_settings.attachment_download_ttl_seconds,
         )
     except AttachmentNotFoundError as error:
         raise HTTPException(
@@ -124,7 +125,15 @@ def download_attachment(
         raise HTTPException(
             status_code=status.HTTP_410_GONE, detail="Attachment content is unavailable"
         ) from error
-    return FileResponse(file_path, media_type=attachment.content_type, filename=attachment.filename)
+    if download.presigned_url:
+        return RedirectResponse(
+            download.presigned_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT
+        )
+    if download.local_path:
+        return FileResponse(
+            download.local_path, media_type=attachment.content_type, filename=attachment.filename
+        )
+    raise RuntimeError("Attachment storage returned no download location")
 
 
 def _response(attachment: object) -> AttachmentResponse:

@@ -1,10 +1,12 @@
+import socket
 from pathlib import Path
+from struct import pack
 
 from app.modules.attachments.application.attachment_service import (
     MalwareScannerUnavailableError,
     MalwareScanRejectedError,
 )
-from app.modules.attachments.application.ports import MalwareScanner
+from app.modules.attachments.application.ports import AttachmentDownload, MalwareScanner
 
 
 class LocalAttachmentStorage:
@@ -20,11 +22,12 @@ class LocalAttachmentStorage:
         temporary.chmod(0o600)
         temporary.replace(target)
 
-    def open(self, *, storage_key: str) -> Path:
+    def download(self, *, storage_key: str, expires_in_seconds: int) -> AttachmentDownload:
+        del expires_in_seconds
         target = self._path(storage_key)
         if not target.is_file():
             raise FileNotFoundError(storage_key)
-        return target
+        return AttachmentDownload(local_path=target)
 
     def delete(self, *, storage_key: str) -> None:
         self._path(storage_key).unlink(missing_ok=True)
@@ -70,7 +73,38 @@ class ClamAvMalwareScanner:
             raise MalwareScannerUnavailableError("Attachment malware scanner is unavailable")
 
 
-def build_scanner(*, mode: str, command: str) -> MalwareScanner:
+class ClamdMalwareScanner:
+    def __init__(self, *, host: str, port: int) -> None:
+        self._host = host
+        self._port = port
+
+    def scan(self, content: bytes) -> None:
+        try:
+            with socket.create_connection((self._host, self._port), timeout=30) as connection:
+                connection.sendall(
+                    b"zINSTREAM\0" + pack("!I", len(content)) + content + pack("!I", 0)
+                )
+                response = b""
+                while not response.endswith(b"\0"):
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        raise OSError("Clamd closed the stream without a response")
+                    response += chunk
+        except OSError as error:
+            raise MalwareScannerUnavailableError(
+                "Attachment malware scanner is unavailable"
+            ) from error
+        if b"FOUND" in response:
+            raise MalwareScanRejectedError("Attachment malware scan rejected the file")
+        if b"OK" not in response:
+            raise MalwareScannerUnavailableError("Attachment malware scanner is unavailable")
+
+
+def build_scanner(
+    *, mode: str, command: str, clamav_host: str = "", clamav_port: int = 3310
+) -> MalwareScanner:
     if mode == "clamav":
+        if clamav_host:
+            return ClamdMalwareScanner(host=clamav_host, port=clamav_port)
         return ClamAvMalwareScanner(command)
     return NoopMalwareScanner()

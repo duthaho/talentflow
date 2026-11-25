@@ -6,13 +6,14 @@ from uuid import uuid4
 from sqlalchemy import Connection, Engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.modules.attachments.infrastructure.filesystem_storage import LocalAttachmentStorage
+from app.modules.attachments.application.ports import AttachmentStorage
 from app.modules.retention.application.retention import RetentionService
 from app.modules.retention.infrastructure.sqlalchemy_repository import (
     SqlAlchemyAuditRecorder,
     SqlAlchemyRetentionRepository,
     SqlAlchemyUnitOfWork,
 )
+from app.shared.attachment_storage import build_attachment_storage
 from app.shared.database import build_session_factory
 from app.shared.observability import configure_logging
 from app.shared.settings import settings
@@ -26,12 +27,17 @@ class ScheduledRetentionCycle:
     """Runs retention at most once per schedule, protected by a database-wide lock."""
 
     def __init__(
-        self, sessions: sessionmaker, *, schedule_seconds: float, batch_size: int, storage: str
+        self,
+        sessions: sessionmaker,
+        *,
+        schedule_seconds: float,
+        batch_size: int,
+        storage: AttachmentStorage,
     ):
         self._sessions = sessions
         self._schedule_seconds = schedule_seconds
         self._batch_size = batch_size
-        self._storage = LocalAttachmentStorage(storage)
+        self._storage = storage
         self._next_run = 0.0
 
     def __call__(self, *, should_stop: Callable[[], bool] | None = None) -> int:
@@ -106,7 +112,7 @@ def main() -> None:
         sessions,
         schedule_seconds=settings.retention_schedule_seconds,
         batch_size=settings.retention_worker_batch_size,
-        storage=settings.attachment_storage_root,
+        storage=build_attachment_storage(settings),
     )
     loop: WorkerLoop
 
