@@ -142,15 +142,17 @@ Query parameters:
 - AC3: Given a caller without the route's permission (e.g. `hiring_manager` on routes 2–4), when they call it with any id, then the response is `403` problem+json with type `forbidden`.
 - AC4: Given a case with more events than `limit`, when the caller follows `next_cursor` until it is `null`, then every in-scope event appears exactly once, in `(created_at, id)` descending order, including events that share the same `created_at`.
 - AC5: Given page 1 was read and new events were written for the case, when the caller requests page 2 with page 1's cursor, then no event from page 1 repeats and no older event is skipped.
-- AC6: Given a case with an uploaded and downloaded attachment, when its timeline is read, then the `candidate_attachment.uploaded` and `candidate_attachment.downloaded` events appear; events for another case's attachment and events of other aggregate types (interview, requisition, tenant) do not.
-- AC7: Given an audit row whose stored metadata contains `first_name`, `last_name`, `email`, `original_filename`, `sha256` or `reason` (seeded directly in the test), when the timeline is read, then none of those keys or their values appear in the response, and only the allowlisted keys for that action remain. An action missing from the allowlist returns `metadata: {}`.
-- AC8: Given a malformed `cursor` or a `limit` outside 1–100, when the timeline is requested, then the response is `422` problem+json.
+- AC6: Given a case with an uploaded and downloaded attachment, when its timeline is read, then the `candidate_attachment.uploaded` and `candidate_attachment.downloaded` events appear; events for another case's attachment and events of other aggregate types (interview, requisition, tenant) do not. Two-tenant variants: a tenant-B attachment row whose `candidate_case_id` equals tenant A's case id, with an audit event for it, and a tenant-A audit event whose `aggregate_id` is a tenant-B attachment id. Neither event appears in tenant A's timeline.
+- AC7: Given an audit row whose stored metadata contains `first_name`, `last_name`, `email`, `original_filename`, `sha256` or `reason` (seeded directly in the test), when the timeline is read, then none of those keys or their values appear in the response, and only the allowlisted keys for that action remain. An action missing from the allowlist returns `metadata: {}`. An allowlisted key whose value is not a scalar (`str`, `int`, `float`, `bool`, `None`) is dropped.
+- AC8: Given a malformed `cursor` or a `limit` outside 1–100, when the timeline is requested, then the response is `422` problem+json, never `500`. Malformed includes: not base64, non-UTF-8 bytes after decoding, JSON that is not an object, a missing or non-string `i`, a `t` that is not a string or is a naive timestamp, and a cursor longer than 256 characters (rejected before decoding).
 - AC9: Given no legal hold, when `GET …/legal-hold` is called, then the response is `200` with `held: false` and `null` for the other fields. After `PUT` with `held: true` it returns the reason, placement time and the placing user's id; after `PUT` with `held: false` it returns `held: false` again.
 - AC10: Given no retention policy, when `GET /v1/retention-policy` is called, then the response is `200` with `retention_days: null`; after `PUT` with 90 it returns 90. Tenant B's policy is never returned to tenant A.
 - AC11: Given the app is created with `attachment_max_bytes` overridden, when `GET /v1/attachment-policy` is called, then it returns that value and the sorted `ALLOWED_CONTENT_TYPES`.
 - AC12: `GET /v1/audit-events` behaves exactly as before; its existing tests pass unchanged.
 - AC13: `web/openapi.json` and `web/src/lib/api/schema.ts` are regenerated in the same PR with `make api-client`, and `npm run api:check` in `web/` passes.
 - AC14: `ruff format --check`, `ruff check`, `uv run python -m pytest` (coverage ≥ 85%) and the web build pass; actual output is in the PR.
+- AC15: Given a `next_cursor` taken from case X's timeline, when it is sent for case Y, or by a caller in tenant B for a case of their own, then only Y's or B's own in-scope events are returned. The cursor carries no scope.
+- AC16: Given any `200` response from routes 1–3, then it carries `Cache-Control: private, no-store`.
 
 ## Constraints
 
@@ -169,7 +171,7 @@ Query parameters:
 ## Risks
 
 - **PII leak through metadata.** Future write paths may add keys like a file name to an event. Mitigation: allowlist on read with default-deny, AC7 seeds PII keys directly, and a `security_review` pass by Hoàng-Security.
-- **Cross-tenant or cross-case leak in the timeline.** The attachment join must carry the tenant predicate on both tables. Mitigation: AC2, AC6, AC10 tests with two tenants.
+- **Cross-tenant or cross-case leak in the timeline.** The attachment join must carry the tenant predicate on both tables. Mitigation: AC2, AC6 (two-tenant variants), AC10 and AC15.
 - **Case enumeration.** Unknown and foreign ids return the same `404`, so ids cannot be probed across tenants.
 - **Attachment events disappear after retention purge.** Purge deletes `candidate_attachments` rows, so the join no longer finds their events; the `candidate_case.retention_purged` event stays. This is accepted for now: the purged case keeps a visible purge marker and the full history remains in `GET /v1/audit-events`. Keeping them would need the attachment id stored on the case side or soft-deleted attachments, which is a separate decision.
 - **Index build on a large table.** A plain `CREATE INDEX` locks writes to `audit_events` while it builds. At showcase data volume this is negligible; the migration docstring notes that production would use `CREATE INDEX CONCURRENTLY`.
@@ -214,15 +216,17 @@ Route order: `GET /v1/candidate-cases/{id}` is registered after the static `GET 
 | AC3 | `hiring_manager` on routes 2–4 and `auditor` on 3–4 → `403` `forbidden`, with both a real and an unknown id | integration, parametrized |
 | AC4 | 7 events, 3 with the same `created_at` (set explicitly); `limit=3` walk: no duplicates or gaps, strict `(created_at, id)` desc order, last `next_cursor` `null` | integration `tests/integration/test_case_timeline.py` |
 | AC5 | read page 1, transition the stage twice, read page 2 with the old cursor: no overlap, nothing skipped | integration |
-| AC6 | upload + download on case X, upload on case Y, schedule an interview on X: X's timeline has its two attachment events, none from Y, no `interview.*` | integration |
-| AC7 | seed `audit_events` rows directly with `first_name`, `last_name`, `email`, `original_filename`, `sha256`, `reason`, `candidate_case_id` and an unknown action; assert no forbidden key **or value** appears anywhere in the serialized response; unknown action → `{}` | integration + unit on `redact` for every allowlist row |
-| AC8 | bad cursors (`!!!`, base64 non-JSON, missing `i`, bad timestamp) and `limit=0`/`101` → `422` | integration + unit on the cursor codec |
+| AC6 | upload + download on case X, upload on case Y, schedule an interview on X: X's timeline has its two attachment events, none from Y, no `interview.*`. Two-tenant variants: a tenant-B attachment pointing at A's case id, and a tenant-A event naming a tenant-B attachment id; neither appears | integration |
+| AC7 | seed `audit_events` rows directly with `first_name`, `last_name`, `email`, `original_filename`, `sha256`, `reason`, `candidate_case_id` and an unknown action; assert no forbidden key **or value** appears anywhere in the serialized response; unknown action → `{}`; a nested dict under `stage` is dropped | integration + unit on `redact` for every allowlist row |
+| AC8 | bad cursors (`!!!`, non-UTF-8 after base64, JSON array, missing or non-string `i`, list or naive `t`, 257 characters) and `limit=0`/`101` → `422` problem+json; the codec unit test asserts only `InvalidCursorError` escapes | integration + unit on the cursor codec |
 | AC9 | hold lifecycle: none → set → read → release → read | integration `tests/integration/test_candidate_retention.py` (extend) |
 | AC10 | none → `null`; `PUT 90` → `90`; tenant B policy invisible to A; PUT schema unchanged (`retention_days` still required in `openapi.json`) | integration |
 | AC11 | `create_app(..., app_settings=Settings(attachment_max_bytes=1234))` → `1234` and sorted types | integration |
 | AC12 | existing `GET /v1/audit-events` tests untouched and green | existing |
 | AC13 | `npm run api:check` (CI `web` job and locally) | CI |
 | AC14 | gates below | local + CI |
+| AC15 | cursor from X's page 1 sent for Y, and by a tenant-B caller for B's case: results equal Y's or B's own scoped rows | integration |
+| AC16 | header asserted on routes 1–3 | integration |
 | — | migration `upgrade`/`downgrade` round-trip on PostgreSQL, if the repo has a migration test harness; otherwise `alembic upgrade head` against the compose Postgres, with output in the PR | manual/CI |
 | — | architecture rule green with the two new entries | existing |
 
@@ -230,7 +234,26 @@ Gates before hand-off: `ruff format --check`, `ruff check`, `uv run python -m py
 
 ### Threat model
 
-Requested from Hoàng-Security on DUTH-110. It is added here before the plan goes to the requester.
+From Hoàng-Security on DUTH-110, against spec `1a7b8b8`. Route 2 is the first API route that returns audit metadata, so the default-deny allowlist is the main control. Today's write paths store no names, email or file names; the allowlist protects against paths added later.
+
+| # | STRIDE | Threat | Control | Covered by |
+|---|---|---|---|---|
+| T1 | I | Reading another tenant's case, timeline or hold by id | Every lookup is `WHERE id = :id AND tenant_id = :t` | AC2 |
+| T2 | I | Probing which ids exist in other tenants | Same 404 body from one query | AC2 |
+| T3 | I | Cross-case or cross-tenant leak through the attachment join | Tenant predicate on both `audit_events` and `candidate_attachments`; scope never read from `metadata_json` | AC6 (two-tenant variants) |
+| T4 | I | PII in stored metadata | Per-action key allowlist, default-deny, scalar values only | AC7, unit tests on `redact` |
+| T5 | T/I | Forged cursor reaches out-of-scope events | Cursor is only a keyset bound on top of the scope predicate, so no signature is needed | AC15 |
+| T6 | T | SQL injection through cursor or `limit` | Typed decode, bound parameters, no interpolated `text()` | AC8, security review |
+| T7 | D/I | Malformed or huge cursor causes a 500 or burns CPU | All decode errors → `InvalidCursorError` → 422; length cap before decoding | AC8 |
+| T8 | D | Expensive timeline scans | `limit` 1–100, composite index, no `COUNT`, global rate limit | AC8, index migration |
+| T9 | E | Role reads more than allowed | `require()` before lookup; `ROLE_PERMISSIONS` unchanged | AC3 |
+| T10 | I | Free-text hold `reason` leaks | Only on route 3 (`retention:manage`); never in timeline metadata or logs | AC3, AC7 |
+| T11 | I | Future ORM columns leak | Explicit response models | AC1 |
+| T12 | I | Browser or proxy caches candidate PII | `Cache-Control: private, no-store`, as `calendar_router` does | AC16 |
+| T13 | R | Reads of candidate PII are not audited | Accepted (Low): the existing list route is not audited either; separate follow-up if read auditing becomes a goal | — |
+| T14 | I | `actor_id` / `placed_by` may be an email-like OIDC `sub` | Accepted (Low): staff identifiers, already in every audit row | — |
+
+`security_review` on the implementation PR stays required. It checks the allowlist against this spec row by row, the two-table tenant predicate, cursor decode error paths, bound parameters, no `reason` or metadata in logs or spans, and the new read-only dependency entries, plus `pip-audit` and a secret scan. A gap in AC6, AC8, AC15, T3 or T4 is a blocking High.
 
 ### Sub-issues by stage
 
@@ -238,7 +261,7 @@ None. The five routes are one API slice for one page, with one PR to review and 
 
 | Stage | Work | Handler | ACs | Depends on |
 |---|---|---|---|---|
-| 1 | Implement routes 1–5, migration, tests, regenerated client and docs. PR titled `DUTH-110: Add candidate detail read APIs`, linking this spec | Quốc-BE | AC1–AC14 | spec PR #15 approved; requester approves this plan |
+| 1 | Implement routes 1–5, migration, tests, regenerated client and docs. PR titled `DUTH-110: Add candidate detail read APIs`, linking this spec | Quốc-BE | AC1–AC16 | spec PR #15 approved; requester approves this plan |
 | review | `code_review` → `security_review` (required: PII allowlist, cross-tenant join) → `qa` → `in_review` | Trung-PM, Hoàng-Security, Diễm-QA | — | stage 1 PR |
 
 Downstream: DUTH-53 stays `blocked` until this PR merges. Hiếu-FE then replaces the mocks with the generated types.
