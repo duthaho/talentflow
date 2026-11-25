@@ -81,6 +81,58 @@ None blocking. Decisions taken in this spec, open for spec review to challenge:
 
 ## Plan
 
-(added at the `plan` step)
+Inputs: technical design by Đông-SA and threat model by Hoàng-Security, both on DUTH-109 against spec head `e41493c`. Neither changes an acceptance criterion; two small additions are folded in below (D6, I6).
 
-The plan's threat-model notes must cover the ownership and disclosure rules in AC3, AC6, AC10 and AC11, so Hoàng-Security can review the ownership check before code is written, not only at `security_review`.
+### Design summary
+
+- D1 **Scope from the server.** `security.py` gains `require_any(*permissions)` and `permissions_for(role)`; `require()` and `ActorContext` are unchanged. The router computes `CalendarScope.MANAGE` when the role has `calendar:manage`, else `CalendarScope.SELF` (`manage` wins). Nothing in the request can choose the scope.
+- D2 **Ownership in the application layer.** `CalendarSubscriptionService.create/revoke/list_active` take a required `scope` keyword (no default; unknown or `None` raises). In self scope the requested id is compared to `actor_id` with exact `==`, and a mismatch raises `CalendarSubscriptionForbiddenError` before any repository call. Every write and query then uses `actor_id`, never the requested value. The router maps Forbidden → 403 and NotFound → 404 with static `detail` strings that never echo an id.
+- D3 **Repository port.** `get_owned(subscription_id, tenant_id, interviewer_id | None)` is one `SELECT` filtered by `id`, `tenant_id`, `revoked_at IS NULL` and, in self scope, `interviewer_id`. New `list_active(tenant_id, interviewer_id, now)` orders by `created_at DESC, id DESC`. Both always filter on `tenant_id` from `ActorContext`.
+- D4 **No migration.** `tenant_id` and `interviewer_id` are already indexed; a composite index waits for real volume and would ship as an additive Alembic revision.
+- D5 **Schemas.** `CreateCalendarSubscriptionRequest.interviewer_id: str | None` (1–128 chars; omitted or `null` means the caller). New `CalendarSubscriptionSummary {id, created_at, expires_at}` with `extra="forbid"`, built field by field; `GET` returns a bare array. Query `interviewer`: required, 1–128 chars, `me` is the only literal (case-sensitive).
+- D6 **Headers and audit.** `Cache-Control: private, no-store` on the `201` create response and on the list response. Audit metadata for `created`/`revoked` gains `"scope"`; it never contains `token`, `token_hash` or `feed_url`.
+- D7 **Permission matrix.** Table in `docs/architecture.md` §8 between `<!-- permission-matrix:start -->` and `<!-- permission-matrix:end -->`, permissions as rows, roles as columns, `✓` or empty. `tests/unit/test_permission_matrix.py` (stdlib only) parses it and asserts it equals `ROLE_PERMISSIONS`; unknown cell values, duplicate rows and missing markers fail.
+
+### Threat model
+
+Verdict from Hoàng-Security: sound, nothing Critical or High provided these invariants hold. They are the `security_review` checklist.
+
+- I1 Server-derived scope; fail closed on unknown scope.
+- I2 In self scope the target is always `actor_id`; exact comparison, no normalisation.
+- I3 Authorize before existence: self-scope create and list return 403 before any repository call, so the self path cannot probe membership.
+- I4 Ownership checked inside the single `get_owned` query, never by loading and comparing in Python.
+- I5 Tenant from `ActorContext` only, on every query (covers one user with memberships in two tenants).
+- I6 Secret-free outputs by allowlist: dedicated list model; audit keys are an exact expected set; `no-store` on create.
+
+Accepted residual risks: `development_headers` auth trusts `X-Actor-Id` (already refused in production); no cap on active links per interviewer (links expire, are listed and revocable). Follow-up, filed separately on approval: soft cap on active links per interviewer, purge of expired rows via retention, and invalidating feed tokens when membership is removed (pre-existing).
+
+### Test plan
+
+Every AC maps to at least one integration test in `tests/integration/test_calendar_subscriptions.py` plus service unit tests with a fake repository.
+
+| Spec AC | Tests |
+|---|---|
+| AC1 | `/v1/me` for an interviewer contains `calendar:self`; matrix test (AC12) |
+| AC2 | self-create without and with own `interviewer_id` → 201, feed works |
+| AC3 | A1: colleague id plus extra body field → 403, zero new rows and audit events; A2: case/whitespace variants and literal `"me"` → 403 or 422 |
+| AC4 | manage create unchanged; recruiter omits `interviewer_id` → 404 |
+| AC5 | self-revoke → 204, audit actor is caller with `scope=self`, feed → 404 |
+| AC6 | A3: foreign, missing, already-revoked and tenant-B ids → byte-identical 404 bodies (ignoring `instance`); foreign link stays active, feed still 200, no audit event |
+| AC7 | manage revoke of any tenant link → 204 |
+| AC8 | list returns active only, newest first, exact keys; same for manage listing by `<user_id>` |
+| AC9 | A6: token, `token_hash` and `feed_url` absent from list body, audit metadata and `GET /v1/audit-events` |
+| AC10 | A4: self-list for colleague, tenant-B and unknown ids → 403 and no repository call (spy); 422 for missing/empty/129-char `interviewer`; A7: `hiring_manager` and `auditor` → 403 on all three endpoints, also with a malformed query (error-order pin) |
+| AC11 | A5: same user in tenants A and B; A8: manage list of a tenant-B user → `200 []`, manage revoke of a tenant-B id → 404 |
+| AC12 | matrix drift test; OpenAPI and `web/src/lib/api/schema.ts` regenerated; `calendar:self` in `actor.ts` and `role-permissions.ts`; web typecheck and tests |
+| AC13 | `ruff format --check`, `ruff check`, `uv run python -m pytest` (coverage ≥ 85%), web build |
+| Extra | A9: service raises on unknown/`None` scope and writes nothing; A10: interviewer still gets 403 on every other route needing a permission it lacks; A11: `201` has `Cache-Control: no-store` |
+
+### Delivery
+
+One PR, no sub-issues. The API, tests, regenerated OpenAPI/`schema.ts`, web allowlists and the doc matrix must land together for AC12 to hold, and splitting by layer is not allowed by the conventions.
+
+- **Work item:** DUTH-109 itself, stage 1, handler Quốc-BE, branch `agent/quoc-be/DUTH-109-self-calendar-links`, PR titled `DUTH-109: Let interviewers manage their own calendar links`, linking this spec.
+- **Acceptance:** spec AC1–AC13 plus D1–D7, I1–I6 and tests A1–A11 above.
+- **Dependencies:** none upstream (spec merged or approved). Downstream: unblocks DUTH-54 AC2 (Hiếu-FE).
+- **Review path:** `code_review` (Trung-PM) → `security_review` (Hoàng-Security, checks I1–I6) → `qa` (Diễm-QA) → `in_review` (duthaho).
+- **Follow-up issue (backlog, not part of this delivery):** "Cap active calendar links and purge expired ones", handler Quốc-BE, from the threat model's Low findings.
