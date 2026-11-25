@@ -152,6 +152,9 @@ describe("safeReturnTo", () => {
     ["https://evil.test", "/"],
     ["//evil.test", "/"],
     ["/\\evil.test", "/"],
+    ["/\t/evil.test", "/"],
+    ["/\n/evil.test", "/"],
+    ["/candidates#board", "/candidates#board"],
     ["/offers?x=1", "/offers?x=1"],
   ])("maps %s to %s", (input, expected) => {
     expect(safeReturnTo(input)).toBe(expected);

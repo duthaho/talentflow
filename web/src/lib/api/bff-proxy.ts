@@ -5,6 +5,7 @@ const FORWARDED_RESPONSE_HEADERS = ["content-type", "content-disposition", "etag
 
 export type ProxyDeps = {
   apiBaseUrl: string;
+  appOrigin: string;
   accessToken: () => Promise<string | undefined>;
   fetch?: typeof fetch;
 };
@@ -14,17 +15,34 @@ function problem(status: number, slug: string, title: string, detail: string, in
   return Response.json(body, { status, headers: { "content-type": "application/problem+json" } });
 }
 
-export function createBffProxy({ apiBaseUrl, accessToken, fetch: fetchImpl = fetch }: ProxyDeps) {
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+function isUnsafeSegment(segment: string): boolean {
+  return segment === "" || segment === "." || segment === ".." || /[/\\]/.test(segment);
+}
+
+// SameSite=Lax still sends the cookie from other ports on the same host, which are same-site.
+function isSameOrigin(request: Request, appOrigin: string): boolean {
+  const origin = request.headers.get("origin");
+  if (origin) return origin === appOrigin;
+  return request.headers.get("sec-fetch-site") === "same-origin";
+}
+
+export function createBffProxy({ apiBaseUrl, appOrigin, accessToken, fetch: fetchImpl = fetch }: ProxyDeps) {
+  const apiPrefix = `${new URL(apiBaseUrl).pathname.replace(/\/+$/, "")}/v1/`;
   return async function forward(request: Request, path: string[]): Promise<Response> {
     const instance = `/${path.join("/")}`;
-    if (path[0] !== "v1" || path.some((segment) => segment === ".." || segment === ".")) {
+    const target = new URL(`${apiBaseUrl}/${path.map(encodeURIComponent).join("/")}`);
+    if (path[0] !== "v1" || path.some(isUnsafeSegment) || !target.pathname.startsWith(apiPrefix)) {
       return problem(404, "not-found", "Not Found", "Only /v1 API routes are available through the web app.", instance);
+    }
+    if (!SAFE_METHODS.has(request.method) && !isSameOrigin(request, appOrigin)) {
+      return problem(403, "forbidden", "Forbidden", "Cross-origin requests are not allowed.", instance);
     }
     const token = await accessToken();
     if (!token) {
       return problem(401, "unauthorized", "Unauthorized", "Your session has ended. Sign in again.", instance);
     }
-    const target = new URL(`${apiBaseUrl}${instance.split("/").map(encodeURIComponent).join("/")}`);
     target.search = new URL(request.url).search;
     const headers = new Headers({ authorization: `Bearer ${token}` });
     for (const name of FORWARDED_REQUEST_HEADERS) {

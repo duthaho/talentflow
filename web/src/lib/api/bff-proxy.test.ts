@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createBffProxy } from "./bff-proxy";
 
 function proxy(token: string | undefined, fetchImpl = vi.fn(async () => new Response("{}", { status: 200 }))) {
-  return { forward: createBffProxy({ apiBaseUrl: "http://api:8000", accessToken: async () => token, fetch: fetchImpl as never }), fetchImpl };
+  return { forward: createBffProxy({ apiBaseUrl: "http://api:8000", appOrigin: "http://web", accessToken: async () => token, fetch: fetchImpl as never }), fetchImpl };
 }
 
 describe("BFF proxy", () => {
@@ -22,12 +22,33 @@ describe("BFF proxy", () => {
     expect((await forward(new Request("http://web/api/tf/v1/../metrics"), ["v1", "..", "metrics"])).status).toBe(404);
   });
 
+  it("rejects segments that decode to path separators", async () => {
+    const { forward, fetchImpl } = proxy("t");
+    for (const segment of ["../../metrics", "..\\metrics", "a/b", ""]) {
+      const response = await forward(new Request("http://web/api/tf/v1/x"), ["v1", segment]);
+      expect(response.status).toBe(404);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-origin state-changing requests", async () => {
+    const { forward, fetchImpl } = proxy("t");
+    const post = (headers: Record<string, string>) =>
+      forward(new Request("http://web/api/tf/v1/requisitions", { method: "POST", headers, body: "{}" }), ["v1", "requisitions"]);
+    expect((await post({ origin: "http://localhost:4000" })).status).toBe(403);
+    expect((await post({ "sec-fetch-site": "same-site" })).status).toBe(403);
+    expect((await post({})).status).toBe(403);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect((await post({ "sec-fetch-site": "same-origin" })).status).toBe(200);
+    expect((await forward(new Request("http://web/api/tf/v1/audit-events", { headers: { origin: "http://evil" } }), ["v1", "audit-events"])).status).toBe(200);
+  });
+
   it("forwards the bearer token, query, body and allow-listed headers", async () => {
     const { forward, fetchImpl } = proxy("token-1");
     await forward(
       new Request("http://web/api/tf/v1/candidate-cases/c 1/stage?x=1", {
         method: "PATCH",
-        headers: { "content-type": "application/json", "if-match": "3", cookie: "tf_session=secret" },
+        headers: { "content-type": "application/json", "if-match": "3", cookie: "tf_session=secret", origin: "http://web" },
         body: JSON.stringify({ stage: "screening" }),
       }),
       ["v1", "candidate-cases", "c 1", "stage"],

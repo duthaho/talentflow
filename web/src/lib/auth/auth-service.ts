@@ -10,11 +10,14 @@ export const REFRESH_LEEWAY_MS = 30_000;
 
 export class LoginError extends Error {}
 
+const RETURN_TO_BASE = "http://return-to.invalid";
+
 export function safeReturnTo(value: string | null | undefined): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) {
-    return "/";
-  }
-  return value;
+  if (!value || !value.startsWith("/")) return "/";
+  // Resolve like the browser would, so tab/newline tricks such as "/\t/evil.test" cannot escape.
+  const resolved = new URL(value, RETURN_TO_BASE);
+  if (resolved.origin !== RETURN_TO_BASE) return "/";
+  return `${resolved.pathname}${resolved.search}${resolved.hash}`;
 }
 
 function newId(): string {
