@@ -69,10 +69,11 @@ Response `200`, the same envelope as `GET /v1/candidate-cases`:
 ```
 
 - `candidate_name` is `first_name + " " + last_name` of the candidate case. Anonymized cases show the redacted value the retention job wrote; nothing extra is hidden or added.
+- A manager's `interviewer` value that matches no member of the tenant (unknown id, wrong format, any length) returns an empty page with `total: 0`, never `422` or `500`. For a caller without `interview:manage`, any value other than `me` or their own id returns `403`.
 - `interviewer_email` is `users.email`, which is nullable, so the field is `string | null`.
 - `feedback_submitted` is `true` when an `interview_feedback` row exists for the interview.
 - `total` counts every interview that matches the filters, not just the page.
-- Order: `scheduled_at` ascending, then `id` ascending. Pagination is keyset on `(scheduled_at, id)`, so the order stays stable while rows are added. The cursor is opaque to clients; a malformed cursor returns `422` problem+json.
+- Order: `scheduled_at` ascending, then `id` ascending. Pagination is keyset on `(scheduled_at, id)`, so the order stays stable while rows are added. The cursor is opaque to clients: unpadded URL-safe base64 of the JSON `{"s": "<scheduled_at ISO 8601 UTC>", "i": "<interview id>"}`. Any cursor that fails to decode, is not that JSON shape, or has an unparseable timestamp returns `422` problem+json, never `500`. A cursor that decodes but was edited simply moves the keyset position; it cannot widen the tenant or ownership filters.
 
 Authorization (`I` = caller holds `interview:manage`, `F` = caller holds `feedback:submit`):
 
@@ -101,7 +102,8 @@ Authorization (`I` = caller holds `interview:manage`, `F` = caller holds `feedba
 - AC6: Given the same caller, when they pass another user's id, then the response is `403` problem+json and no data is returned.
 - AC7: Given a caller with neither permission (`hiring_manager`, `auditor`), when they call `GET /v1/interviews` or `GET /v1/interviewers`, then the response is `403` problem+json.
 - AC8: Given an interview with submitted feedback, when it is listed, then `feedback_submitted` is `true`; otherwise `false`.
-- AC9: Given a malformed `cursor` or a `limit` outside 1–100, when the list is requested, then the response is `422` problem+json.
+- AC9: Given a malformed or tampered `cursor` (not base64, not JSON, missing keys, bad timestamp) or a `limit` outside 1–100, when the list is requested, then the response is `422` problem+json.
+- AC9a: Given a manager, when they pass an `interviewer` value that is not a tenant member (including a 200-character string), then the response is `200` with `items: []` and `total: 0`.
 - AC10: Given a tenant with interviewer, recruiter and admin members, and an interviewer in another tenant, when a caller with `interview:manage` calls `GET /v1/interviewers`, then only this tenant's `interviewer` members are returned as `id, email`, ordered by email.
 - AC11: `ROLE_PERMISSIONS` is unchanged; in particular `interviewer` still does not have `tenant:read`, and `GET /v1/candidate-cases` still returns `403` for an interviewer.
 - AC12: `web/openapi.json` and `web/src/lib/api/schema.ts` are regenerated in the same PR, and `npm run api:check` in `web/` passes.
@@ -135,4 +137,57 @@ None. Interpretations taken from the issue text and the DUTH-54 thread:
 
 ## Plan
 
-(added at the `plan` step)
+### Design summary
+
+No schema, permission or service-boundary change: two additive read routes over existing tables, inside the `interviews` context. The contract above is the design; this is where each piece lives.
+
+| Layer | File | Change |
+|---|---|---|
+| Application | `app/modules/interviews/application/list_interviews.py` (new) | `ListInterviewsQuery(tenant_id, actor_id, can_manage, interviewer, cursor, limit)` and handler. Resolves the effective filter: `me`/own id → caller; omitted → all if `can_manage` else caller; other id → that id if `can_manage` else raises `InterviewListForbiddenError`. Framework-free. |
+| Application | `app/modules/interviews/application/list_interviewers.py` (new) | `ListInterviewersQuery(tenant_id, roles)` and handler; the route passes the roles from `ROLE_PERMISSIONS` that grant `feedback:submit`. |
+| Application | `app/modules/interviews/application/ports.py` | `InterviewListItem`, `InterviewPage`, `InterviewerItem` dataclasses and an `InterviewReadModel` protocol (`list_page`, `list_interviewers`). Cursor encode/decode lives here as pure functions raising `InvalidCursorError`. |
+| Infrastructure | `app/modules/interviews/infrastructure/sqlalchemy_read_model.py` (new) | One `SELECT` joining `interviews → candidate_cases → requisitions`, `LEFT JOIN users`, `EXISTS` on `interview_feedback`; `tenant_id` predicate on `interviews`, `candidate_cases` and `requisitions`; keyset `(scheduled_at, id) > (:s, :i)`; `limit + 1`; separate `count()` with the same filters minus the keyset. Uses the existing `interviews→candidates` and `interviews→organization` allow-list entries. |
+| API | `app/api/interview_router.py`, `app/api/schemas.py` | `GET /v1/interviews` resolves the actor via `resolve_actor` and returns `403` unless the role has `interview:manage` or `feedback:submit`; maps `InterviewListForbiddenError` → `403`, `InvalidCursorError` → `422` via `problem_details`. `GET /v1/interviewers` uses `require("interview:manage")`. Response models `InterviewListItem`, `InterviewListResponse`, `InterviewerListResponse`. |
+| Client | `web/openapi.json`, `web/src/lib/api/schema.ts` | `make api-client` (exports the schema and runs `npm run api:generate`). |
+| Docs | `docs/architecture.md` interviews row, `docs/api-errors.md` if a new problem `type` is added, README pattern catalog "keyset pagination" row if absent. |
+
+Index: `interviews` has single-column indexes on `tenant_id` and `interviewer_id`. At showcase volume that is enough; no migration in this issue. If the implementer's `EXPLAIN` shows a sort over the whole tenant, add `ix_interviews_tenant_scheduled (tenant_id, scheduled_at, id)` through an expand-only Alembic migration and say so in the PR.
+
+### Test plan
+
+Each acceptance criterion maps to at least one test. Integration tests reuse the `setup_interview_context` style from `tests/integration/test_interviewer_feedback.py`.
+
+| AC | Test | Level |
+|---|---|---|
+| AC1 | fields exactly match the contract; order by `scheduled_at` then `id` with two interviews at the same time | integration `tests/integration/test_interview_list.py` |
+| AC2 | 7 interviews, `limit=3`: three pages, no duplicates or gaps, `total == 7`, last `next_cursor` is `null` | integration |
+| AC3 | two tenants with interviews; manager and interviewer of A, with and without `interviewer`, see only A; `total` counts only A | integration |
+| AC4 | manager with `interviewer=<id>` and `interviewer=me` | integration |
+| AC5 | interviewer with omitted, `me`, own id; sees `candidate_name` and `requisition_title`; another interviewer's interviews absent | integration |
+| AC6 | interviewer passing another id → `403` problem+json body | integration |
+| AC7 | `hiring_manager` and `auditor` → `403` on both routes | integration |
+| AC8 | after `POST …/feedback`, `feedback_submitted` flips to `true` | integration |
+| AC9 | parametrized bad cursors (`!!!`, base64 of non-JSON, JSON missing `i`, bad timestamp) and `limit=0`/`101` → `422` | integration + unit on cursor codec |
+| AC9a | manager with unknown id and a 200-char id → `200`, empty | integration |
+| AC10 | interviewer in tenant A and B, recruiter, admin: only A's interviewer returned, ordered by email, null email last | integration `tests/integration/test_interviewer_list.py` |
+| AC11 | snapshot of `ROLE_PERMISSIONS["interviewer"] == {"feedback:submit"}`; interviewer `GET /v1/candidate-cases` → `403`; roles with `feedback:submit` equal the roles scheduling accepts | unit + integration |
+| AC12 | `npm run api:check` in CI (`web` job) | CI |
+| — | handler scope resolution: every row of the authorization table, without HTTP | unit `tests/unit/modules/interviews/test_list_interviews.py` |
+| — | architecture rule still green (`tests/architecture`) | existing |
+
+Gates before hand-off: `ruff format --check`, `ruff check`, `uv run python -m pytest` (coverage ≥ 85%), `npm run api:check`, `npm run build` in `web/`.
+
+### Threat model
+
+Requested from Hoàng-Security on DUTH-108; it will be added here before the plan goes to the requester.
+
+### Sub-issues by stage
+
+None. The change is one cohesive API slice that cannot be verified in parts, so it ships as one PR on DUTH-108 itself.
+
+| Stage | Work | Handler | ACs | Depends on |
+|---|---|---|---|---|
+| 1 | Implement both routes, tests, regenerated client, docs; PR titled `DUTH-108: Add interview and interviewer listing` | Quốc-BE | AC1–AC12 | this spec merged or approved |
+| review | `code_review` → `security_review` (required: new candidate-data exposure to `interviewer`) → `qa` → `in_review` | Trung-PM, Hoàng-Security, Diễm-QA | — | stage 1 PR |
+
+Downstream: DUTH-54 stays `blocked` until this PR and DUTH-109 merge; Hiếu-FE rebases onto `main` then.
