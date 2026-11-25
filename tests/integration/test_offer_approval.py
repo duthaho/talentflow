@@ -69,8 +69,15 @@ def test_offer_approval_requires_ordered_roles() -> None:
             headers=headers,
             json={"decision": "approved", "expected_version": 2},
         )
+        hired = client.patch(
+            f"/v1/candidate-cases/{candidate['id']}/stage",
+            headers=headers,
+            json={"target_stage": "hired", "expected_version": 5},
+        )
     assert final.json()["status"] == "approved"
     assert final.json()["candidate_stage"] == "offer_approved"
+    assert hired.status_code == 200
+    assert hired.json()["stage"] == "hired"
 
 
 def test_offer_approval_rejects_a_stale_version_with_current_version() -> None:

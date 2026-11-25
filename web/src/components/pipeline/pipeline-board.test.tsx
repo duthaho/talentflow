@@ -112,7 +112,7 @@ describe("PipelineBoard", () => {
     expect(within(column("applied")).getByText("Ada c1")).toBeInTheDocument();
   });
 
-  it("offers only allowed targets in the keyboard Move to menu", async () => {
+  it("offers only generic endpoint targets in the keyboard Move to menu", async () => {
     const user = userEvent.setup();
     const { api } = fakeApi([candidate("c1", "interviewing")], { patch: () => Response.json(candidate("c1", "rejected", 2)) });
     await renderBoard(api);
@@ -120,12 +120,22 @@ describe("PipelineBoard", () => {
     const menu = screen.getByRole("combobox", { name: "Move Ada c1 to stage" });
     expect(within(menu).getAllByRole("option").map((option) => option.textContent)).toEqual([
       "Move to…",
-      "Offer pending",
       "Rejected",
       "Withdrawn",
     ]);
     await user.selectOptions(menu, "rejected");
     await waitFor(() => expect(within(column("rejected")).getByText("Ada c1")).toBeInTheDocument());
+  });
+
+  it("does not offer approval actions in the keyboard Move to menu", async () => {
+    const { api } = fakeApi([candidate("c1", "offer_pending_approval")]);
+    await renderBoard(api);
+
+    const menu = screen.getByRole("combobox", { name: "Move Ada c1 to stage" });
+    expect(within(menu).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Move to…",
+      "Withdrawn",
+    ]);
   });
 
   it("shows a changed-by-someone-else prompt on 409 and refreshes instead of overwriting", async () => {

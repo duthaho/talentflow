@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi, settle, type ApiClient, type ApiResult } from "@/lib/api/client";
 import { boardReducer, initialBoard, type Candidate, type CandidatePage, type Column } from "@/lib/pipeline/board-state";
-import { ALLOWED_TRANSITIONS, canMove, isStage, STAGE_LABELS, STAGES, type Stage } from "@/lib/pipeline/stages";
+import { GENERIC_STAGE_TRANSITIONS, canMove, isStage, STAGE_LABELS, STAGES, type Stage } from "@/lib/pipeline/stages";
 
 import { NewCandidateDialog, NewRequisitionDialog, type RequisitionOption } from "./create-dialogs";
 import { CONTROL_CLASS } from "./form-fields";
@@ -383,7 +383,7 @@ function CandidateCard({
   onDragEnd: () => void;
   onMove: (candidate: Candidate, target: Stage) => void;
 }) {
-  const targets = canTransition && isStage(candidate.stage) ? ALLOWED_TRANSITIONS[candidate.stage] : [];
+  const targets = canTransition && isStage(candidate.stage) ? GENERIC_STAGE_TRANSITIONS[candidate.stage] : [];
   const movable = targets.length > 0 && !pending;
   const name = fullName(candidate);
   const selectId = `move-${candidate.id}`;
