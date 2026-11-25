@@ -10,6 +10,7 @@ from app.api.audit_router import router as audit_router
 from app.api.calendar_router import router as calendar_router
 from app.api.candidate_router import router as candidate_router
 from app.api.health_router import router as health_router
+from app.api.identity_router import router as identity_router
 from app.api.interview_router import router as interview_router
 from app.api.offer_router import router as offer_router
 from app.api.organization_router import router as organization_router
@@ -85,6 +86,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
         calendar_router,
         candidate_router,
         health_router,
+        identity_router,
         interview_router,
         offer_router,
         organization_router,
