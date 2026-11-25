@@ -1,31 +1,34 @@
 import { describe, expect, it } from "vitest";
 
-import { mockActor } from "@/lib/actor/mock";
+import type { Role } from "@/lib/actor/actor";
+
+import { ROLE_PERMISSIONS } from "../../test/role-permissions";
 
 import { isActive, navItem, visibleNav } from "./nav";
 
-const TENANT = "00000000-0000-4000-8000-000000000001";
-const labelsFor = (subject: string) =>
-  visibleNav(mockActor({ subject, tenantId: TENANT, email: "", name: "" }).permissions).map((item) => item.label);
+const labelsFor = (role: Role) => visibleNav(ROLE_PERMISSIONS[role]).map((item) => item.label);
 
 describe("role-aware navigation", () => {
   it("shows every section to the tenant admin and the recruiter", () => {
     const all = ["Overview", "Candidates", "Interviews", "Offers", "Reports", "Audit log", "Retention"];
-    expect(labelsFor("00000000-0000-4000-8000-000000000011")).toEqual(all);
-    expect(labelsFor("00000000-0000-4000-8000-000000000012")).toEqual(all);
+    expect(labelsFor("tenant_admin")).toEqual(all);
+    expect(labelsFor("recruiter")).toEqual(all);
   });
 
   it("limits the hiring manager to read-only hiring sections", () => {
-    expect(labelsFor("00000000-0000-4000-8000-000000000013")).toEqual(["Overview", "Candidates", "Offers"]);
+    expect(labelsFor("hiring_manager")).toEqual(["Overview", "Candidates", "Offers"]);
   });
 
   it("limits the interviewer to interviews", () => {
-    expect(labelsFor("00000000-0000-4000-8000-000000000014")).toEqual(["Overview", "Interviews"]);
+    expect(labelsFor("interviewer")).toEqual(["Overview", "Interviews"]);
   });
 
-  it("shows only the overview to an identity without a membership", () => {
-    expect(labelsFor("unknown")).toEqual(["Overview"]);
-    expect(visibleNav(mockActor({ subject: "00000000-0000-4000-8000-000000000011", tenantId: "other", email: "", name: "" }).permissions)).toHaveLength(1);
+  it("gives the auditor read-only sections and the audit log", () => {
+    expect(labelsFor("auditor")).toEqual(["Overview", "Candidates", "Offers", "Audit log"]);
+  });
+
+  it("shows only the overview without permissions", () => {
+    expect(visibleNav([]).map((item) => item.label)).toEqual(["Overview"]);
   });
 
   it("marks nested routes active without matching the overview everywhere", () => {

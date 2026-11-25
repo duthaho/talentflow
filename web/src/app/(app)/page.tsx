@@ -18,11 +18,7 @@ export default async function OverviewPage() {
     <>
       <PageHeader
         title={`Welcome, ${actor.displayName}`}
-        description={
-          actor.role
-            ? `You are signed in to ${actor.tenantName} as ${ROLE_LABELS[actor.role]}.`
-            : `You are signed in to ${actor.tenantName}.`
-        }
+        description={`You are signed in to ${actor.tenantName} as ${ROLE_LABELS[actor.role]}.`}
       />
       {destinations.length === 0 ? (
         <ProblemView
@@ -30,7 +26,7 @@ export default async function OverviewPage() {
             type: `${PROBLEM_TYPE_BASE}forbidden`,
             title: "Forbidden",
             status: 403,
-            detail: "Your account has no role in this tenant yet. Ask a tenant admin to add you.",
+            detail: "Your role has no screens in the web app yet. Ask a tenant admin if you need more access.",
           }}
         />
       ) : (

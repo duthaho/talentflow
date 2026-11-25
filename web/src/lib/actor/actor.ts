@@ -1,27 +1,35 @@
-export type Permission =
-  | "requisition:create"
-  | "candidate:create"
-  | "candidate:transition"
-  | "candidate:attachment"
-  | "calendar:manage"
-  | "interview:manage"
-  | "feedback:submit"
-  | "audit:read"
-  | "report:read"
-  | "tenant:read"
-  | "retention:manage"
-  | "retention:purge";
+import type { components } from "@/lib/api/schema";
 
-export type Role = "tenant_admin" | "recruiter" | "hiring_manager" | "interviewer" | "auditor";
+const PERMISSIONS = [
+  "requisition:create",
+  "candidate:create",
+  "candidate:transition",
+  "candidate:attachment",
+  "calendar:manage",
+  "interview:manage",
+  "feedback:submit",
+  "audit:read",
+  "report:read",
+  "tenant:read",
+  "retention:manage",
+  "retention:purge",
+] as const;
 
-// Contract proposed for `GET /v1/me`; the API does not expose it yet (see the mock below).
+export type Permission = (typeof PERMISSIONS)[number];
+
+export type Role = components["schemas"]["CurrentActorResponse"]["role"];
+
+export function isPermission(value: string): value is Permission {
+  return (PERMISSIONS as readonly string[]).includes(value);
+}
+
 export type Actor = {
   userId: string;
-  email: string;
+  email: string | null;
   displayName: string;
   tenantId: string;
   tenantName: string;
-  role: Role | null;
+  role: Role;
   permissions: Permission[];
 };
 

@@ -37,9 +37,9 @@ export function AppShell({ actor, children }: { actor: Actor; children: ReactNod
           <div className="ml-auto flex items-center gap-3">
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium leading-tight">{actor.displayName}</p>
-              <p className="text-xs text-muted-foreground">{actor.email}</p>
+              {actor.email && <p className="text-xs text-muted-foreground">{actor.email}</p>}
             </div>
-            {actor.role && <Badge variant="secondary">{ROLE_LABELS[actor.role]}</Badge>}
+            <Badge variant="secondary">{ROLE_LABELS[actor.role]}</Badge>
             <form action="/auth/logout" method="post">
               <Button type="submit" variant="outline" size="sm">
                 <LogOut aria-hidden />

@@ -23,7 +23,7 @@ Stage 3 adds `web/`, a Next.js App Router app. Users sign in through Keycloak an
 
 **One error presentation.** Every API failure becomes RFC 9457 Problem Details (`web/src/lib/api/problem.ts`). Network failures and non-problem bodies are mapped to a fallback problem. `describeProblem` maps the problem `type` (or the status) to a single title, description, field errors and correlation id. Pages render it with `ProblemView`; client actions show it with `toastProblem`.
 
-**Role-aware navigation.** The nav is derived from the caller's permission set (`web/src/lib/nav.ts`). It is a usability aid only: the API remains the authority and returns 403. The API does not yet expose the caller's role, so `ACTOR_SOURCE=mock` resolves demo memberships from a typed mock that mirrors `ROLE_PERMISSIONS` (`web/src/lib/actor/mock.ts`). The intended contract is `GET /v1/me` (`web/src/lib/actor/current-actor.ts`); when the API serves it, set `ACTOR_SOURCE=api` and delete the mock.
+**Role-aware navigation.** The nav is derived from the caller's permission set (`web/src/lib/nav.ts`). It is a usability aid only: the API remains the authority and returns 403. Roles live in tenant memberships, not in the token, so the web app reads the caller's tenant, role and permissions from `GET /v1/me` through the generated client (`web/src/lib/actor/current-actor.ts`). Permissions the web app does not recognise are dropped rather than trusted.
 
 ## Consequences
 
@@ -31,7 +31,7 @@ Stage 3 adds `web/`, a Next.js App Router app. Users sign in through Keycloak an
 - Sessions can be revoked server-side, and token size does not hit cookie limits.
 - The web server needs Redis (database 1) and becomes a hop on every browser API call.
 - API changes that alter the OpenAPI document require `make api-client` in the same PR, or CI fails.
-- Until `GET /v1/me` exists, role-aware nav works for the seeded demo users only.
+- Each authenticated page load makes one `GET /v1/me` call (deduplicated per request).
 
 ## Rejected alternatives
 
@@ -42,5 +42,4 @@ Stage 3 adds `web/`, a Next.js App Router app. Users sign in through Keycloak an
 
 ## Revisit when
 
-- The API serves `GET /v1/me` (remove the mock).
 - The app is served from more than one origin, or needs offline or mobile clients.

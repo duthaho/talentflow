@@ -11,7 +11,7 @@ For a dev server against the compose stack:
 ```bash
 docker compose stop web
 cd web && npm ci
-API_BASE_URL=http://localhost:8000 REDIS_URL=redis://localhost:6379/1 ACTOR_SOURCE=mock npm run dev
+API_BASE_URL=http://localhost:8000 REDIS_URL=redis://localhost:6379/1 npm run dev
 ```
 
 Compose does not publish Redis to the host, so add a `ports` entry for `redis` (for example in a local `compose.override.yaml`) before you run the dev server.
@@ -26,7 +26,6 @@ Compose does not publish Redis to the host, so add a `ports` entry for `redis` (
 | `OIDC_INTERNAL_ISSUER` | `OIDC_ISSUER` | Keycloak issuer as seen from the web server (token, JWKS, revocation) |
 | `OIDC_CLIENT_ID` | `talentflow-api` | Public OIDC client |
 | `REDIS_URL` | `redis://localhost:6379/1` | Session store |
-| `ACTOR_SOURCE` | `api` | `api` reads `GET /v1/me`; `mock` resolves seeded demo roles until that endpoint exists |
 
 No secrets are required: the client is public (PKCE) and session ids are random.
 

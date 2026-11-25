@@ -1,29 +1,73 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const env = vi.hoisted(() => ({ actorSource: "api" as "api" | "mock", sessionError: undefined as Error | undefined }));
+const env = vi.hoisted(() => ({ sessionError: undefined as Error | undefined }));
 
 vi.mock("react", async (original) => ({ ...(await original<typeof import("react")>()), cache: <T>(fn: T) => fn }));
-vi.mock("@/lib/config", () => ({ config: () => ({ apiBaseUrl: "http://api:8000", actorSource: env.actorSource }) }));
+vi.mock("@/lib/config", () => ({ config: () => ({ apiBaseUrl: "http://api:8000" }) }));
 vi.mock("@/lib/auth/session", () => ({
   requireSession: async () => {
     if (env.sessionError) throw env.sessionError;
     return {
-    subject: "00000000-0000-4000-8000-000000000014",
-    tenantId: "00000000-0000-4000-8000-000000000001",
-    email: "interviewer@talentflow.local",
-    name: "Interviewer Demo",
-    accessToken: "token-1",
+      subject: "00000000-0000-4000-8000-000000000014",
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      email: "interviewer@talentflow.local",
+      name: "Interviewer Demo",
+      accessToken: "token-1",
     };
   },
 }));
 
-const { getCurrentActor } = await import("./current-actor");
+const { getCurrentActor, toActor } = await import("./current-actor");
 const { IdentityProviderUnavailableError } = await import("@/lib/auth/identity-provider");
+
+const ME = {
+  user_id: "u",
+  email: "e@x.test",
+  display_name: null,
+  tenant_id: "t",
+  tenant_name: "Acme",
+  role: "interviewer" as const,
+  permissions: ["feedback:submit"],
+};
 
 describe("getCurrentActor", () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     env.sessionError = undefined;
+  });
+
+  it("reads GET /v1/me with the session's bearer token", async () => {
+    const fetchMock = vi.fn(async (request: Request) => {
+      expect(request.url).toBe("http://api:8000/v1/me");
+      expect(request.headers.get("authorization")).toBe("Bearer token-1");
+      return Response.json(ME);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await getCurrentActor()).toEqual({
+      ok: true,
+      actor: {
+        userId: "u",
+        email: "e@x.test",
+        displayName: "Interviewer Demo",
+        tenantId: "t",
+        tenantName: "Acme",
+        role: "interviewer",
+        permissions: ["feedback:submit"],
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("returns the API problem when /v1/me fails", async () => {
+    const problem = { type: "x#forbidden", title: "Forbidden", status: 403 };
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json(problem, { status: 403 })));
+    expect(await getCurrentActor()).toEqual({ ok: false, problem });
+  });
+
+  it("returns an unreachable problem when the API is down", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("down"))));
+    const result = await getCurrentActor();
+    expect(!result.ok && result.problem.status).toBe(0);
   });
 
   it("shows a service-unavailable problem when Keycloak is down instead of logging out", async () => {
@@ -36,51 +80,21 @@ describe("getCurrentActor", () => {
     env.sessionError = new Error("NEXT_REDIRECT");
     await expect(getCurrentActor()).rejects.toThrow("NEXT_REDIRECT");
   });
+});
 
-  it("uses the typed mock while the API has no /v1/me", async () => {
-    env.actorSource = "mock";
-    expect(await getCurrentActor()).toMatchObject({ ok: true, actor: { role: "interviewer", permissions: ["feedback:submit"] } });
+describe("toActor", () => {
+  it("falls back to the token email and name when the API has none", () => {
+    const actor = toActor({ ...ME, email: null }, { email: "token@x.test", name: "" });
+    expect(actor).toMatchObject({ email: "token@x.test", displayName: "token@x.test" });
   });
 
-  it("maps the /v1/me contract when the API serves it", async () => {
-    env.actorSource = "api";
-    const fetchMock = vi.fn(async () =>
-      Response.json({
-        user_id: "u",
-        email: "e@x.test",
-        tenant_id: "t",
-        tenant_name: "Acme",
-        role: "recruiter",
-        permissions: ["tenant:read"],
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    expect(await getCurrentActor()).toEqual({
-      ok: true,
-      actor: {
-        userId: "u",
-        email: "e@x.test",
-        displayName: "Interviewer Demo",
-        tenantId: "t",
-        tenantName: "Acme",
-        role: "recruiter",
-        permissions: ["tenant:read"],
-      },
-    });
-    expect(fetchMock).toHaveBeenCalledWith("http://api:8000/v1/me", expect.objectContaining({ headers: { Authorization: "Bearer token-1" } }));
+  it("keeps a null email and uses the user id when nothing else is known", () => {
+    expect(toActor({ ...ME, email: null }, { email: "", name: "" })).toMatchObject({ email: null, displayName: "u" });
   });
 
-  it("returns the API problem when /v1/me fails", async () => {
-    env.actorSource = "api";
-    const problem = { type: "x#forbidden", title: "Forbidden", status: 403 };
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json(problem, { status: 403 })));
-    expect(await getCurrentActor()).toEqual({ ok: false, problem });
-  });
-
-  it("returns an unreachable problem when the API is down", async () => {
-    env.actorSource = "api";
-    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("down"))));
-    const result = await getCurrentActor();
-    expect(!result.ok && result.problem.status).toBe(0);
+  it("drops permissions the web app does not know", () => {
+    expect(toActor({ ...ME, permissions: ["feedback:submit", "future:thing"] }, { email: "", name: "" }).permissions).toEqual([
+      "feedback:submit",
+    ]);
   });
 });

@@ -208,8 +208,6 @@ services:
       OIDC_INTERNAL_ISSUER: http://keycloak:8080/realms/talentflow
       OIDC_CLIENT_ID: talentflow-api
       REDIS_URL: redis://redis:6379/1
-      # The API has no GET /v1/me yet; the web app resolves demo roles from a typed mock until it does.
-      ACTOR_SOURCE: mock
     depends_on:
       api:
         condition: service_healthy
