@@ -5,15 +5,33 @@ import logging
 import re
 import time
 from contextvars import ContextVar
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
+from opentelemetry import _logs, metrics, trace
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import Span
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from starlette.responses import Response
 
+from app.shared.settings import Settings
+
 correlation_id_context: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+_CALENDAR_FEED_PATH_PATTERN = re.compile(r"/v1/calendar-feeds/[^/?]+\.ics")
+_telemetry_handler: LoggingHandler | None = None
+_telemetry_configured = False
 
 http_requests = Counter(
     "talentflow_http_requests",
@@ -73,19 +91,77 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
+def configure_telemetry(runtime_settings: Settings) -> None:
+    """Export telemetry only when an OTLP endpoint has been explicitly configured."""
+    global _telemetry_configured, _telemetry_handler
+    if _telemetry_configured or not runtime_settings.otel_exporter_otlp_endpoint:
+        return
+
+    resource = Resource.create({"service.name": runtime_settings.otel_service_name})
+    endpoint = runtime_settings.otel_exporter_otlp_endpoint
+    insecure = _otlp_insecure(runtime_settings)
+    tracer_provider = TracerProvider(resource=resource)
+    tracer_provider.add_span_processor(
+        BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=insecure))
+    )
+    trace.set_tracer_provider(tracer_provider)
+
+    metric_reader = PeriodicExportingMetricReader(
+        OTLPMetricExporter(endpoint=endpoint, insecure=insecure)
+    )
+    metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[metric_reader]))
+
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(
+        BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint, insecure=insecure))
+    )
+    _logs.set_logger_provider(logger_provider)
+    _telemetry_handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+    _telemetry_configured = True
+
+
+def _otlp_insecure(runtime_settings: Settings) -> bool:
+    if runtime_settings.otel_exporter_otlp_insecure is not None:
+        return runtime_settings.otel_exporter_otlp_insecure
+    return urlsplit(runtime_settings.otel_exporter_otlp_endpoint).scheme != "https"
+
+
 def configure_logging() -> None:
     root = logging.getLogger()
     if any(isinstance(handler.formatter, JsonFormatter) for handler in root.handlers):
         return
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
-    root.handlers = [handler]
+    root.handlers = [handler, *([_telemetry_handler] if _telemetry_handler else [])]
     root.setLevel(logging.INFO)
+
+
+def record_worker_ready(worker_name: str, ready: bool) -> None:
+    meter = metrics.get_meter("talentflow.workers")
+    meter.create_up_down_counter("talentflow.worker.ready").add(
+        1 if ready else -1, {"worker.name": worker_name}
+    )
+
+
+def record_worker_cycle(worker_name: str, backlog: int, duration_seconds: float) -> None:
+    meter = metrics.get_meter("talentflow.workers")
+    attributes = {"worker.name": worker_name}
+    meter.create_counter("talentflow.worker.cycles").add(1, attributes)
+    meter.create_histogram("talentflow.worker.backlog").record(backlog, attributes)
+    meter.create_histogram("talentflow.worker.cycle.duration", unit="s").record(
+        duration_seconds, attributes
+    )
+
+
+def record_worker_failure(worker_name: str) -> None:
+    metrics.get_meter("talentflow.workers").create_counter("talentflow.worker.failures").add(
+        1, {"worker.name": worker_name}
+    )
 
 
 def instrument_app(app: FastAPI) -> None:
     if not getattr(app.state, "otel_instrumented", False):
-        FastAPIInstrumentor.instrument_app(app)
+        FastAPIInstrumentor.instrument_app(app, server_request_hook=_redact_calendar_feed_span)
         app.state.otel_instrumented = True
 
     @app.middleware("http")
@@ -114,3 +190,13 @@ def instrument_app(app: FastAPI) -> None:
 
 def prometheus_response() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+def _redact_calendar_feed_span(span: Span, scope: dict[str, object]) -> None:
+    path = scope.get("path")
+    if not isinstance(path, str) or not _CALENDAR_FEED_PATH_PATTERN.fullmatch(path):
+        return
+
+    sanitized_path = "/v1/calendar-feeds/{token}.ics"
+    for attribute in ("url.path", "http.target", "http.url", "url.full"):
+        span.set_attribute(attribute, sanitized_path)

@@ -8,7 +8,7 @@ from app.modules.notifications.application.outbox_publisher import OutboxPublish
 from app.modules.notifications.infrastructure.sendgrid_email import SendGridEmailAdapter
 from app.modules.notifications.infrastructure.smtp_email import SmtpEmailAdapter
 from app.shared.database import build_session_factory
-from app.shared.observability import configure_logging
+from app.shared.observability import configure_logging, configure_telemetry
 from app.shared.settings import Settings, settings
 from app.shared.worker_runtime import WorkerLoop
 
@@ -31,6 +31,7 @@ def build_email_adapter(runtime_settings: Settings) -> EmailAdapter:
 
 
 def main() -> None:
+    configure_telemetry(settings)
     configure_logging()
     adapter = build_email_adapter(settings)
     sessions = build_session_factory(settings.database_url)

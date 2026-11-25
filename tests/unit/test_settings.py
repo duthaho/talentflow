@@ -4,6 +4,12 @@ from pydantic import ValidationError
 from app.shared.settings import Settings
 
 
+def test_env_example_is_loadable() -> None:
+    settings = Settings(_env_file=".env.example")
+
+    assert settings.otel_exporter_otlp_insecure is None
+
+
 def test_production_rejects_development_header_auth() -> None:
     with pytest.raises(ValidationError, match="AUTH_MODE=oidc_jwt"):
         Settings(app_env="production")
@@ -111,3 +117,13 @@ def test_s3_attachment_storage_requires_credentials_and_bounded_download_ttl() -
         Settings(attachment_storage_backend="s3")
     with pytest.raises(ValidationError, match="ATTACHMENT_DOWNLOAD_TTL_SECONDS"):
         Settings(attachment_download_ttl_seconds=301)
+
+
+def test_telemetry_export_is_disabled_by_default_and_configurable() -> None:
+    assert Settings().otel_exporter_otlp_endpoint == ""
+    configured = Settings(
+        otel_exporter_otlp_endpoint="otel-collector:4317",
+        otel_service_name="talentflow-retention-worker",
+    )
+    assert configured.otel_exporter_otlp_endpoint == "otel-collector:4317"
+    assert configured.otel_service_name == "talentflow-retention-worker"
