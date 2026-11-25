@@ -21,6 +21,7 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import Span
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from starlette.responses import Response
 
@@ -191,17 +192,11 @@ def prometheus_response() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-def _redact_calendar_feed_span(span: object, scope: dict[str, object]) -> None:
+def _redact_calendar_feed_span(span: Span, scope: dict[str, object]) -> None:
     path = scope.get("path")
     if not isinstance(path, str) or not _CALENDAR_FEED_PATH_PATTERN.fullmatch(path):
         return
 
     sanitized_path = "/v1/calendar-feeds/{token}.ics"
-    for attribute in ("url.path", "http.target"):
-        span.set_attribute(attribute, sanitized_path)  # type: ignore[attr-defined]
-    for attribute in ("http.url", "url.full"):
-        value = span.attributes.get(attribute)  # type: ignore[attr-defined]
-        if isinstance(value, str):
-            span.set_attribute(  # type: ignore[attr-defined]
-                attribute, _CALENDAR_FEED_PATH_PATTERN.sub(sanitized_path, value)
-            )
+    for attribute in ("url.path", "http.target", "http.url", "url.full"):
+        span.set_attribute(attribute, sanitized_path)

@@ -4,6 +4,12 @@ from pydantic import ValidationError
 from app.shared.settings import Settings
 
 
+def test_env_example_is_loadable() -> None:
+    settings = Settings(_env_file=".env.example")
+
+    assert settings.otel_exporter_otlp_insecure is None
+
+
 def test_production_rejects_development_header_auth() -> None:
     with pytest.raises(ValidationError, match="AUTH_MODE=oidc_jwt"):
         Settings(app_env="production")
