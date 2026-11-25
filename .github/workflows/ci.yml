@@ -53,6 +53,35 @@ jobs:
       - run: uv run alembic current
       - run: uv run python -m pytest
 
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: uv sync --all-groups --frozen
+        working-directory: .
+      - run: npm ci
+      - name: Fail when the generated API client is stale
+        run: |
+          make -C .. api-client
+          git diff --exit-code -- openapi.json src/lib/api/schema.ts \
+            || { echo 'Run `make api-client` and commit the result.' >&2; exit 1; }
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:coverage
+      - run: npm run build
+
   container-smoke:
     needs: quality-and-migrations
     runs-on: ubuntu-24.04
@@ -152,6 +181,12 @@ jobs:
           assert_status 200 "$(get_token recruiter@talentflow.local)"
           assert_status 200 "$(get_token manager@talentflow.local)"
           assert_status 403 "$(get_token interviewer@talentflow.local)"
+      - name: Verify the web app starts a PKCE login against Keycloak
+        run: |
+          location=$(curl --silent --output /dev/null --write-out '%{redirect_url}' http://localhost:3000/auth/login)
+          echo "$location" | grep -q '^http://localhost:8081/realms/talentflow/protocol/openid-connect/auth?'
+          echo "$location" | grep -q 'code_challenge_method=S256'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:3000/signed-out)" = 200
       - name: Verify the Collector received an API trace
         run: |
           curl --fail --silent --show-error http://localhost:8000/health/live >/dev/null

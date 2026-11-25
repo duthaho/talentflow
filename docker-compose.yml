@@ -199,6 +199,25 @@ services:
       timeout: 5s
       retries: 6
 
+  web:
+    build: ./web
+    environment:
+      APP_BASE_URL: http://localhost:3000
+      API_BASE_URL: http://api:8000
+      OIDC_ISSUER: http://localhost:8081/realms/talentflow
+      OIDC_INTERNAL_ISSUER: http://keycloak:8080/realms/talentflow
+      OIDC_CLIENT_ID: talentflow-api
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
+      api:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+
   notification-worker:
     build: .
     command: ["python", "-m", "app.modules.notifications.application.run_email_worker"]

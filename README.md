@@ -13,6 +13,7 @@ The v2 plan (DUTH-43) makes TalentFlow fully runnable on a laptop: `docker compo
 - [Roadmap](docs/roadmap.md) — nine stages, their issues and the patterns each one teaches
 - [Architecture](docs/architecture.md) — current and target, with C4 diagrams
 - [ADR 003: Local open-source runtime stack](docs/adr/003-local-open-source-runtime-stack.md) — why each service, its licence and the rejected alternative
+- [ADR 004: Web BFF session and typed client](docs/adr/004-web-bff-session-and-typed-client.md) — where tokens live and how the client tracks the API contract
 - [All docs](docs/README.md)
 
 ## Quick start
@@ -47,7 +48,7 @@ docker compose up -d
 make seed        # demo tenant + admin, recruiter, hiring manager, interviewer in Keycloak and the app
 ```
 
-Use the seeded local accounts with Keycloak's token endpoint to call the API. Mailpit joins in DUTH-48 and local telemetry in DUTH-92; the web app joins in stage 3.
+Open the web app at http://localhost:3000 and sign in with a seeded account (`admin@`, `recruiter@`, `manager@` or `interviewer@talentflow.local`, password `dev-demo-password`); the navigation follows the account's role. See [`web/README.md`](web/README.md). The seeded accounts also work with Keycloak's token endpoint for direct API calls.
 
 ## Pattern catalog
 
@@ -87,7 +88,7 @@ Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `imple
 | SMTP adapter to Mailpit (DUTH-48) | Email visible locally without a provider account | [`app/modules/notifications/infrastructure/smtp_email.py`](app/modules/notifications/infrastructure/smtp_email.py) | [`tests/integration/test_smtp_email.py`](tests/integration/test_smtp_email.py) | [003](docs/adr/003-local-open-source-runtime-stack.md) | implemented |
 | S3 storage with presigned downloads (DUTH-49) | Bytes never stream through the API; short-lived links after authz | [`app/modules/attachments/infrastructure/s3_storage.py`](app/modules/attachments/infrastructure/s3_storage.py) | [`tests/integration/test_seaweedfs_s3.py`](tests/integration/test_seaweedfs_s3.py), [`tests/integration/test_candidate_retention.py`](tests/integration/test_candidate_retention.py) | [003](docs/adr/003-local-open-source-runtime-stack.md) | implemented |
 | One-command stack and Keycloak (DUTH-50) | Runnable by anyone with real OIDC tokens and seeded roles | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 2 |
-| Browser OIDC (code + PKCE), generated typed API client (DUTH-51) | Secure SPA login; client and API cannot drift | — | — | — | planned — stage 3 |
+| Browser OIDC (code + PKCE) through a BFF session, generated typed API client (DUTH-51) | No tokens in the browser; client and API cannot drift | [`web/src/lib/auth/`](web/src/lib/auth), [`web/src/lib/api/`](web/src/lib/api) | [`web/src/lib/auth/auth-service.test.ts`](web/src/lib/auth/auth-service.test.ts), [`web/src/lib/api/bff-proxy.test.ts`](web/src/lib/api/bff-proxy.test.ts) | [004](docs/adr/004-web-bff-session-and-typed-client.md) | implemented |
 | Conflict-aware UI for optimistic locking (DUTH-52) | Users see "changed by someone else" instead of losing work | — | — | — | planned — stage 3 |
 | End-to-end tests against the real stack (DUTH-57) | The hiring flow is proven in a browser on every PR | — | — | — | planned — stage 4 |
 | Versioned event envelope and AsyncAPI catalog (DUTH-58) | Explicit integration contracts and evolution rules | — | — | planned with DUTH-58 | planned — stage 5 |
@@ -137,7 +138,8 @@ Candidate lifecycle: `applied → screening → interviewing → offer_pending_a
 app/            FastAPI app, modules (domain / application / infrastructure), shared kernel
 migrations/     Alembic revisions
 tests/          unit, integration and architecture tests
+web/            Next.js web app (BFF session, generated API client)
 docs/           architecture, roadmap, ADRs, runbooks
-scripts/        PostgreSQL backup and restore helpers
+scripts/        PostgreSQL backup/restore, demo seed, OpenAPI export
 infra/opentofu/ legacy AWS foundation — out of scope, not maintained
 ```
