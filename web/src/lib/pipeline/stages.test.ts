@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { ALLOWED_TRANSITIONS, canMove, STAGES } from "./stages";
+import { ALLOWED_TRANSITIONS, canMove, GENERIC_STAGE_TRANSITIONS, STAGES } from "./stages";
 
 function backendTransitions(): Record<string, string[]> {
   const source = readFileSync(
@@ -33,5 +33,11 @@ describe("pipeline stages", () => {
     expect(canMove("hired", "withdrawn")).toBe(false);
     expect(canMove("applied", "applied")).toBe(false);
     expect(canMove("archived", "screening")).toBe(false);
+  });
+
+  it("does not submit offer stages through the generic stage endpoint", () => {
+    expect(GENERIC_STAGE_TRANSITIONS.interviewing).not.toContain("offer_pending_approval");
+    expect(GENERIC_STAGE_TRANSITIONS.offer_pending_approval).not.toContain("offer_approved");
+    expect(GENERIC_STAGE_TRANSITIONS.offer_pending_approval).not.toContain("offer_rejected");
   });
 });

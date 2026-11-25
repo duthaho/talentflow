@@ -28,6 +28,18 @@ class SqlAlchemyOfferRepository:
             version=record.version,
         )
 
+    def has_approved_offer(self, *, candidate_id: str, tenant_id: str) -> bool:
+        return (
+            self._session.scalar(
+                select(OfferRecord.id).where(
+                    OfferRecord.candidate_case_id == candidate_id,
+                    OfferRecord.tenant_id == tenant_id,
+                    OfferRecord.status == "approved",
+                )
+            )
+            is not None
+        )
+
     def add(
         self, *, offer: Offer, title: str, annual_salary: int, currency: str, created_by: str
     ) -> None:

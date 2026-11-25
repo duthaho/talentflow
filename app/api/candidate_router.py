@@ -20,8 +20,10 @@ from app.modules.candidates.application.list_candidates import (
     ListCandidatesQuery,
 )
 from app.modules.candidates.application.transition_candidate import (
+    ApprovedOfferRequiredError,
     CandidateNotFoundError,
     ConcurrencyConflictError,
+    OfferStageManagedByOfferFlowError,
     TransitionCandidateCommand,
     TransitionCandidateHandler,
 )
@@ -33,6 +35,7 @@ from app.modules.candidates.infrastructure.sqlalchemy_repository import (
     SqlAlchemyUnitOfWork,
 )
 from app.modules.identity.security import ActorContext, require
+from app.modules.offers.infrastructure.sqlalchemy_repository import SqlAlchemyOfferRepository
 from app.modules.workflow.domain.candidate_state_machine import InvalidTransitionError
 from app.shared.database import SessionDep
 from app.shared.observability import command_conflicts
@@ -123,6 +126,7 @@ def transition_candidate_case_stage(
     try:
         transitioned = TransitionCandidateHandler(
             repository=SqlAlchemyCandidateRepository(session),
+            approved_offers=SqlAlchemyOfferRepository(session),
             audit=SqlAlchemyAuditRecorder(session),
             unit_of_work=SqlAlchemyUnitOfWork(session),
         ).handle(
@@ -156,7 +160,12 @@ def transition_candidate_case_stage(
                 "current_version": current.version,
             },
         ) from error
-    except (InvalidTransitionError, ValueError) as error:
+    except (
+        ApprovedOfferRequiredError,
+        InvalidTransitionError,
+        OfferStageManagedByOfferFlowError,
+        ValueError,
+    ) as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
         ) from error

@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.modules.candidates.infrastructure.models import CandidateCase
 from app.shared.problem_details import PROBLEM_TYPE_BASE
 
 
@@ -91,3 +92,46 @@ def test_transition_requires_tenant_member_with_permission() -> None:
         )
 
     assert response.status_code == 403
+
+
+def test_generic_stage_endpoint_cannot_bypass_offer_approval() -> None:
+    app = create_app("sqlite://")
+    with TestClient(app) as client:
+        headers, candidate_id = candidate_context(client)
+        for stage, version in (("screening", 1), ("interviewing", 2)):
+            assert (
+                client.patch(
+                    f"/v1/candidate-cases/{candidate_id}/stage",
+                    headers=headers,
+                    json={"target_stage": stage, "expected_version": version},
+                ).status_code
+                == 200
+            )
+
+        for target_stage in ("offer_pending_approval", "offer_approved", "offer_rejected"):
+            response = client.patch(
+                f"/v1/candidate-cases/{candidate_id}/stage",
+                headers=headers,
+                json={"target_stage": target_stage, "expected_version": 3},
+            )
+            assert response.status_code == 422
+            assert (
+                response.json()["detail"]
+                == "Offer stages can only be changed through the offers flow"
+            )
+
+        with app.state.session_factory() as session:
+            candidate = session.get(CandidateCase, candidate_id)
+            assert candidate is not None
+            candidate.stage = "offer_approved"
+            candidate.version = 4
+            session.commit()
+
+        hired = client.patch(
+            f"/v1/candidate-cases/{candidate_id}/stage",
+            headers=headers,
+            json={"target_stage": "hired", "expected_version": 4},
+        )
+
+    assert hired.status_code == 422
+    assert hired.json()["detail"] == "An approved offer is required before hiring a candidate"
