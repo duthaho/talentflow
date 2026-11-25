@@ -244,6 +244,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Current Actor */
+        get: operations["get_current_actor_v1_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/offers/{offer_id}/approvals": {
         parameters: {
             query?: never;
@@ -504,6 +521,26 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /** CurrentActorResponse */
+        CurrentActorResponse: {
+            /** Display Name */
+            display_name?: null;
+            /** Email */
+            email: string | null;
+            /** Permissions */
+            permissions: string[];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "tenant_admin" | "recruiter" | "auditor" | "hiring_manager" | "interviewer";
+            /** Tenant Id */
+            tenant_id: string;
+            /** Tenant Name */
+            tenant_name: string;
+            /** User Id */
+            user_id: string;
         };
         /** FeedbackResponse */
         FeedbackResponse: {
@@ -1194,6 +1231,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedbackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_current_actor_v1_me_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentActorResponse"];
                 };
             };
             /** @description Validation Error */
