@@ -1,4 +1,3 @@
-from datetime import UTC
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
@@ -17,6 +16,7 @@ from app.modules.candidates.application.create_candidate import (
     CreateCandidateHandler,
     RequisitionNotFoundError,
 )
+from app.modules.candidates.application.get_candidate import GetCandidateHandler
 from app.modules.candidates.application.list_candidates import (
     ListCandidatesHandler,
     ListCandidatesQuery,
@@ -77,17 +77,16 @@ def get_candidate_case(
     session: SessionDep,
     actor: ActorContext = Depends(require("tenant:read")),
 ) -> CandidateCaseDetailResponse:
-    record = session.get(CandidateCase, candidate_case_id)
-    if record is None or record.tenant_id != actor.tenant_id:
+    try:
+        detail = GetCandidateHandler(SqlAlchemyCandidateRepository(session)).handle(
+            candidate_id=candidate_case_id, tenant_id=actor.tenant_id
+        )
+    except CandidateNotFoundError as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
-        )
+        ) from error
     response.headers["Cache-Control"] = "private, no-store"
-    detail = CandidateCaseDetailResponse.model_validate(record, from_attributes=True)
-    created_at = detail.created_at
-    if created_at.tzinfo is None:
-        detail = detail.model_copy(update={"created_at": created_at.replace(tzinfo=UTC)})
-    return detail
+    return CandidateCaseDetailResponse(**detail.__dict__)
 
 
 @router.post(

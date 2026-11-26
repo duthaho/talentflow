@@ -4,7 +4,11 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.audit.persistence import AuditEvent
-from app.modules.candidates.application.ports import CandidateListItem, CandidatePage
+from app.modules.candidates.application.ports import (
+    CandidateDetail,
+    CandidateListItem,
+    CandidatePage,
+)
 from app.modules.candidates.domain.candidate_case import CandidateCase
 from app.modules.candidates.persistence import CandidateCase as CandidateCaseRecord
 from app.modules.organization.persistence import Requisition
@@ -14,6 +18,26 @@ from app.modules.workflow.domain.candidate_state_machine import CandidateStage
 class SqlAlchemyCandidateRepository:
     def __init__(self, session: Session):
         self._session = session
+
+    def get_detail(self, *, candidate_id: str, tenant_id: str) -> CandidateDetail | None:
+        record = self._session.scalar(
+            select(CandidateCaseRecord).where(
+                CandidateCaseRecord.id == candidate_id, CandidateCaseRecord.tenant_id == tenant_id
+            )
+        )
+        if record is None:
+            return None
+        created_at = record.created_at
+        return CandidateDetail(
+            id=record.id,
+            requisition_id=record.requisition_id,
+            first_name=record.first_name,
+            last_name=record.last_name,
+            email=record.email,
+            stage=record.stage,
+            version=record.version,
+            created_at=created_at.replace(tzinfo=UTC) if created_at.tzinfo is None else created_at,
+        )
 
     def get(self, *, candidate_id: str, tenant_id: str) -> CandidateCase | None:
         record = self._session.scalar(

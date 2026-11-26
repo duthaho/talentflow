@@ -261,6 +261,7 @@ The local realm's `tenant_id` mapper is hardcoded only for its single demo tenan
 - SQLAlchemy ORM records are persistence models, not domain objects; repositories translate between them.
 - A context owns mapped records in `app/modules/<context>/infrastructure/models.py`. Its `persistence.py` publishes only the records that an explicitly allow-listed cross-context dependency needs. The allow-list covers transactional audit writes, identity membership lookup, ownership validation, notification recipient/outbox handling, retention purge, and Reporting's CQRS-lite projection; all other cross-context access uses an application port or an integration event.
 - PostgreSQL is the system of record; tests run on SQLite, CI also applies migrations to PostgreSQL.
+- The audit timeline uses a `CaseTimelineReader` application port. Its SQLAlchemy adapter has read-only access to candidate existence and attachment ids, with tenant predicates on both the audit rows and attachment subquery. The application handler decodes cursors, assembles pages and applies the metadata allowlist; routers map permissions, errors and response models. Candidate detail and retention reads likewise go through their module repository ports.
 - Schema changes go through Alembic (`migrations/versions/`) with expand/contract compatibility. The app creates tables only outside production.
 - Database constraints back the invariants: tenant-unique candidate email, one feedback per interview, one decision per approval step, unique outbox materialization.
 

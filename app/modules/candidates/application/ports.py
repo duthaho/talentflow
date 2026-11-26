@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from app.modules.candidates.domain.candidate_case import CandidateCase
@@ -24,7 +25,14 @@ class CandidatePage:
     total: int
 
 
+@dataclass(frozen=True)
+class CandidateDetail(CandidateListItem):
+    created_at: datetime
+
+
 class CandidateRepository(Protocol):
+    def get_detail(self, *, candidate_id: str, tenant_id: str) -> CandidateDetail | None: ...
+
     def get(self, *, candidate_id: str, tenant_id: str) -> CandidateCase | None: ...
 
     def transition(self, *, candidate: CandidateCase, expected_version: int) -> bool: ...
