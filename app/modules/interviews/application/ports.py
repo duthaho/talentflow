@@ -77,6 +77,8 @@ def decode_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         scheduled_at, interview_id = payload["s"], payload["i"]
         if not isinstance(scheduled_at, str) or not isinstance(interview_id, str):
             raise ValueError
+        if "\x00" in interview_id:
+            raise ValueError
         parsed = datetime.fromisoformat(scheduled_at)
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise ValueError

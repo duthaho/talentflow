@@ -291,7 +291,7 @@ def test_cursor_replay_and_unknown_manager_filters_stay_scoped() -> None:
         replay = client.get("/v1/interviews", headers=a_recruiter, params={"cursor": b_cursor})
         unknown = [
             client.get("/v1/interviews", headers=a_recruiter, params={"interviewer": value})
-            for value in ("unknown", "x" * 200)
+            for value in ("unknown", "x" * 200, "\x00")
         ]
 
     assert replay.status_code == 200

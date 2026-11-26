@@ -29,6 +29,8 @@ class ListInterviewsHandler:
         self._interviews = interviews
 
     def handle(self, query: ListInterviewsQuery) -> InterviewPage:
+        if query.can_manage and query.interviewer is not None and "\x00" in query.interviewer:
+            return InterviewPage(items=[], next_cursor=None, total=0)
         interviewer_id = self._effective_interviewer(query)
         page = self._interviews.list_page(
             tenant_id=query.tenant_id,
