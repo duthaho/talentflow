@@ -1,9 +1,11 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 
 from app.api.schemas import (
     LegalHoldRequest,
+    LegalHoldResponse,
+    RetentionPolicyReadResponse,
     RetentionPolicyRequest,
     RetentionPolicyResponse,
     RetentionPurgeResponse,
@@ -49,6 +51,16 @@ def set_retention_policy(
     return RetentionPolicyResponse(retention_days=policy.retention_days)
 
 
+@router.get("/v1/retention-policy", response_model=RetentionPolicyReadResponse)
+def get_retention_policy(
+    request: Request,
+    session: SessionDep,
+    actor: ActorContext = Depends(require("retention:manage")),
+) -> RetentionPolicyReadResponse:
+    retention_days = _service(session, request).get_policy(tenant_id=actor.tenant_id)
+    return RetentionPolicyReadResponse(retention_days=retention_days)
+
+
 @router.put(
     "/v1/candidate-cases/{candidate_case_id}/legal-hold", status_code=status.HTTP_204_NO_CONTENT
 )
@@ -73,6 +85,26 @@ def set_legal_hold(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
         ) from error
+
+
+@router.get("/v1/candidate-cases/{candidate_case_id}/legal-hold", response_model=LegalHoldResponse)
+def get_legal_hold(
+    candidate_case_id: str,
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    actor: ActorContext = Depends(require("retention:manage")),
+) -> LegalHoldResponse:
+    try:
+        hold = _service(session, request).get_legal_hold(
+            tenant_id=actor.tenant_id, candidate_case_id=candidate_case_id
+        )
+    except CandidateNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
+        ) from error
+    response.headers["Cache-Control"] = "private, no-store"
+    return LegalHoldResponse(**hold.__dict__)
 
 
 @router.post("/v1/retention/purge", response_model=RetentionPurgeResponse)

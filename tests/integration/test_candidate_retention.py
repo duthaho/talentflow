@@ -167,3 +167,77 @@ def test_retention_purge_deletes_s3_attachment_content(monkeypatch: pytest.Monke
 
     assert purge.json() == {"purged_count": 1}
     assert client.objects == {}
+
+
+def test_legal_hold_read_lifecycle_and_private_cache_header() -> None:
+    app = create_app("sqlite://", Settings(app_env="test"))
+    with TestClient(app) as client:
+        tenant = bootstrap_tenant(client, "hold-read", "admin")
+        headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "admin"}
+        candidate = _create_rejected_candidate(client, headers, "hold-read@example.test")
+        route = f"/v1/candidate-cases/{candidate['id']}/legal-hold"
+        empty = {"held": False, "reason": None, "placed_at": None, "placed_by": None}
+        initial = client.get(route, headers=headers)
+        assert initial.status_code == 200
+        assert initial.json() == empty
+        assert initial.headers["cache-control"] == "private, no-store"
+        assert (
+            client.put(
+                route, headers=headers, json={"held": True, "reason": "Active dispute"}
+            ).status_code
+            == 204
+        )
+        held = client.get(route, headers=headers)
+        assert held.status_code == 200
+        assert held.headers["cache-control"] == "private, no-store"
+        assert set(held.json()) == set(empty)
+        assert held.json()["held"] is True
+        assert held.json()["reason"] == "Active dispute"
+        assert held.json()["placed_by"] == "admin"
+        # Compare to the persisted placement time, independently of its wire timezone.
+        with app.state.session_factory() as session:
+            from app.modules.retention.persistence import CandidateLegalHold
+
+            record = session.get(CandidateLegalHold, candidate["id"])
+            assert datetime.fromisoformat(held.json()["placed_at"]).replace(
+                tzinfo=UTC
+            ) == record.created_at.replace(tzinfo=UTC)
+        assert client.put(route, headers=headers, json={"held": False}).status_code == 204
+        released = client.get(route, headers=headers)
+        assert released.status_code == 200
+        assert released.json() == empty
+        assert released.headers["cache-control"] == "private, no-store"
+
+
+def test_retention_policy_read_after_put_is_tenant_isolated() -> None:
+    with TestClient(create_app("sqlite://", Settings(app_env="test"))) as client:
+        tenant_a = bootstrap_tenant(client, "policy-a", "admin-a")
+        tenant_b = bootstrap_tenant(client, "policy-b", "admin-b")
+        a = {"X-Tenant-Id": tenant_a["id"], "X-Actor-Id": "admin-a"}
+        b = {"X-Tenant-Id": tenant_b["id"], "X-Actor-Id": "admin-b"}
+        for headers in [a, b]:
+            response = client.get("/v1/retention-policy", headers=headers)
+            assert response.status_code == 200
+            assert response.json() == {"retention_days": None}
+        put_b = client.put("/v1/retention-policy", headers=b, json={"retention_days": 30})
+        assert put_b.status_code == 200
+        assert put_b.json() == {"retention_days": 30}
+        assert client.get("/v1/retention-policy", headers=a).json() == {"retention_days": None}
+        put_a = client.put("/v1/retention-policy", headers=a, json={"retention_days": 90})
+        assert put_a.status_code == 200
+        assert put_a.json() == {"retention_days": 90}
+        for headers, days in [(a, 90), (b, 30)]:
+            response = client.get("/v1/retention-policy", headers=headers)
+            assert response.status_code == 200
+            assert response.json() == {"retention_days": days}
+
+    # The additive nullable GET model must not weaken the existing PUT schema.
+    import json
+
+    schema = json.loads(Path("web/openapi.json").read_text())
+    put_schema = schema["paths"]["/v1/retention-policy"]["put"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]["$ref"].split("/")[-1]
+    model = schema["components"]["schemas"][put_schema]
+    assert "retention_days" in model["required"]
+    assert model["properties"]["retention_days"]["type"] == "integer"

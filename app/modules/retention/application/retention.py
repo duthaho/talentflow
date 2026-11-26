@@ -15,7 +15,19 @@ class RetentionPolicy:
     retention_days: int
 
 
+@dataclass(frozen=True)
+class LegalHoldView:
+    held: bool
+    reason: str | None
+    placed_at: datetime | None
+    placed_by: str | None
+
+
 class RetentionRepository(Protocol):
+    def get_policy(self, *, tenant_id: str) -> int | None: ...
+
+    def get_legal_hold(self, *, tenant_id: str, candidate_case_id: str) -> LegalHoldView: ...
+
     def set_policy(self, *, tenant_id: str, retention_days: int) -> RetentionPolicy: ...
 
     def candidate_exists(self, *, tenant_id: str, candidate_case_id: str) -> bool: ...
@@ -60,6 +72,18 @@ class RetentionService:
         self._repository = repository
         self._audit = audit
         self._unit_of_work = unit_of_work
+
+    def get_policy(self, *, tenant_id: str) -> int | None:
+        return self._repository.get_policy(tenant_id=tenant_id)
+
+    def get_legal_hold(self, *, tenant_id: str, candidate_case_id: str) -> LegalHoldView:
+        if not self._repository.candidate_exists(
+            tenant_id=tenant_id, candidate_case_id=candidate_case_id
+        ):
+            raise CandidateNotFoundError(candidate_case_id)
+        return self._repository.get_legal_hold(
+            tenant_id=tenant_id, candidate_case_id=candidate_case_id
+        )
 
     def set_policy(
         self, *, tenant_id: str, retention_days: int, actor_id: str, correlation_id: str

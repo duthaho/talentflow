@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
@@ -7,7 +7,7 @@ from app.modules.attachments.application.ports import AttachmentStorage
 from app.modules.attachments.persistence import Attachment
 from app.modules.audit.persistence import AuditEvent
 from app.modules.candidates.persistence import CandidateCase
-from app.modules.retention.application.retention import RetentionPolicy
+from app.modules.retention.application.retention import LegalHoldView, RetentionPolicy
 from app.modules.retention.persistence import CandidateLegalHold
 from app.modules.retention.persistence import RetentionPolicy as RetentionPolicyRecord
 
@@ -16,6 +16,30 @@ class SqlAlchemyRetentionRepository:
     def __init__(self, session: Session, *, attachment_storage: AttachmentStorage) -> None:
         self._session = session
         self._storage = attachment_storage
+
+    def get_policy(self, *, tenant_id: str) -> int | None:
+        return self._session.scalar(
+            select(RetentionPolicyRecord.retention_days).where(
+                RetentionPolicyRecord.tenant_id == tenant_id
+            )
+        )
+
+    def get_legal_hold(self, *, tenant_id: str, candidate_case_id: str) -> LegalHoldView:
+        hold = self._session.scalar(
+            select(CandidateLegalHold).where(
+                CandidateLegalHold.candidate_case_id == candidate_case_id,
+                CandidateLegalHold.tenant_id == tenant_id,
+            )
+        )
+        if hold is None:
+            return LegalHoldView(held=False, reason=None, placed_at=None, placed_by=None)
+        placed_at = hold.created_at
+        return LegalHoldView(
+            held=True,
+            reason=hold.reason,
+            placed_by=hold.created_by,
+            placed_at=placed_at.replace(tzinfo=UTC) if placed_at.tzinfo is None else placed_at,
+        )
 
     def set_policy(self, *, tenant_id: str, retention_days: int) -> RetentionPolicy:
         record = self._session.get(RetentionPolicyRecord, tenant_id)

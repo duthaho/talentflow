@@ -55,6 +55,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/attachment-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Attachment Policy */
+        get: operations["get_attachment_policy_v1_attachment_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/audit-events": {
         parameters: {
             query?: never;
@@ -125,6 +142,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/candidate-cases/{candidate_case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Candidate Case */
+        get: operations["get_candidate_case_v1_candidate_cases__candidate_case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/candidate-cases/{candidate_case_id}/attachments": {
         parameters: {
             query?: never;
@@ -160,6 +194,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/candidate-cases/{candidate_case_id}/audit-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Case Audit Events */
+        get: operations["list_case_audit_events_v1_candidate_cases__candidate_case_id__audit_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/candidate-cases/{candidate_case_id}/interviews": {
         parameters: {
             query?: never;
@@ -184,7 +235,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Legal Hold */
+        get: operations["get_legal_hold_v1_candidate_cases__candidate_case_id__legal_hold_get"];
         /** Set Legal Hold */
         put: operations["set_legal_hold_v1_candidate_cases__candidate_case_id__legal_hold_put"];
         post?: never;
@@ -389,7 +441,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Retention Policy */
+        get: operations["get_retention_policy_v1_retention_policy_get"];
         /** Set Retention Policy */
         put: operations["set_retention_policy_v1_retention_policy_put"];
         post?: never;
@@ -445,6 +498,13 @@ export interface components {
             expected_version: number;
             /** Reason */
             reason?: string | null;
+        };
+        /** AttachmentPolicyResponse */
+        AttachmentPolicyResponse: {
+            /** Allowed Content Types */
+            allowed_content_types: string[];
+            /** Max Bytes */
+            max_bytes: number;
         };
         /** AttachmentResponse */
         AttachmentResponse: {
@@ -515,6 +575,28 @@ export interface components {
             /** Id */
             id: string;
         };
+        /** CandidateCaseDetailResponse */
+        CandidateCaseDetailResponse: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Email */
+            email: string;
+            /** First Name */
+            first_name: string;
+            /** Id */
+            id: string;
+            /** Last Name */
+            last_name: string;
+            /** Requisition Id */
+            requisition_id: string;
+            /** Stage */
+            stage: string;
+            /** Version */
+            version: number;
+        };
         /** CandidateCaseResponse */
         CandidateCaseResponse: {
             /** Email */
@@ -557,6 +639,35 @@ export interface components {
             next_cursor: string | null;
             /** Total */
             total: number;
+        };
+        /** CaseAuditEventItem */
+        CaseAuditEventItem: {
+            /** Action */
+            action: string;
+            /** Actor Id */
+            actor_id: string;
+            /** Aggregate Id */
+            aggregate_id: string;
+            /** Aggregate Type */
+            aggregate_type: string;
+            /** Id */
+            id: string;
+            /** Metadata */
+            metadata: {
+                [key: string]: unknown;
+            };
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+        };
+        /** CaseAuditEventPage */
+        CaseAuditEventPage: {
+            /** Items */
+            items: components["schemas"]["CaseAuditEventItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** CreateCalendarSubscriptionRequest */
         CreateCalendarSubscriptionRequest: {
@@ -711,6 +822,17 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
+        /** LegalHoldResponse */
+        LegalHoldResponse: {
+            /** Held */
+            held: boolean;
+            /** Placed At */
+            placed_at: string | null;
+            /** Placed By */
+            placed_by: string | null;
+            /** Reason */
+            reason: string | null;
+        };
         /** OfferDecisionResponse */
         OfferDecisionResponse: {
             /** Actor Id */
@@ -843,6 +965,11 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** RetentionPolicyReadResponse */
+        RetentionPolicyReadResponse: {
+            /** Retention Days */
+            retention_days: number | null;
+        };
         /** RetentionPolicyRequest */
         RetentionPolicyRequest: {
             /** Retention Days */
@@ -965,6 +1092,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_attachment_policy_v1_attachment_policy_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentPolicyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1183,6 +1343,41 @@ export interface operations {
             };
         };
     };
+    get_candidate_case_v1_candidate_cases__candidate_case_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path: {
+                candidate_case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateCaseDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_attachments_v1_candidate_cases__candidate_case_id__attachments_get: {
         parameters: {
             query?: never;
@@ -1293,6 +1488,44 @@ export interface operations {
             };
         };
     };
+    list_case_audit_events_v1_candidate_cases__candidate_case_id__audit_events_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path: {
+                candidate_case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseAuditEventPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     schedule_interview_v1_candidate_cases__candidate_case_id__interviews_post: {
         parameters: {
             query?: never;
@@ -1319,6 +1552,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InterviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_legal_hold_v1_candidate_cases__candidate_case_id__legal_hold_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path: {
+                candidate_case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LegalHoldResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1798,6 +2066,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RequisitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_retention_policy_v1_retention_policy_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionPolicyReadResponse"];
                 };
             };
             /** @description Validation Error */

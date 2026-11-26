@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import sessionmaker
 
 import app.shared.models  # noqa: F401 - register every bounded-context mapping
+from app.api.attachment_router import policy_router as attachment_policy_router
 from app.api.attachment_router import router as attachment_router
 from app.api.audit_router import router as audit_router
 from app.api.calendar_router import router as calendar_router
@@ -82,6 +83,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
     instrument_app(app)
     for router in (
         attachment_router,
+        attachment_policy_router,
         audit_router,
         calendar_router,
         candidate_router,

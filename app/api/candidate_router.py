@@ -1,8 +1,9 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 
 from app.api.schemas import (
+    CandidateCaseDetailResponse,
     CandidateCaseResponse,
     CandidateListItem,
     CandidateListResponse,
@@ -15,6 +16,7 @@ from app.modules.candidates.application.create_candidate import (
     CreateCandidateHandler,
     RequisitionNotFoundError,
 )
+from app.modules.candidates.application.get_candidate import GetCandidateHandler
 from app.modules.candidates.application.list_candidates import (
     ListCandidatesHandler,
     ListCandidatesQuery,
@@ -66,6 +68,25 @@ def list_candidate_cases(
         next_cursor=page.next_cursor,
         total=page.total,
     )
+
+
+@router.get("/v1/candidate-cases/{candidate_case_id}", response_model=CandidateCaseDetailResponse)
+def get_candidate_case(
+    candidate_case_id: str,
+    response: Response,
+    session: SessionDep,
+    actor: ActorContext = Depends(require("tenant:read")),
+) -> CandidateCaseDetailResponse:
+    try:
+        detail = GetCandidateHandler(SqlAlchemyCandidateRepository(session)).handle(
+            candidate_id=candidate_case_id, tenant_id=actor.tenant_id
+        )
+    except CandidateNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
+        ) from error
+    response.headers["Cache-Control"] = "private, no-store"
+    return CandidateCaseDetailResponse(**detail.__dict__)
 
 
 @router.post(

@@ -16,6 +16,8 @@ CLEAN_ARCHITECTURE_MODULES = (
     "retention",
 )
 ALLOWED_CROSS_CONTEXT_PERSISTENCE_IMPORTS = {
+    ("audit", "candidates"): "case timeline checks that the case exists in the tenant (read only)",
+    ("audit", "attachments"): "case timeline joins tenant-scoped attachment ids (read only)",
     ("attachments", "audit"): "attachment lifecycle writes an audit event in the same transaction",
     ("attachments", "candidates"): "attachment ownership is checked against the candidate record",
     ("calendar", "audit"): "calendar lifecycle writes an audit event in the same transaction",

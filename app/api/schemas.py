@@ -67,6 +67,10 @@ class CandidateCaseResponse(BaseModel):
     version: int
 
 
+class CandidateCaseDetailResponse(CandidateCaseResponse):
+    created_at: datetime
+
+
 class CandidateListItem(BaseModel):
     id: str
     requisition_id: str
@@ -223,6 +227,22 @@ class RetentionPolicyResponse(BaseModel):
     retention_days: int
 
 
+class RetentionPolicyReadResponse(BaseModel):
+    retention_days: int | None
+
+
+class LegalHoldResponse(BaseModel):
+    held: bool
+    reason: str | None
+    placed_at: datetime | None
+    placed_by: str | None
+
+
+class AttachmentPolicyResponse(BaseModel):
+    max_bytes: int
+    allowed_content_types: list[str]
+
+
 class LegalHoldRequest(BaseModel):
     held: bool
     reason: str | None = Field(default=None, min_length=1, max_length=500)
@@ -269,3 +289,18 @@ class AuditEventResponse(BaseModel):
     aggregate_type: str
     aggregate_id: str
     correlation_id: str
+
+
+class CaseAuditEventItem(BaseModel):
+    id: str
+    action: str
+    aggregate_type: str
+    aggregate_id: str
+    actor_id: str
+    occurred_at: datetime
+    metadata: dict[str, object]
+
+
+class CaseAuditEventPage(BaseModel):
+    items: list[CaseAuditEventItem]
+    next_cursor: str | None
