@@ -1274,6 +1274,8 @@ export interface operations {
                 requisition_id?: string | null;
                 cursor?: string | null;
                 limit?: number;
+                /** @description Case-insensitive substring of name or email; trimmed, literal wildcards, no control characters. */
+                q?: string | null;
             };
             header?: {
                 authorization?: string | null;

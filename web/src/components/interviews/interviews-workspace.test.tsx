@@ -178,16 +178,15 @@ describe("InterviewsWorkspace for a recruiter", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Schedule interview" }));
     const dialog = screen.getByRole("dialog");
-    const candidate = await within(dialog).findByLabelText("Candidate");
-    expect(within(candidate).getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Choose a candidate",
-      "Grace c1 (c1@x.test)",
-      "Grace c2 (c2@x.test)",
+    const candidates = await within(dialog).findByRole("listbox", { name: "Candidates" });
+    expect(within(candidates).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Grace c1c1@x.test · Screening",
+      "Grace c2c2@x.test · Interviewing",
     ]);
     const stages = backend.requests.filter((request) => request.url.includes("/v1/candidate-cases")).map((request) => new URL(request.url).searchParams.get("stage"));
     expect(stages).toEqual(["screening", "interviewing"]);
 
-    await userEvent.selectOptions(candidate, "c2");
+    await userEvent.click(within(candidates).getByRole("option", { name: /Grace c2/ }));
     await userEvent.selectOptions(within(dialog).getByLabelText("Interviewer"), "user-bo");
     fireEvent.change(within(dialog).getByLabelText(/Date and time/), { target: { value: "2026-12-03T14:00" } });
     await userEvent.click(within(dialog).getByRole("button", { name: "Schedule" }));
@@ -219,7 +218,7 @@ describe("InterviewsWorkspace for a recruiter", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Schedule interview" }));
     const dialog = screen.getByRole("dialog");
-    await userEvent.selectOptions(await within(dialog).findByLabelText("Candidate"), "c1");
+    await userEvent.click(await within(dialog).findByRole("option", { name: /Grace c1/ }));
     await userEvent.selectOptions(within(dialog).getByLabelText("Interviewer"), "user-me");
     fireEvent.change(within(dialog).getByLabelText(/Date and time/), { target: { value: "2026-12-03T14:00" } });
     await userEvent.click(within(dialog).getByRole("button", { name: "Schedule" }));
@@ -227,6 +226,25 @@ describe("InterviewsWorkspace for a recruiter", () => {
     expect(await within(dialog).findByRole("alert")).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("requires a candidate and clears the search on Escape without closing the dialog", async () => {
+    const backend = fakeInterviewsBackend({ canManage: true, interviewers: INTERVIEWERS, candidates: [fakeCandidate("c1")] });
+    await renderWorkspace(backend, RECRUITER);
+
+    await userEvent.click(screen.getByRole("button", { name: "Schedule interview" }));
+    const dialog = screen.getByRole("dialog");
+    const search = await within(dialog).findByRole("combobox", { name: "Candidate" });
+    await userEvent.selectOptions(within(dialog).getByLabelText("Interviewer"), "user-me");
+    fireEvent.change(within(dialog).getByLabelText(/Date and time/), { target: { value: "2026-12-03T14:00" } });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Schedule" }));
+    expect(within(dialog).getByText("Choose a candidate.")).toBeInTheDocument();
+    expect(posts(backend, "/interviews")).toHaveLength(0);
+
+    await userEvent.type(search, "zz");
+    await userEvent.keyboard("{Escape}");
+    expect(search).toHaveValue("");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("explains why scheduling is impossible without interviewers", async () => {
