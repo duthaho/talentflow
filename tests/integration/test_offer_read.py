@@ -1,6 +1,8 @@
 from datetime import datetime
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from app.main import create_app
 from app.shared.models import ApprovalDecision, Membership, OutboxEvent, User
@@ -327,16 +329,20 @@ def test_legacy_decision_reads_as_null_reason_and_timestamp() -> None:
         _add_roles(app, tenant["id"])
         offer = _create_offer(client, tenant["id"], "admin", 1)
         with app.state.session_factory() as session:
-            session.add(
-                ApprovalDecision(
-                    offer_id=offer["id"],
-                    tenant_id=tenant["id"],
-                    step=1,
-                    actor_id="manager",
-                    decision="approved",
-                    reason=None,
-                    decided_at=None,
-                )
+            session.execute(
+                text(
+                    "INSERT INTO approval_decisions "
+                    "(id, offer_id, tenant_id, step, actor_id, decision) "
+                    "VALUES (:id, :offer_id, :tenant_id, :step, :actor_id, :decision)"
+                ),
+                {
+                    "id": str(uuid4()),
+                    "offer_id": offer["id"],
+                    "tenant_id": tenant["id"],
+                    "step": 1,
+                    "actor_id": "manager",
+                    "decision": "approved",
+                },
             )
             session.commit()
         detail = client.get(f"/v1/offers/{offer['id']}", headers=_headers(tenant["id"], "admin"))
