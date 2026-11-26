@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 
+from app.api.idempotency import CommandRoute
 from app.api.schemas import (
     LegalHoldRequest,
     LegalHoldResponse,
@@ -20,7 +21,7 @@ from app.modules.retention.infrastructure.sqlalchemy_repository import (
 from app.shared.attachment_storage import build_attachment_storage
 from app.shared.database import SessionDep
 
-router = APIRouter(tags=["retention"])
+router = APIRouter(tags=["retention"], route_class=CommandRoute)
 
 
 def _service(session: SessionDep, request: Request) -> RetentionService:

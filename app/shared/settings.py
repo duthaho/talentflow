@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = 1.0
     worker_max_backoff_seconds: float = 30.0
     worker_shutdown_grace_seconds: float = 30.0
+    idempotency_key_ttl_seconds: int = Field(default=86400, gt=0)
     redis_url: str = Field(default="", repr=False)
     rate_limit_enabled: bool = True
     rate_limit_requests_per_minute: int = 120

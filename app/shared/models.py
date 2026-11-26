@@ -10,6 +10,7 @@ from app.modules.offers.infrastructure.models import ApprovalDecision, Offer
 from app.modules.organization.infrastructure.models import Membership, Requisition, Tenant, User
 from app.modules.retention.infrastructure.models import CandidateLegalHold, RetentionPolicy
 from app.shared.database import Base
+from app.shared.idempotency import IdempotencyRecord
 
 __all__ = [
     "ApprovalDecision",
@@ -19,6 +20,7 @@ __all__ = [
     "CalendarSubscription",
     "CandidateCase",
     "CandidateLegalHold",
+    "IdempotencyRecord",
     "Interview",
     "InterviewFeedback",
     "Membership",

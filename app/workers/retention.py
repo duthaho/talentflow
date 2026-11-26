@@ -15,6 +15,7 @@ from app.modules.retention.infrastructure.sqlalchemy_repository import (
 )
 from app.shared.attachment_storage import build_attachment_storage
 from app.shared.database import build_session_factory
+from app.shared.idempotency import purge_expired_keys
 from app.shared.observability import configure_logging, configure_telemetry
 from app.shared.settings import settings
 from app.shared.worker_runtime import WorkerLoop
@@ -59,6 +60,7 @@ class ScheduledRetentionCycle:
             connection.commit()
             try:
                 with Session(bind=connection, autoflush=False, expire_on_commit=False) as session:
+                    purge_expired_keys(session, batch_size=self._batch_size)
                     repository = SqlAlchemyRetentionRepository(
                         session, attachment_storage=self._storage
                     )

@@ -99,7 +99,10 @@ export interface paths {
         /** List Calendar Subscriptions */
         get: operations["list_calendar_subscriptions_v1_calendar_subscriptions_get"];
         put?: never;
-        /** Create Calendar Subscription */
+        /**
+         * Create Calendar Subscription
+         * @description Idempotency-Key is ignored: this response contains a bearer secret.
+         */
         post: operations["create_calendar_subscription_v1_calendar_subscriptions_post"];
         delete?: never;
         options?: never;
@@ -169,7 +172,10 @@ export interface paths {
         /** List Attachments */
         get: operations["list_attachments_v1_candidate_cases__candidate_case_id__attachments_get"];
         put?: never;
-        /** Upload Attachment */
+        /**
+         * Upload Attachment
+         * @description Idempotency-Key is ignored for multipart uploads.
+         */
         post: operations["upload_attachment_v1_candidate_cases__candidate_case_id__attachments_post"];
         delete?: never;
         options?: never;
@@ -478,7 +484,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Tenant */
+        /**
+         * Create Tenant
+         * @description Bootstrap: Idempotency-Key is ignored (no authenticated tenant/actor).
+         */
         post: operations["create_tenant_v1_tenants_post"];
         delete?: never;
         options?: never;
@@ -1315,6 +1324,8 @@ export interface operations {
                 authorization?: string | null;
                 "X-Tenant-Id"?: string | null;
                 "X-Actor-Id"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1535,6 +1546,8 @@ export interface operations {
                 authorization?: string | null;
                 "X-Tenant-Id"?: string | null;
                 "X-Actor-Id"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
             };
             path: {
                 candidate_case_id: string;
@@ -1647,6 +1660,8 @@ export interface operations {
                 authorization?: string | null;
                 "X-Tenant-Id"?: string | null;
                 "X-Actor-Id"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
             };
             path: {
                 candidate_case_id: string;
@@ -1796,6 +1811,8 @@ export interface operations {
                 authorization?: string | null;
                 "X-Tenant-Id"?: string | null;
                 "X-Actor-Id"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
             };
             path: {
                 interview_id: string;
@@ -1942,6 +1959,8 @@ export interface operations {
                 authorization?: string | null;
                 "X-Tenant-Id"?: string | null;
                 "X-Actor-Id"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
             };
             path: {
                 offer_id: string;
@@ -2051,6 +2070,8 @@ export interface operations {
                 authorization?: string | null;
                 "X-Tenant-Id"?: string | null;
                 "X-Actor-Id"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2160,6 +2181,8 @@ export interface operations {
                 authorization?: string | null;
                 "X-Tenant-Id"?: string | null;
                 "X-Actor-Id"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
             };
             path?: never;
             cookie?: never;
