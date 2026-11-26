@@ -1,0 +1,6 @@
+# Test-only request budget: all four browser roles share the BFF's source IP.
+# Keep the limiter enabled, with room for the board's per-stage request fan-out.
+services:
+  api:
+    environment:
+      RATE_LIMIT_REQUESTS_PER_MINUTE: 1000

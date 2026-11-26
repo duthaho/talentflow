@@ -22,6 +22,8 @@ New ADRs use the next number (005), the same header fields (status, date, issue)
 
 ## Runbooks
 
+Browser test setup and acceptance scenarios: [Hiring E2E tests](testing-e2e.md).
+
 | Runbook | Purpose |
 | --- | --- |
 | [runbooks/backup-restore.md](runbooks/backup-restore.md) | Back up and restore PostgreSQL and attachments in the Compose stack |
