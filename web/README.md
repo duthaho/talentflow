@@ -49,6 +49,7 @@ CI fails when `openapi.json` or `src/lib/api/schema.ts` differ from a fresh gene
 - `src/app/auth/*`: login, callback and logout route handlers; `src/app/api/tf/[...path]`: BFF proxy
 - `src/app/(app)/`: authenticated screens
 - `src/lib/pipeline/`, `src/components/pipeline/`: the candidate pipeline board (`/candidates`)
+- `src/lib/offers/`, `src/components/offers/`: offer creation and the approval inbox (`/offers`)
 
 ## Pipeline board
 
@@ -58,3 +59,17 @@ Each stage column loads its own cursor-paginated page from `GET /v1/candidate-ca
 - **Version conflicts**: a 409 opens a "Changed by someone else" prompt whose only action is to refresh the board. The move is never retried with a newer version, so another user's change is never silently overwritten.
 - **Permissions**: without `candidate:transition` the board is read-only; New candidate and New requisition need `candidate:create` and `requisition:create`.
 - **Requisitions**: the API has no requisition list yet, so the filter offers requisitions seen on loaded cards or created in this session, and the selected one is kept in `?requisition=`.
+
+## Offers and approval inbox
+
+`/offers` has three lists, each a cursor-paginated `GET`: **Awaiting your approval** (`GET /v1/offers?awaiting=me`), **Ready for an offer** (`GET /v1/candidate-cases?stage=interviewing`, only with `candidate:transition`) and **All offers** (`GET /v1/offers?status=…`). An offer opens in a side sheet (`?offer=<id>`) with its decision history from `GET /v1/offers/{id}`.
+
+- **No policy copy**: the UI never decides who may approve. Approve and Reject render only when the API returns `can_decide: true`, and "Waiting on" comes from `awaiting_role`. `POST /v1/offers/{id}/approvals` stays the authority; a 403 shows a toast and reloads the offer.
+- **Reasons**: a rejection needs a reason; any reason is trimmed and limited to 500 characters, checked in the browser and again by the API. Reasons render as plain React text, never HTML or markdown (DUTH-115 threat T15).
+- **Conflicts**: a 409 reloads the offer and says someone else changed it. The decision is never retried with a newer version.
+- **Legacy decisions** without `decided_at` show "—"; history order comes from `step`.
+- **Candidate names** come from `GET /v1/candidate-cases/{id}`, one call per case, cached for the page.
+
+### Typed contract before the generated client
+
+The offer read routes (DUTH-115) and candidate detail (DUTH-110) are specified but not yet in `openapi.json`. `src/lib/offers/contract.ts` declares those routes in the same `paths` shape `openapi-typescript` emits and builds an `openapi-fetch` client over `paths` plus them, so call sites already look like the generated client. Tests run against an in-memory fake of the contract (`test/offers-fake.ts`). Once both routes ship and `make api-client` regenerates `schema.ts`, delete `contract.ts`, import the types from `schema.ts` and use `browserApi()`; `tsc` then flags any field that drifted from the spec. Until then the page shows its error state against a real API.
