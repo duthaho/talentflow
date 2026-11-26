@@ -52,6 +52,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+      # First-start Quarkus augmentation plus realm import can take several minutes on slow runners.
+      start_period: 8m
 
   seaweedfs:
     image: chrislusf/seaweedfs:3.88
