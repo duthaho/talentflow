@@ -51,6 +51,7 @@ CI fails when `openapi.json` or `src/lib/api/schema.ts` differ from a fresh gene
 - `src/lib/pipeline/`, `src/components/pipeline/`: the candidate pipeline board (`/candidates`)
 - `src/lib/interviews/`, `src/components/interviews/`: interview scheduling, feedback and calendar links (`/interviews`)
 - `src/lib/offers/`, `src/components/offers/`: offer creation and the approval inbox (`/offers`)
+- `src/lib/reports/`, `src/components/reports/`: the pipeline reporting dashboard (`/reports`)
 
 ## Pipeline board
 
@@ -82,3 +83,11 @@ The offer read routes (DUTH-115) and candidate detail (DUTH-110) are specified b
 - **Schedule** (`interview:manage`): the dialog loads candidates in Screening or Interviewing (`GET /v1/candidate-cases?stage=…`, the first 100 per stage) and the tenant's interviewers (`GET /v1/interviewers`, shown by email because users have no display name). It converts the local `datetime-local` value to an ISO instant before it sends `POST /v1/candidate-cases/{id}/interviews`. "All interviews" lists `GET /v1/interviews` and can filter by interviewer.
 - **My interviews and feedback** (`feedback:submit`): lists `GET /v1/interviews?interviewer=me`. The feedback form checks score, recommendation and comments (1–5000 characters, trimmed) before it calls `POST /v1/interviews/{id}/feedback`, then locks the row. The API enforces one feedback per interview. A 409 says feedback already exists and marks the row as submitted, and the form is not offered again.
 - **Calendar link** (`calendar:self`, [DUTH-109](../docs/specs/DUTH-109.md)): `GET /v1/calendar-subscriptions?interviewer=me` lists active links by id and dates only. "Generate link" posts an empty body, so the caller is the interviewer. The feed URL appears once, in a dialog with a copy button, and is held only in component state until the dialog closes. Revoke asks for confirmation; a 404 means the link is already gone and is treated as success.
+
+## Reports
+
+`/reports` needs `report:read`. The server component loads `GET /v1/reports/pipeline`, which returns aggregate counts only, so no candidate names, emails or IDs reach the page.
+
+- **Charts**: candidates by stage, offers by status, and scheduled interviews against submitted feedback. Each chart is a table with decorative bars, so screen readers get the exact numbers. No chart library is added.
+- **Ordering**: known stages and offer statuses keep their domain order and show as zero, so charts stay comparable over time. A key the web app does not know yet is appended with a readable label instead of being dropped.
+- **States**: a tenant with no candidates, offers or interviews gets an empty state linking to `/candidates`; an API error or 403 renders the Problem Details view with a retry.
