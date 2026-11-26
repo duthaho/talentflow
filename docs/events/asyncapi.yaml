@@ -1,0 +1,741 @@
+asyncapi: 3.1.0
+info:
+  title: TalentFlow integration events
+  version: 1.0.0
+  description: |
+    Integration events that TalentFlow publishes from its transactional outbox to RabbitMQ.
+    The rationale for every rule here is in ADR 005
+    (`docs/adr/005-integration-event-contract.md`).
+
+    Rules for readers and producers:
+
+    - **Envelope.** Every message body is a CloudEvents 1.0 event in structured JSON mode
+      (`content-type: application/cloudevents+json`), with the extension attributes `tenantid`,
+      `correlationid`, `causationid`, `actorid` and the optional `traceparent`.
+    - **Naming.** `type` is `<aggregate>.<past_tense_fact>.v<major>`, lower snake case, for example
+      `candidate_case.stage_changed.v1`. The routing key equals `type`.
+    - **Delivery.** At least once. `id` is stable across redeliveries and retries; consumers
+      deduplicate on `(consumer, id)` in an inbox table written in the same transaction as their
+      side effect. There is no ordering guarantee; payloads that describe aggregate state carry
+      `version`, and consumers ignore an event whose `version` is not newer than what they hold.
+    - **Evolution.** Within a major version a producer may only add optional fields or enum values.
+      Consumers ignore unknown fields and skip (not fail on) unknown enum values. Anything else is
+      a new major version, published alongside the old one until every binding has moved.
+    - **Privacy.** Payloads carry identifiers, enums, integers and timestamps only, never free
+      text and never direct identifiers such as names, email addresses, salaries, feedback
+      comments or rejection reasons. Consumers that need those fetch them from the API under RBAC.
+
+    Each message carries `x-talentflow`: the owning bounded context, the status
+    (`active` = written to the outbox today, `planned` = DUTH-59 starts publishing it,
+    `reserved` = name and schema fixed, published by the named later issue), and whether tenant
+    webhooks (DUTH-62) may deliver it.
+  license:
+    name: Proprietary showcase
+defaultContentType: application/cloudevents+json
+
+servers:
+  local:
+    host: rabbitmq:5672
+    protocol: amqp
+    protocolVersion: 0.9.1
+    description: RabbitMQ in the local Compose stack (DUTH-59 adds the service).
+    pathname: /talentflow
+
+channels:
+  candidateCaseCreated:
+    address: candidate_case.created.v1
+    title: candidate_case.created.v1
+    messages:
+      candidateCaseCreated:
+        $ref: '#/components/messages/CandidateCaseCreatedV1'
+    bindings:
+      $ref: '#/components/channelBindings/EventsExchange'
+  candidateCaseStageChanged:
+    address: candidate_case.stage_changed.v1
+    title: candidate_case.stage_changed.v1
+    messages:
+      candidateCaseStageChanged:
+        $ref: '#/components/messages/CandidateCaseStageChangedV1'
+    bindings:
+      $ref: '#/components/channelBindings/EventsExchange'
+  candidateCaseErased:
+    address: candidate_case.erased.v1
+    title: candidate_case.erased.v1
+    messages:
+      candidateCaseErased:
+        $ref: '#/components/messages/CandidateCaseErasedV1'
+    bindings:
+      $ref: '#/components/channelBindings/EventsExchange'
+  interviewScheduled:
+    address: interview.scheduled.v1
+    title: interview.scheduled.v1
+    messages:
+      interviewScheduled:
+        $ref: '#/components/messages/InterviewScheduledV1'
+    bindings:
+      $ref: '#/components/channelBindings/EventsExchange'
+  interviewFeedbackSubmitted:
+    address: interview.feedback_submitted.v1
+    title: interview.feedback_submitted.v1
+    messages:
+      interviewFeedbackSubmitted:
+        $ref: '#/components/messages/InterviewFeedbackSubmittedV1'
+    bindings:
+      $ref: '#/components/channelBindings/EventsExchange'
+  offerCreated:
+    address: offer.created.v1
+    title: offer.created.v1
+    messages:
+      offerCreated:
+        $ref: '#/components/messages/OfferCreatedV1'
+    bindings:
+      $ref: '#/components/channelBindings/EventsExchange'
+  offerApprovalRecorded:
+    address: offer.approval_recorded.v1
+    title: offer.approval_recorded.v1
+    messages:
+      offerApprovalRecorded:
+        $ref: '#/components/messages/OfferApprovalRecordedV1'
+    bindings:
+      $ref: '#/components/channelBindings/EventsExchange'
+  attachmentUploaded:
+    address: attachment.uploaded.v1
+    title: attachment.uploaded.v1
+    messages:
+      attachmentUploaded:
+        $ref: '#/components/messages/AttachmentUploadedV1'
+    bindings:
+      $ref: '#/components/channelBindings/EventsExchange'
+
+  notificationsQueue:
+    address: notifications.events
+    title: Notifications consumer queue (DUTH-59)
+    description: 'Binding keys: `offer.approval_recorded.v1`.'
+    messages:
+      offerApprovalRecorded:
+        $ref: '#/components/messages/OfferApprovalRecordedV1'
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          name: notifications.events
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: /talentflow
+        bindingVersion: 0.3.0
+  webhooksQueue:
+    address: webhooks.events
+    title: Webhook dispatcher queue (DUTH-62)
+    description: >-
+      Binding keys: one per message whose `x-talentflow.webhook` is true. Reserved events join
+      when they become active.
+    messages:
+      candidateCaseCreated:
+        $ref: '#/components/messages/CandidateCaseCreatedV1'
+      candidateCaseStageChanged:
+        $ref: '#/components/messages/CandidateCaseStageChangedV1'
+      candidateCaseErased:
+        $ref: '#/components/messages/CandidateCaseErasedV1'
+      interviewScheduled:
+        $ref: '#/components/messages/InterviewScheduledV1'
+      offerCreated:
+        $ref: '#/components/messages/OfferCreatedV1'
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          name: webhooks.events
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: /talentflow
+        bindingVersion: 0.3.0
+  searchQueue:
+    address: search.events
+    title: Search projector queue (DUTH-66)
+    description: 'Binding keys: `candidate_case.*.v1`, `interview.*.v1`, `offer.*.v1`.'
+    messages:
+      candidateCaseCreated:
+        $ref: '#/components/messages/CandidateCaseCreatedV1'
+      candidateCaseStageChanged:
+        $ref: '#/components/messages/CandidateCaseStageChangedV1'
+      candidateCaseErased:
+        $ref: '#/components/messages/CandidateCaseErasedV1'
+      interviewScheduled:
+        $ref: '#/components/messages/InterviewScheduledV1'
+      interviewFeedbackSubmitted:
+        $ref: '#/components/messages/InterviewFeedbackSubmittedV1'
+      offerCreated:
+        $ref: '#/components/messages/OfferCreatedV1'
+      offerApprovalRecorded:
+        $ref: '#/components/messages/OfferApprovalRecordedV1'
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          name: search.events
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: /talentflow
+        bindingVersion: 0.3.0
+  onboardingQueue:
+    address: onboarding.events
+    title: Onboarding process manager queue (DUTH-64)
+    description: >-
+      Binding keys: `candidate_case.stage_changed.v1`, `candidate_case.erased.v1`. The process
+      manager starts on `to_stage = hired` and ignores other stage changes after the inbox insert.
+    messages:
+      candidateCaseStageChanged:
+        $ref: '#/components/messages/CandidateCaseStageChangedV1'
+      candidateCaseErased:
+        $ref: '#/components/messages/CandidateCaseErasedV1'
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          name: onboarding.events
+          durable: true
+          exclusive: false
+          autoDelete: false
+          vhost: /talentflow
+        bindingVersion: 0.3.0
+
+operations:
+  publishCandidateCaseCreated:
+    action: send
+    title: Outbox relay publishes candidate_case.created.v1
+    channel:
+      $ref: '#/channels/candidateCaseCreated'
+    bindings:
+      $ref: '#/components/operationBindings/RelayPublish'
+  publishCandidateCaseStageChanged:
+    action: send
+    title: Outbox relay publishes candidate_case.stage_changed.v1
+    channel:
+      $ref: '#/channels/candidateCaseStageChanged'
+    bindings:
+      $ref: '#/components/operationBindings/RelayPublish'
+  publishCandidateCaseErased:
+    action: send
+    title: Outbox relay publishes candidate_case.erased.v1
+    channel:
+      $ref: '#/channels/candidateCaseErased'
+    bindings:
+      $ref: '#/components/operationBindings/RelayPublish'
+  publishInterviewScheduled:
+    action: send
+    title: Outbox relay publishes interview.scheduled.v1
+    channel:
+      $ref: '#/channels/interviewScheduled'
+    bindings:
+      $ref: '#/components/operationBindings/RelayPublish'
+  publishInterviewFeedbackSubmitted:
+    action: send
+    title: Outbox relay publishes interview.feedback_submitted.v1
+    channel:
+      $ref: '#/channels/interviewFeedbackSubmitted'
+    bindings:
+      $ref: '#/components/operationBindings/RelayPublish'
+  publishOfferCreated:
+    action: send
+    title: Outbox relay publishes offer.created.v1
+    channel:
+      $ref: '#/channels/offerCreated'
+    bindings:
+      $ref: '#/components/operationBindings/RelayPublish'
+  publishOfferApprovalRecorded:
+    action: send
+    title: Outbox relay publishes offer.approval_recorded.v1
+    channel:
+      $ref: '#/channels/offerApprovalRecorded'
+    bindings:
+      $ref: '#/components/operationBindings/RelayPublish'
+  publishAttachmentUploaded:
+    action: send
+    title: Outbox relay publishes attachment.uploaded.v1
+    channel:
+      $ref: '#/channels/attachmentUploaded'
+    bindings:
+      $ref: '#/components/operationBindings/RelayPublish'
+
+  consumeNotifications:
+    action: receive
+    title: Notifications consumer materializes email deliveries
+    channel:
+      $ref: '#/channels/notificationsQueue'
+    bindings:
+      $ref: '#/components/operationBindings/ConsumerAck'
+  consumeWebhooks:
+    action: receive
+    title: Webhook dispatcher fans events out to tenant subscriptions
+    channel:
+      $ref: '#/channels/webhooksQueue'
+    bindings:
+      $ref: '#/components/operationBindings/ConsumerAck'
+  consumeSearch:
+    action: receive
+    title: Search projector updates the OpenSearch read model
+    channel:
+      $ref: '#/channels/searchQueue'
+    bindings:
+      $ref: '#/components/operationBindings/ConsumerAck'
+  consumeOnboarding:
+    action: receive
+    title: Onboarding process manager reacts to hires and erasures
+    channel:
+      $ref: '#/channels/onboardingQueue'
+    bindings:
+      $ref: '#/components/operationBindings/ConsumerAck'
+
+components:
+  channelBindings:
+    EventsExchange:
+      amqp:
+        is: routingKey
+        exchange:
+          name: talentflow.events
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: /talentflow
+        bindingVersion: 0.3.0
+
+  operationBindings:
+    RelayPublish:
+      amqp:
+        deliveryMode: 2
+        mandatory: false
+        timestamp: true
+        bindingVersion: 0.3.0
+    ConsumerAck:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+
+  messageTraits:
+    CloudEvent:
+      contentType: application/cloudevents+json
+      bindings:
+        amqp:
+          contentEncoding: utf-8
+          bindingVersion: 0.3.0
+
+  messages:
+    CandidateCaseCreatedV1:
+      name: candidate_case.created.v1
+      title: Candidate case created
+      summary: A candidate case was opened against a requisition, in stage `applied`.
+      x-talentflow:
+        context: candidates
+        status: planned
+        first_publisher: DUTH-59
+        webhook: true
+      traits:
+        - $ref: '#/components/messageTraits/CloudEvent'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - type: object
+            required: [type, source, data]
+            properties:
+              type:
+                const: candidate_case.created.v1
+              source:
+                const: urn:talentflow:candidates
+              data:
+                $ref: '#/components/schemas/CandidateCaseCreatedData'
+
+    CandidateCaseStageChangedV1:
+      name: candidate_case.stage_changed.v1
+      title: Candidate case stage changed
+      summary: >-
+        One event for every allowed stage transition, whether it came from the stage command or
+        from the offer flow.
+      x-talentflow:
+        context: candidates
+        status: planned
+        first_publisher: DUTH-59
+        webhook: true
+      traits:
+        - $ref: '#/components/messageTraits/CloudEvent'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - type: object
+            required: [type, source, data]
+            properties:
+              type:
+                const: candidate_case.stage_changed.v1
+              source:
+                const: urn:talentflow:candidates
+              data:
+                $ref: '#/components/schemas/CandidateCaseStageChangedData'
+
+    CandidateCaseErasedV1:
+      name: candidate_case.erased.v1
+      title: Candidate case erased
+      summary: >-
+        The candidate's personal data was purged. Every consumer must delete or anonymize what it
+        holds for `candidate_case_id`.
+      x-talentflow:
+        context: candidates
+        status: reserved
+        first_publisher: DUTH-66
+        webhook: true
+      traits:
+        - $ref: '#/components/messageTraits/CloudEvent'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - type: object
+            required: [type, source, data]
+            properties:
+              type:
+                const: candidate_case.erased.v1
+              source:
+                const: urn:talentflow:candidates
+              data:
+                $ref: '#/components/schemas/CandidateCaseErasedData'
+
+    InterviewScheduledV1:
+      name: interview.scheduled.v1
+      title: Interview scheduled
+      x-talentflow:
+        context: interviews
+        status: planned
+        first_publisher: DUTH-59
+        webhook: true
+      traits:
+        - $ref: '#/components/messageTraits/CloudEvent'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - type: object
+            required: [type, source, data]
+            properties:
+              type:
+                const: interview.scheduled.v1
+              source:
+                const: urn:talentflow:interviews
+              data:
+                $ref: '#/components/schemas/InterviewScheduledData'
+
+    InterviewFeedbackSubmittedV1:
+      name: interview.feedback_submitted.v1
+      title: Interview feedback submitted
+      summary: >-
+        Signals that feedback exists. Score, recommendation and comments are role-restricted and
+        are read from the API.
+      x-talentflow:
+        context: interviews
+        status: planned
+        first_publisher: DUTH-59
+        webhook: false
+      traits:
+        - $ref: '#/components/messageTraits/CloudEvent'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - type: object
+            required: [type, source, data]
+            properties:
+              type:
+                const: interview.feedback_submitted.v1
+              source:
+                const: urn:talentflow:interviews
+              data:
+                $ref: '#/components/schemas/InterviewFeedbackSubmittedData'
+
+    OfferCreatedV1:
+      name: offer.created.v1
+      title: Offer created
+      summary: An offer was drafted and is waiting for its first approval step.
+      x-talentflow:
+        context: offers
+        status: planned
+        first_publisher: DUTH-59
+        webhook: true
+      traits:
+        - $ref: '#/components/messageTraits/CloudEvent'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - type: object
+            required: [type, source, data]
+            properties:
+              type:
+                const: offer.created.v1
+              source:
+                const: urn:talentflow:offers
+              data:
+                $ref: '#/components/schemas/OfferCreatedData'
+
+    OfferApprovalRecordedV1:
+      name: offer.approval_recorded.v1
+      title: Offer approval decision recorded
+      summary: >-
+        One approval step was decided. Written to the outbox today by
+        `app/modules/offers/infrastructure/sqlalchemy_repository.py`; the final outcome also
+        produces `candidate_case.stage_changed.v1`.
+      x-talentflow:
+        context: offers
+        status: active
+        first_publisher: DUTH-59
+        webhook: false
+      traits:
+        - $ref: '#/components/messageTraits/CloudEvent'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - type: object
+            required: [type, source, data]
+            properties:
+              type:
+                const: offer.approval_recorded.v1
+              source:
+                const: urn:talentflow:offers
+              data:
+                $ref: '#/components/schemas/OfferApprovalRecordedData'
+
+    AttachmentUploadedV1:
+      name: attachment.uploaded.v1
+      title: Attachment uploaded
+      summary: A document passed the malware scan and was stored. The filename is not included.
+      x-talentflow:
+        context: attachments
+        status: reserved
+        first_publisher: DUTH-72
+        webhook: false
+      traits:
+        - $ref: '#/components/messageTraits/CloudEvent'
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - type: object
+            required: [type, source, data]
+            properties:
+              type:
+                const: attachment.uploaded.v1
+              source:
+                const: urn:talentflow:attachments
+              data:
+                $ref: '#/components/schemas/AttachmentUploadedData'
+
+  schemas:
+    Envelope:
+      type: object
+      description: CloudEvents 1.0 structured-mode envelope with TalentFlow extension attributes.
+      required:
+        - specversion
+        - id
+        - source
+        - type
+        - time
+        - datacontenttype
+        - subject
+        - tenantid
+        - correlationid
+        - causationid
+        - data
+      properties:
+        specversion:
+          const: '1.0'
+        id:
+          $ref: '#/components/schemas/Uuid'
+          description: Event id, equal to `outbox_events.id`. Stable across retries; the dedup key.
+        source:
+          type: string
+          pattern: '^urn:talentflow:[a-z_]+$'
+          description: Bounded context that owns the aggregate, fixed per event type.
+        type:
+          type: string
+          pattern: '^[a-z][a-z_]*\.[a-z][a-z_]*\.v[1-9][0-9]*$'
+          description: '`<aggregate>.<past_tense_fact>.v<major>`; also the routing key.'
+        time:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the fact happened (the command's transaction), not when it was published.
+        datacontenttype:
+          const: application/json
+        subject:
+          $ref: '#/components/schemas/Uuid'
+          description: Id of the aggregate the event is about.
+        tenantid:
+          $ref: '#/components/schemas/Uuid'
+        correlationid:
+          $ref: '#/components/schemas/TraceId'
+          description: '`X-Correlation-Id` of the originating request, copied unchanged down the causal chain.'
+        causationid:
+          $ref: '#/components/schemas/TraceId'
+          description: >-
+            Id of the message that directly caused this event: the request's correlation id for
+            API commands, the consumed event's `id` for events emitted by a consumer.
+        actorid:
+          $ref: '#/components/schemas/ActorId'
+          description: Authenticated user that caused the event; absent for system jobs such as retention.
+        traceparent:
+          type: string
+          pattern: '^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$'
+          description: W3C trace context (CloudEvents distributed tracing extension).
+        data:
+          type: object
+
+    CandidateCaseCreatedData:
+      type: object
+      required: [candidate_case_id, requisition_id, stage, channel, version]
+      properties:
+        candidate_case_id:
+          $ref: '#/components/schemas/Uuid'
+        requisition_id:
+          $ref: '#/components/schemas/Uuid'
+        stage:
+          $ref: '#/components/schemas/CandidateStage'
+        channel:
+          type: string
+          enum: [recruiter, careers_site]
+          description: '`careers_site` is used once DUTH-63 ships self-apply.'
+        version:
+          $ref: '#/components/schemas/AggregateVersion'
+
+    CandidateCaseStageChangedData:
+      type: object
+      required: [candidate_case_id, from_stage, to_stage, version]
+      properties:
+        candidate_case_id:
+          $ref: '#/components/schemas/Uuid'
+        from_stage:
+          $ref: '#/components/schemas/CandidateStage'
+        to_stage:
+          $ref: '#/components/schemas/CandidateStage'
+        version:
+          $ref: '#/components/schemas/AggregateVersion'
+        offer_id:
+          $ref: '#/components/schemas/Uuid'
+          description: Present when the offer flow caused the change.
+
+    CandidateCaseErasedData:
+      type: object
+      required: [candidate_case_id, reason]
+      properties:
+        candidate_case_id:
+          $ref: '#/components/schemas/Uuid'
+        reason:
+          type: string
+          enum: [retention_expired, data_subject_request]
+
+    InterviewScheduledData:
+      type: object
+      required: [interview_id, candidate_case_id, interviewer_id, scheduled_at]
+      properties:
+        interview_id:
+          $ref: '#/components/schemas/Uuid'
+        candidate_case_id:
+          $ref: '#/components/schemas/Uuid'
+        interviewer_id:
+          $ref: '#/components/schemas/ActorId'
+        scheduled_at:
+          $ref: '#/components/schemas/Timestamp'
+
+    InterviewFeedbackSubmittedData:
+      type: object
+      required: [interview_id, candidate_case_id, interviewer_id]
+      properties:
+        interview_id:
+          $ref: '#/components/schemas/Uuid'
+        candidate_case_id:
+          $ref: '#/components/schemas/Uuid'
+        interviewer_id:
+          $ref: '#/components/schemas/ActorId'
+
+    OfferCreatedData:
+      type: object
+      required: [offer_id, candidate_case_id, offer_status, approval_step, version]
+      properties:
+        offer_id:
+          $ref: '#/components/schemas/Uuid'
+        candidate_case_id:
+          $ref: '#/components/schemas/Uuid'
+        offer_status:
+          $ref: '#/components/schemas/OfferStatus'
+        approval_step:
+          $ref: '#/components/schemas/ApprovalStep'
+        version:
+          $ref: '#/components/schemas/AggregateVersion'
+
+    OfferApprovalRecordedData:
+      type: object
+      description: >-
+        `offer_id`, `decision` and `actor_id` are what the outbox holds today, so they are the only
+        required fields. DUTH-59 adds the rest as optional fields within v1 (an additive change).
+        The rejection reason is free text and is never included.
+      required: [offer_id, decision, actor_id]
+      properties:
+        offer_id:
+          $ref: '#/components/schemas/Uuid'
+        decision:
+          type: string
+          enum: [approved, rejected]
+        actor_id:
+          $ref: '#/components/schemas/ActorId'
+        candidate_case_id:
+          $ref: '#/components/schemas/Uuid'
+        approval_step:
+          $ref: '#/components/schemas/ApprovalStep'
+        offer_status:
+          $ref: '#/components/schemas/OfferStatus'
+        version:
+          $ref: '#/components/schemas/AggregateVersion'
+
+    AttachmentUploadedData:
+      type: object
+      required: [attachment_id, candidate_case_id, document_type, content_type]
+      properties:
+        attachment_id:
+          $ref: '#/components/schemas/Uuid'
+        candidate_case_id:
+          $ref: '#/components/schemas/Uuid'
+        document_type:
+          type: string
+          enum: [resume, cover_letter, portfolio, other]
+        content_type:
+          type: string
+          enum:
+            - application/pdf
+            - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+
+    CandidateStage:
+      type: string
+      enum:
+        - applied
+        - screening
+        - interviewing
+        - offer_pending_approval
+        - offer_approved
+        - offer_rejected
+        - hired
+        - rejected
+        - withdrawn
+    OfferStatus:
+      type: string
+      enum: [pending_approval, approved, rejected]
+    ApprovalStep:
+      type: integer
+      minimum: 1
+    AggregateVersion:
+      type: integer
+      minimum: 1
+      description: Optimistic-lock version of the aggregate after the change; orders events per aggregate.
+    Uuid:
+      type: string
+      format: uuid
+    ActorId:
+      type: string
+      pattern: '^[A-Za-z0-9._:-]{1,128}$'
+      description: Opaque user id (`users.id`, the OIDC `sub`). Never an email address.
+    TraceId:
+      type: string
+      pattern: '^[A-Za-z0-9._-]{1,128}$'
+    Timestamp:
+      type: string
+      format: date-time
