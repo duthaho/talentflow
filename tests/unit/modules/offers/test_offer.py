@@ -1,7 +1,11 @@
 import pytest
 
 from app.modules.offers.domain.approval_policy import ApprovalPolicy
-from app.modules.offers.domain.offer import InvalidOfferApprovalError, Offer
+from app.modules.offers.domain.offer import (
+    InvalidOfferApprovalError,
+    InvalidOfferReasonError,
+    Offer,
+)
 from app.modules.workflow.domain.candidate_state_machine import CandidateStage
 
 
@@ -36,3 +40,21 @@ def test_approval_rejects_an_actor_out_of_order() -> None:
         offer.decide(
             decision="approved", actor_role="tenant_admin", policy=ApprovalPolicy.standard()
         )
+
+
+def test_rejection_requires_and_normalizes_a_reason() -> None:
+    offer = Offer.pending(tenant_id="tenant", candidate_case_id="candidate")
+
+    with pytest.raises(InvalidOfferReasonError, match="requires a reason"):
+        offer.decide(
+            decision="rejected", actor_role="hiring_manager", policy=ApprovalPolicy.standard()
+        )
+
+    result = offer.decide(
+        decision="rejected",
+        actor_role="hiring_manager",
+        policy=ApprovalPolicy.standard(),
+        reason="  Budget constraint  ",
+    )
+
+    assert result.reason == "Budget constraint"

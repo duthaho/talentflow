@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class CreateTenantRequest(BaseModel):
@@ -112,6 +112,17 @@ class CreateOfferRequest(BaseModel):
 class ApproveOfferRequest(BaseModel):
     decision: str = Field(pattern=r"^(approved|rejected)$")
     expected_version: int = Field(ge=1)
+    reason: str | None = None
+
+    @model_validator(mode="after")
+    def validate_reason(self) -> ApproveOfferRequest:
+        if self.reason is not None:
+            self.reason = self.reason.strip() or None
+        if self.reason is not None and len(self.reason) > 500:
+            raise ValueError("Reason must be at most 500 characters")
+        if self.decision == "rejected" and self.reason is None:
+            raise ValueError("A rejection requires a reason")
+        return self
 
 
 class OfferResponse(BaseModel):
@@ -120,6 +131,37 @@ class OfferResponse(BaseModel):
     approval_step: int
     version: int
     candidate_stage: str
+
+
+class OfferSummaryResponse(BaseModel):
+    id: str
+    candidate_case_id: str
+    title: str
+    annual_salary: int
+    currency: str
+    status: str
+    approval_step: int
+    awaiting_role: str | None
+    version: int
+    can_decide: bool
+
+
+class OfferPageResponse(BaseModel):
+    items: list[OfferSummaryResponse]
+    next_cursor: str | None
+    total: int
+
+
+class OfferDecisionResponse(BaseModel):
+    step: int
+    decision: str
+    actor_id: str
+    decided_at: datetime | None
+    reason: str | None
+
+
+class OfferDetailResponse(OfferSummaryResponse):
+    decisions: list[OfferDecisionResponse]
 
 
 class CreateCalendarSubscriptionRequest(BaseModel):
