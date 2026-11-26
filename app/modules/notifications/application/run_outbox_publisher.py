@@ -4,6 +4,9 @@ import os
 from sqlalchemy import text
 
 from app.modules.notifications.application.outbox_publisher import OutboxPublisher
+
+# Register the FK targets even when this entrypoint runs outside the API process.
+from app.modules.organization.persistence import Tenant, User  # noqa: F401
 from app.shared.database import build_session_factory
 from app.shared.observability import configure_logging, configure_telemetry
 from app.shared.rabbitmq import RabbitBroker
