@@ -123,4 +123,38 @@ None. The design choices (parameter name `q`, substring match, 2–100 character
 
 ## Plan
 
-(Added at the `plan` step.)
+### Delivery shape
+
+There are no sub-issues. DUTH-122 is delivered as **one PR on this issue**, as the issue asks: Quốc-BE does the API and Hiếu-FE does the picker. Splitting by layer would leave the API change unverifiable from the UI, and the whole change is small. The PR links back to this spec.
+
+| Order | Handler | Commit(s) | Covers |
+|---|---|---|---|
+| 1 | Quốc-BE | Add `q` to `ListCandidatesQuery`, the `CandidateRepository.list_page` port and the SQLAlchemy adapter (`func.lower(...).contains(term, autoescape=True)` over the four expressions, ORed, ANDed with the existing filters). Add API validation in `candidate_router.py`. | AC2, AC4, AC5 |
+| 2 | Quốc-BE | Telemetry redaction: extend the span hook in `app/shared/observability.py` to replace the `q` value in `url.query`, `http.target`, `http.url` and `url.full`. Add a `uvicorn.access` `logging.Filter` that rewrites `record.args`, not `record.msg`. | AC7, AC8 |
+| 3 | Quốc-BE | Regenerate `web/openapi.json` and `web/src/lib/api/schema.ts`. | AC9 |
+| 4 | Hiếu-FE | Picker: a search combobox, a 300 ms debounce, stale-response guard (`AbortController`), the states and keyboard/`aria-live` support. Update `web/README.md`. | AC1, AC3, AC6, AC9 |
+
+Branch: one task branch, `agent/<handler>/DUTH-122-candidate-search`. Quốc-BE opens it, and Hiếu-FE continues on the same branch after commit 3. Dependencies: commits 1–3 must land before commit 4, which consumes the regenerated types. DUTH-54 is done.
+
+### Design summary
+
+The contract, matching rules, validation and redaction are specified above (Contract, Privacy of the search term, Web picker behavior, Constraints). There is no schema change, no new service or boundary, and no new env var. Đông-SA is not pulled in: the change is one additive optional query parameter on an existing endpoint, fully specified here and approved in spec review.
+
+### Test plan
+
+| AC | Level | Test |
+|---|---|---|
+| AC2, AC5 | API (SQLite, `tests/unit`) | Match on first name, last name, `"first last"` and email; ASCII case-insensitivity; `%`, `_` and `\` matched literally; `q` + `stage`, `q` + `requisition_id`; `total` and `next_cursor` across two pages with `q`; a tenant B case matching `q` is absent for a tenant A caller; `403` for a role without `tenant:read`; no `q` → same response as before. |
+| AC5 | Integration (PostgreSQL, `tests/integration`) | Matching, escaping and non-ASCII case folding (`đ` finds `Đ`) against real PostgreSQL, following `test_interview_list_postgres.py`. |
+| AC4 | API | `422 validation-error` with pointer `/q` for: 1 character, 101 characters, whitespace only, `"ab\u0000"`; `" ab "` is trimmed and accepted. |
+| AC7 | Unit | The span hook replaces the raw term in all four URL attributes and leaves other parameters intact; requests without `q` are untouched. |
+| AC8 | Unit | A `uvicorn.access` record with `q` in `args` is formatted with `q=REDACTED`, and `stage` stays intact. |
+| AC3, AC6 | Component (Vitest + Testing Library, fake timers, mocked API) | Initial list; no request under 2 characters; exactly one request per stage after 300 ms; a slow earlier response doesn't overwrite a later one; loading, no-results, "Showing N of M" and error with a working Retry; selection kept while results change; keyboard selection. |
+| AC1 | Component | A mocked stage with `total: 250` whose search returns candidate #180 shows that candidate. The end-to-end picker flow is covered when DUTH-57 (Playwright) lands. |
+| AC9, AC10 | CI | `ruff format --check`, `ruff check`, `uv run python -m pytest` (coverage ≥ 85%), `npm run lint`, `typecheck`, `test` and `build` in `web/`; the OpenAPI drift check passes. |
+
+Review path after the PR opens: `code_review` (Trung-PM) → `security_review` (Hoàng-Security; this change touches PII in URLs and logs, so no skip label) → `qa` (Diễm-QA, user-facing) → `in_review`.
+
+### Threat model
+
+Pending: requested from Hoàng-Security on the issue. It will be added here before plan approval.
