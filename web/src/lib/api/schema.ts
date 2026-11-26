@@ -79,7 +79,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Calendar Subscriptions */
+        get: operations["list_calendar_subscriptions_v1_calendar_subscriptions_get"];
         put?: never;
         /** Create Calendar Subscription */
         post: operations["create_calendar_subscription_v1_calendar_subscriptions_post"];
@@ -428,6 +429,21 @@ export interface components {
             /** Interviewer Id */
             interviewer_id: string;
         };
+        /** CalendarSubscriptionSummary */
+        CalendarSubscriptionSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: string;
+        };
         /** CandidateCaseResponse */
         CandidateCaseResponse: {
             /** Email */
@@ -474,7 +490,7 @@ export interface components {
         /** CreateCalendarSubscriptionRequest */
         CreateCalendarSubscriptionRequest: {
             /** Interviewer Id */
-            interviewer_id: string;
+            interviewer_id?: string | null;
         };
         /** CreateCandidateCaseRequest */
         CreateCandidateCaseRequest: {
@@ -780,6 +796,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditEventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_calendar_subscriptions_v1_calendar_subscriptions_get: {
+        parameters: {
+            query: {
+                interviewer: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSubscriptionSummary"][];
                 };
             };
             /** @description Validation Error */

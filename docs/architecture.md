@@ -230,6 +230,26 @@ Each consumer records `(consumer, event_id)` in an inbox table in the same trans
 - `AUTH_MODE=development_headers`: `X-Tenant-Id` and `X-Actor-Id`, rejected by settings validation in production.
 - Every aggregate lookup and write is tenant-scoped in the application; Row-Level Security adds a database-level guard in stage 7.
 
+<!-- permission-matrix:start -->
+| Permission | `tenant_admin` | `recruiter` | `auditor` | `hiring_manager` | `interviewer` |
+| --- | --- | --- | --- | --- | --- |
+| `requisition:create` | ✓ | ✓ |  |  |  |
+| `candidate:create` | ✓ | ✓ |  |  |  |
+| `candidate:transition` | ✓ | ✓ |  |  |  |
+| `candidate:attachment` | ✓ | ✓ |  |  |  |
+| `calendar:manage` | ✓ | ✓ |  |  |  |
+| `calendar:self` |  |  |  |  | ✓ |
+| `interview:manage` | ✓ | ✓ |  |  |  |
+| `feedback:submit` |  |  |  |  | ✓ |
+| `audit:read` | ✓ | ✓ | ✓ |  |  |
+| `report:read` | ✓ | ✓ |  |  |  |
+| `tenant:read` | ✓ | ✓ | ✓ | ✓ |  |
+| `retention:manage` | ✓ | ✓ |  |  |  |
+| `retention:purge` | ✓ | ✓ |  |  |  |
+<!-- permission-matrix:end -->
+
+`calendar:self` is scoped to the caller: it permits an interviewer to manage only links whose interviewer is their own authenticated identity, while `calendar:manage` remains the tenant-wide administrative permission.
+
 ### Target: login through Keycloak (stages 2–3)
 
 ```mermaid

@@ -42,15 +42,35 @@ class SqlAlchemyCalendarRepository:
             )
         )
 
-    def get_owned(self, *, subscription_id: str, tenant_id: str) -> CalendarSubscription | None:
-        row = self._session.scalar(
-            select(CalendarSubscriptionRecord).where(
-                CalendarSubscriptionRecord.id == subscription_id,
+    def get_owned(
+        self, *, subscription_id: str, tenant_id: str, interviewer_id: str | None
+    ) -> CalendarSubscription | None:
+        conditions = [
+            CalendarSubscriptionRecord.id == subscription_id,
+            CalendarSubscriptionRecord.tenant_id == tenant_id,
+            CalendarSubscriptionRecord.revoked_at.is_(None),
+        ]
+        if interviewer_id is not None:
+            conditions.append(CalendarSubscriptionRecord.interviewer_id == interviewer_id)
+        row = self._session.scalar(select(CalendarSubscriptionRecord).where(*conditions))
+        return _subscription(row) if row else None
+
+    def list_active(
+        self, *, tenant_id: str, interviewer_id: str, now: datetime
+    ) -> list[CalendarSubscription]:
+        rows = self._session.scalars(
+            select(CalendarSubscriptionRecord)
+            .where(
                 CalendarSubscriptionRecord.tenant_id == tenant_id,
+                CalendarSubscriptionRecord.interviewer_id == interviewer_id,
                 CalendarSubscriptionRecord.revoked_at.is_(None),
+                CalendarSubscriptionRecord.expires_at > now,
+            )
+            .order_by(
+                CalendarSubscriptionRecord.created_at.desc(), CalendarSubscriptionRecord.id.desc()
             )
         )
-        return _subscription(row) if row else None
+        return [_subscription(row) for row in rows]
 
     def revoke(self, subscription: CalendarSubscription) -> None:
         row = self._session.get(CalendarSubscriptionRecord, subscription.id)

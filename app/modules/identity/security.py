@@ -41,7 +41,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     ),
     "auditor": frozenset({"audit:read", "tenant:read"}),
     "hiring_manager": frozenset({"tenant:read"}),
-    "interviewer": frozenset({"feedback:submit"}),
+    "interviewer": frozenset({"calendar:self", "feedback:submit"}),
 }
 
 
@@ -82,6 +82,19 @@ def resolve_actor(
 def require(permission: str):
     def dependency(actor: Annotated[ActorContext, Depends(resolve_actor)]) -> ActorContext:
         if permission not in ROLE_PERMISSIONS.get(actor.role, frozenset()):
+            raise forbidden("Actor does not have the required permission")
+        return actor
+
+    return dependency
+
+
+def permissions_for(role: str) -> frozenset[str]:
+    return ROLE_PERMISSIONS.get(role, frozenset())
+
+
+def require_any(*permissions: str):
+    def dependency(actor: Annotated[ActorContext, Depends(resolve_actor)]) -> ActorContext:
+        if not permissions_for(actor.role).intersection(permissions):
             raise forbidden("Actor does not have the required permission")
         return actor
 
