@@ -160,7 +160,7 @@ One Alembic migration on `approval_decisions`:
 
 ## Risks
 
-- **Salary visible to every `tenant:read` role (Medium, T12).** `tenant_admin`, `recruiter`, `auditor` and `hiring_manager` can read salary. These are the first routes that return it: `OfferResponse` has no salary field. No hiring manager is tied to a requisition, so every hiring manager sees every offer's salary in the tenant. This matches the issue (RBAC as the existing read endpoints), and approvers need salary to decide. It ships only with duthaho's explicit risk acceptance at plan approval. Otherwise the plan first needs an `offer:read` permission, or `annual_salary` omitted for roles outside the approval chain. Either is a separate issue.
+- **Salary visible to every `tenant:read` role (Medium, T12).** `tenant_admin`, `recruiter`, `auditor` and `hiring_manager` can read salary. These are the first routes that return it: `OfferResponse` has no salary field. No hiring manager is tied to a requisition, so every hiring manager sees every offer's salary in the tenant. This matches the issue (RBAC as the existing read endpoints), and approvers need salary to decide. duthaho approved the plan as written on 2026-11-26 (comment `01a215a4`), including this exposure. Otherwise the plan first needs an `offer:read` permission, or `annual_salary` omitted for roles outside the approval chain. Either is a separate issue.
 - **Reason text leaks.** Mitigation: the reason is not in the outbox, email, audit metadata, logs or spans (AC8), and only route 2 returns it.
 - **Legacy decisions show no timestamp.** Accepted: the history order uses `step`, so it stays correct; the UI shows "—" for `decided_at: null`.
 - **Inbox query without a dedicated index.** At showcase volume one tenant's offers are a small scan after `ix_offers_tenant_id`. If it grows, add `(tenant_id, status, approval_step, id)` in an expand-only migration.
@@ -244,7 +244,7 @@ From Hoàng-Security on DUTH-115, against spec `4da6ec8`. Routes 1 and 2 are the
 | T9 | E | A role decides a step it doesn't own | `POST` still runs `Offer.decide` through `can_be_decided_by`; `can_decide` is display-only | AC6 |
 | T10 | I | `can_decide` / `awaiting_role` disclose the approval policy | Accepted (Low): the policy is static, tenant-wide and not secret; the `POST` stays authoritative | AC6 |
 | T11 | E | Interviewer reads offers | `require("tenant:read")` before any lookup; `ROLE_PERMISSIONS` unchanged | AC10 |
-| T12 | I | Salary visible to every `tenant:read` role, including every hiring manager tenant-wide | **Medium, needs human risk acceptance.** Authenticated, same-tenant staff only; cross-tenant is covered by T1–T4. Follow-up if narrower: an `offer:read` permission, or omit `annual_salary` for roles outside the approval chain | Plan approval (duthaho) |
+| T12 | I | Salary visible to every `tenant:read` role, including every hiring manager tenant-wide | **Medium, needs human risk acceptance.** Authenticated, same-tenant staff only; cross-tenant is covered by T1–T4. Follow-up if narrower: an `offer:read` permission, or omit `annual_salary` for roles outside the approval chain | Accepted by duthaho at plan approval, 2026-11-26 |
 | T13 | I | Free-text `reason` leaks through outbox, email, audit metadata, logs or spans | Outbox payload keys fixed to `{offer_id, decision, actor_id}`; reason not on `DecideOfferCommand` logging, audit metadata or span attributes; only route 2 returns it | AC8 |
 | T14 | I | `reason` echoed back in a 422 body or log line | The handler emits only `loc` and `msg`, not `input`. Validator messages must be static: no f-string with the value | AC7, security review |
 | T15 | T | Stored XSS through `reason` in the inbox | Stored as plain text; the API returns JSON. DUTH-55 must render it as text (no `dangerouslySetInnerHTML` / markdown) | DUTH-55 |
@@ -271,6 +271,10 @@ From Hoàng-Security on DUTH-115, against spec `4da6ec8`. Routes 1 and 2 are the
 A gap in AC3, AC5, AC6, AC8, T1 or T13 is a blocking High.
 
 DUTH-55 must render `reason` as plain text, with no HTML or markdown rendering (T15).
+
+### Approval
+
+Plan approved by duthaho on DUTH-115, 2026-11-26 (comment `01a215a4`), against head `326f9fd`. The plan exposes salary as written (T12).
 
 ### Sub-issues by stage
 
