@@ -2,7 +2,9 @@
 
 import base64
 import json
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from typing import Protocol
 
 METADATA_ALLOWLIST: dict[str, frozenset[str]] = {
     "candidate_case.created": frozenset({"requisition_id", "stage"}),
@@ -17,6 +19,62 @@ METADATA_ALLOWLIST: dict[str, frozenset[str]] = {
 
 class InvalidCursorError(ValueError):
     pass
+
+
+class CandidateNotFoundError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class TimelineEvent:
+    id: str
+    action: str
+    aggregate_type: str
+    aggregate_id: str
+    actor_id: str
+    occurred_at: datetime
+    metadata: dict[str, object]
+
+
+@dataclass(frozen=True)
+class TimelinePage:
+    items: list[TimelineEvent]
+    next_cursor: str | None
+
+
+class CaseTimelineReader(Protocol):
+    def case_exists(self, *, tenant_id: str, candidate_case_id: str) -> bool: ...
+
+    def list_for_case(
+        self,
+        *,
+        tenant_id: str,
+        candidate_case_id: str,
+        after: tuple[datetime, str] | None,
+        limit: int,
+    ) -> list[TimelineEvent]: ...
+
+
+class CaseTimelineHandler:
+    def __init__(self, reader: CaseTimelineReader) -> None:
+        self._reader = reader
+
+    def handle(
+        self, *, tenant_id: str, candidate_case_id: str, cursor: str | None, limit: int
+    ) -> TimelinePage:
+        if not self._reader.case_exists(tenant_id=tenant_id, candidate_case_id=candidate_case_id):
+            raise CandidateNotFoundError(candidate_case_id)
+        after = decode_cursor(cursor) if cursor else None
+        events = self._reader.list_for_case(
+            tenant_id=tenant_id, candidate_case_id=candidate_case_id, after=after, limit=limit + 1
+        )
+        page = events[:limit]
+        return TimelinePage(
+            items=[replace(event, metadata=redact(event.action, event.metadata)) for event in page],
+            next_cursor=encode_cursor(page[-1].occurred_at, page[-1].id)
+            if len(events) > limit and page
+            else None,
+        )
 
 
 def redact(action: str, metadata: dict[str, object]) -> dict[str, object]:
