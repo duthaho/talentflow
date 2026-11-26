@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -69,7 +70,7 @@ def decode_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         raise InvalidCursorError
     try:
         padded = cursor + "=" * (-len(cursor) % 4)
-        decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
+        decoded = base64.b64decode(padded.encode("ascii"), altchars=b"-_", validate=True)
         payload = json.loads(decoded)
         if not isinstance(payload, dict) or set(payload) != {"s", "i"}:
             raise ValueError
@@ -79,9 +80,9 @@ def decode_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         parsed = datetime.fromisoformat(scheduled_at)
         if parsed.tzinfo is None or parsed.utcoffset() is None:
             raise ValueError
-    except (UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError) as error:
+        return parsed.astimezone(UTC), interview_id
+    except (binascii.Error, OverflowError, UnicodeDecodeError, ValueError, TypeError) as error:
         raise InvalidCursorError from error
-    return parsed.astimezone(UTC), interview_id
 
 
 def encode_cursor(scheduled_at: datetime, interview_id: str) -> str:

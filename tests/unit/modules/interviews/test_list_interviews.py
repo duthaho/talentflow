@@ -69,6 +69,8 @@ def test_cursor_round_trip_uses_utc() -> None:
         "W10",
         "eyJzIjpudWxsLCJpIjoxfQ",
         "eyJzIjoiMjAyNi0xMC0wMVQwOTowMDowMCIsImkiOiJ4In0",
+        "eyJzIjoiMDAwMS0wMS0wMVQwMDowMDowMCswMTowMCIsImkiOiJ4In0",
+        "eyJzIjoiOTk5OS0xMi0zMVQyMzo1OTo1OS0wMTowMCIsImkiOiJ4In0",
     ],
 )
 def test_cursor_rejects_invalid_shapes_and_naive_timestamps(cursor: str) -> None:

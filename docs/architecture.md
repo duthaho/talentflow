@@ -126,7 +126,7 @@ flowchart LR
 | Organization | tenants, memberships, requisitions | implemented | application service, unit of work, audit |
 | Identity | JWT validation, actor context, RBAC permissions | implemented | ports/adapters, JWKS rotation |
 | Candidates | case creation, list/filter, lifecycle transitions | implemented | aggregate, state machine (`workflow`), optimistic locking, CQRS-lite |
-| Interviews | scheduling, structured feedback | implemented | authorization policy, one-feedback-per-interview |
+| Interviews | scheduling, scoped interview listing, structured feedback | implemented | authorization policy, application-layer ownership rule, opaque `(scheduled_at, id)` keyset read model, one-feedback-per-interview |
 | Offers | staged approvals | implemented | aggregate, policy object, immutable decisions, outbox |
 | Notifications | outbox materialization, email delivery | implemented | outbox, leased worker, retry, dead letter |
 | Audit | tenant-scoped append-only evidence | implemented | same-transaction audit write; hash chain planned (stage 7) |
