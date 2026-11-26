@@ -46,7 +46,7 @@ export type CandidateCaseDetail = {
   created_at: string;
 };
 
-export type ApproveOfferBody = { decision: OfferDecisionValue; expected_version: number; reason?: string | null };
+export type ApproveOfferBody = { decision: OfferDecisionValue; expected_version?: number | null; reason?: string | null };
 
 type Json<T> = { headers: { [name: string]: unknown }; content: { "application/json": T } };
 type Problem = Json<unknown>;
@@ -81,9 +81,17 @@ type ContractPaths = {
     parameters: NoParams;
     get?: never;
     post: {
-      parameters: { query?: never; header?: never; path: { offer_id: string }; cookie?: never };
+      parameters: { query?: never; header?: { "If-Match"?: string | null }; path: { offer_id: string }; cookie?: never };
       requestBody: { content: { "application/json": ApproveOfferBody } };
-      responses: { 200: Json<components["schemas"]["OfferResponse"]>; 403: Problem; 409: Problem; 422: Problem };
+      responses: {
+        200: Json<components["schemas"]["OfferResponse"]>;
+        400: Problem;
+        403: Problem;
+        409: Problem;
+        412: Problem;
+        422: Problem;
+        428: Problem;
+      };
     };
   };
   "/v1/candidate-cases/{candidate_case_id}": Unused & {

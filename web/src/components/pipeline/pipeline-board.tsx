@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi, settle, type ApiClient, type ApiResult } from "@/lib/api/client";
+import { ifMatch, isStaleVersion } from "@/lib/api/precondition";
 import { usePagedList } from "@/lib/offers/use-paged-list";
 import { boardReducer, initialBoard, type Candidate, type CandidatePage, type Column } from "@/lib/pipeline/board-state";
 import { GENERIC_STAGE_TRANSITIONS, canMove, isStage, STAGE_LABELS, STAGES, type Stage } from "@/lib/pipeline/stages";
@@ -114,8 +115,8 @@ export function PipelineBoard({
     setPending((current) => new Set(current).add(candidate.id));
     const result = await settle(
       api.PATCH("/v1/candidate-cases/{candidate_case_id}/stage", {
-        params: { path: { candidate_case_id: candidate.id } },
-        body: { target_stage: target, expected_version: candidate.version },
+        params: { path: { candidate_case_id: candidate.id }, header: { "If-Match": ifMatch(candidate.version) } },
+        body: { target_stage: target },
       }),
     );
     setPending((current) => {
@@ -126,7 +127,7 @@ export function PipelineBoard({
     if (result.ok) {
       dispatch({ type: "moved", from, candidate: result.data });
       setAnnouncement(`${fullName(candidate)} moved to ${STAGE_LABELS[target]}.`);
-    } else if (result.problem.status === 409) {
+    } else if (isStaleVersion(result.problem.status)) {
       setConflict(candidate);
     } else {
       toastProblem(result.problem);

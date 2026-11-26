@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { settle } from "@/lib/api/client";
+import { ifMatch, isStaleVersion } from "@/lib/api/precondition";
 import { describeProblem, type ProblemDetails } from "@/lib/api/problem";
 import type { OfferDecision, OfferDecisionValue, OfferDetail, OffersApi } from "@/lib/offers/contract";
 import { formatDecidedAt, formatSalary, REASON_MAX, reasonError, reasonPayload, roleLabel } from "@/lib/offers/format";
@@ -204,15 +205,15 @@ function DecisionForm({
     setSubmitting(decision);
     const result = await settle(
       api.POST("/v1/offers/{offer_id}/approvals", {
-        params: { path: { offer_id: offer.id } },
-        body: { decision, expected_version: offer.version, reason: reasonPayload(reason) },
+        params: { path: { offer_id: offer.id }, header: { "If-Match": ifMatch(offer.version) } },
+        body: { decision, reason: reasonPayload(reason) },
       }),
     );
     setSubmitting(null);
     if (result.ok) {
       toast.success(decision === "approved" ? `Approved "${offer.title}".` : `Rejected "${offer.title}".`);
       await onDone(false);
-    } else if (result.problem.status === 409) {
+    } else if (isStaleVersion(result.problem.status)) {
       await onDone(true);
     } else if (result.problem.status === 403) {
       toastProblem(result.problem);

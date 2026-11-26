@@ -104,8 +104,10 @@ test("a stale candidate transition shows a conflict prompt and refreshes to the 
   const rejected = first.waitForResponse((response) => response.url().endsWith(`/${candidate.id}/stage`) && response.request().method() === "PATCH");
   await first.getByLabel(`Move ${candidate.name} to stage`, { exact: true }).selectOption("rejected");
   const conflictResponse = await rejected;
-  expect(conflictResponse.request().postDataJSON()).toEqual({ target_stage: "rejected", expected_version: candidate.version });
-  expect(conflictResponse.status()).toBe(409);
+  expect(conflictResponse.request().postDataJSON()).toEqual({ target_stage: "rejected" });
+  expect(await conflictResponse.request().headerValue("if-match")).toBe(`"${candidate.version}"`);
+  expect(conflictResponse.status()).toBe(412);
+  expect(conflictResponse.headers()["etag"]).toBe(`"${candidate.version + 1}"`);
   expect(conflictResponse.headers()["content-type"]).toContain("application/problem+json");
   const conflict = first.getByRole("alertdialog", { name: "Changed by someone else" });
   await expect(conflict).toContainText(`${candidate.name} was updated by someone else`);
