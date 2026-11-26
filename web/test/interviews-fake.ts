@@ -37,7 +37,7 @@ function problem(status: number, slug: string, detail: string, extra: object = {
   );
 }
 
-type Handler = (request: Request) => Response | Promise<Response> | undefined;
+type Handler = (request: Request) => Response | Promise<Response | undefined> | undefined;
 
 export function fakeInterviewsBackend({
   actorId = "user-me",
@@ -89,8 +89,14 @@ export function fakeInterviewsBackend({
     }
 
     if (request.method === "GET" && path === "/v1/candidate-cases") {
-      const items = candidates.filter((item) => item.stage === query.get("stage"));
-      return Response.json({ items, next_cursor: null, total: items.length });
+      const term = query.get("q")?.toLowerCase();
+      const matches = candidates.filter(
+        (item) =>
+          item.stage === query.get("stage") &&
+          (!term || [item.first_name, item.last_name, `${item.first_name} ${item.last_name}`, item.email].some((value) => value.toLowerCase().includes(term))),
+      );
+      const items = matches.slice(0, Number(query.get("limit") ?? 50));
+      return Response.json({ items, next_cursor: null, total: matches.length });
     }
 
     const schedule = path.match(/^\/v1\/candidate-cases\/([^/]+)\/interviews$/);
