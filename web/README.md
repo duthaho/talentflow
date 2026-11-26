@@ -50,6 +50,7 @@ CI fails when `openapi.json` or `src/lib/api/schema.ts` differ from a fresh gene
 - `src/app/(app)/`: authenticated screens
 - `src/lib/pipeline/`, `src/components/pipeline/`: the candidate pipeline board (`/candidates`)
 - `src/lib/offers/`, `src/components/offers/`: offer creation and the approval inbox (`/offers`)
+- `src/lib/reports/`, `src/components/reports/`: the pipeline reporting dashboard (`/reports`)
 
 ## Pipeline board
 
@@ -73,3 +74,11 @@ Each stage column loads its own cursor-paginated page from `GET /v1/candidate-ca
 ### Typed contract before the generated client
 
 The offer read routes (DUTH-115) and candidate detail (DUTH-110) are specified but not yet in `openapi.json`. `src/lib/offers/contract.ts` declares those routes in the same `paths` shape `openapi-typescript` emits and builds an `openapi-fetch` client over `paths` plus them, so call sites already look like the generated client. Tests run against an in-memory fake of the contract (`test/offers-fake.ts`). Once both routes ship and `make api-client` regenerates `schema.ts`, delete `contract.ts`, import the types from `schema.ts` and use `browserApi()`; `tsc` then flags any field that drifted from the spec. Until then the page shows its error state against a real API.
+
+## Reports
+
+`/reports` needs `report:read`. The server component loads `GET /v1/reports/pipeline`, which returns aggregate counts only, so no candidate names, emails or IDs reach the page.
+
+- **Charts**: candidates by stage, offers by status, and scheduled interviews against submitted feedback. Each chart is a table with decorative bars, so screen readers get the exact numbers. No chart library is added.
+- **Ordering**: known stages and offer statuses keep their domain order and show as zero, so charts stay comparable over time. A key the web app does not know yet is appended with a readable label instead of being dropped.
+- **States**: a tenant with no candidates, offers or interviews gets an empty state linking to `/candidates`; an API error or 403 renders the Problem Details view with a retry.
