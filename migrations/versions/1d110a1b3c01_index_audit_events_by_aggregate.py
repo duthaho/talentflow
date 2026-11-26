@@ -1,7 +1,7 @@
 """index audit events by aggregate
 
 Revision ID: 1d110a1b3c01
-Revises: 5b02a38d7c91
+Revises: c91e5b7d2a64
 Create Date: 2026-11-26
 """
 
