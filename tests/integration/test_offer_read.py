@@ -85,7 +85,26 @@ def test_offer_inbox_is_role_and_tenant_scoped() -> None:
         _add_roles(app, tenant_a["id"])
         pending = _create_offer(client, tenant_a["id"], "admin-a", 1)
         second_step = _create_offer(client, tenant_a["id"], "admin-a", 2)
+        approved = _create_offer(client, tenant_a["id"], "admin-a", 3)
+        rejected = _create_offer(client, tenant_a["id"], "admin-a", 4)
         _approve_step_one(client, tenant_a["id"], second_step["id"])
+        _approve_step_one(client, tenant_a["id"], approved["id"])
+        assert (
+            client.post(
+                f"/v1/offers/{approved['id']}/approvals",
+                headers=_headers(tenant_a["id"], "admin-a"),
+                json={"decision": "approved", "expected_version": 2},
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                f"/v1/offers/{rejected['id']}/approvals",
+                headers=_headers(tenant_a["id"], "manager"),
+                json={"decision": "rejected", "expected_version": 1, "reason": "No budget"},
+            ).status_code
+            == 200
+        )
         foreign = _create_offer(client, tenant_b["id"], "admin-b", 1)
 
         manager = client.get("/v1/offers?awaiting=me", headers=_headers(tenant_a["id"], "manager"))
@@ -102,6 +121,8 @@ def test_offer_inbox_is_role_and_tenant_scoped() -> None:
     assert recruiter.json() == {"items": [], "next_cursor": None, "total": 0}
     assert auditor.json() == {"items": [], "next_cursor": None, "total": 0}
     assert foreign["id"] not in {item["id"] for item in manager.json()["items"]}
+    assert approved["id"] not in {item["id"] for item in manager.json()["items"]}
+    assert rejected["id"] not in {item["id"] for item in manager.json()["items"]}
 
 
 def test_offer_list_cursor_case_filter_and_invalid_filters() -> None:
@@ -120,17 +141,47 @@ def test_offer_list_cursor_case_filter_and_invalid_filters() -> None:
         third = client.get(
             f"/v1/offers?limit=2&cursor={second['next_cursor']}", headers=headers
         ).json()
+        status_first = client.get(
+            "/v1/offers?status=pending_approval&limit=2", headers=headers
+        ).json()
+        status_second = client.get(
+            f"/v1/offers?status=pending_approval&limit=2&cursor={status_first['next_cursor']}",
+            headers=headers,
+        ).json()
+        status_third = client.get(
+            f"/v1/offers?status=pending_approval&limit=2&cursor={status_second['next_cursor']}",
+            headers=headers,
+        ).json()
         by_case = client.get(
             f"/v1/offers?candidate_case_id={offers[0]['candidate_id']}", headers=headers
         ).json()
         foreign_case = client.get(
             f"/v1/offers?candidate_case_id={foreign['candidate_id']}", headers=headers
         ).json()
+        no_offer_case = client.post(
+            "/v1/candidate-cases",
+            headers=_headers(tenant_a["id"], "admin-a"),
+            json={
+                "requisition_id": client.post(
+                    "/v1/requisitions",
+                    headers=_headers(tenant_a["id"], "admin-a"),
+                    json={"title": "No offer", "department": "Engineering"},
+                ).json()["id"],
+                "first_name": "No",
+                "last_name": "Offer",
+                "email": "no-offer@example.com",
+            },
+        ).json()
+        no_offer = client.get(
+            f"/v1/offers?candidate_case_id={no_offer_case['id']}", headers=headers
+        ).json()
+        unknown_case = client.get("/v1/offers?candidate_case_id=unknown", headers=headers).json()
 
         invalid = [
             client.get("/v1/offers?awaiting=you", headers=headers),
             client.get("/v1/offers?status=draft", headers=headers),
             client.get("/v1/offers?limit=0", headers=headers),
+            client.get("/v1/offers?limit=101", headers=headers),
             client.get("/v1/offers?cursor=" + "x" * 65, headers=headers),
             client.get("/v1/offers?candidate_case_id=" + "x" * 65, headers=headers),
         ]
@@ -138,8 +189,16 @@ def test_offer_list_cursor_case_filter_and_invalid_filters() -> None:
     assert first["total"] == second["total"] == third["total"] == 5
     assert len({item["id"] for page in (first, second, third) for item in page["items"]}) == 5
     assert third["next_cursor"] is None
+    assert status_third["next_cursor"] is None
+    assert all(
+        item["status"] == "pending_approval"
+        for page in (status_first, status_second, status_third)
+        for item in page["items"]
+    )
     assert by_case["items"][0]["id"] == offers[0]["id"]
     assert foreign_case == {"items": [], "next_cursor": None, "total": 0}
+    assert no_offer == {"items": [], "next_cursor": None, "total": 0}
+    assert unknown_case == {"items": [], "next_cursor": None, "total": 0}
     assert all(response.status_code == 422 for response in invalid)
 
 
@@ -196,8 +255,7 @@ def test_rejection_validation_is_atomic_and_interviewer_cannot_read() -> None:
         offer = _create_offer(client, tenant["id"], "admin", 1)
         for reason in (None, "", "   ", "x" * 501):
             payload = {"decision": "rejected", "expected_version": 1}
-            if reason is not None:
-                payload["reason"] = reason
+            payload["reason"] = reason
             assert (
                 client.post(
                     f"/v1/offers/{offer['id']}/approvals",
@@ -210,9 +268,86 @@ def test_rejection_validation_is_atomic_and_interviewer_cannot_read() -> None:
         denied = client.get(
             f"/v1/offers/{offer['id']}", headers=_headers(tenant["id"], "interviewer")
         )
+        denied_list = client.get("/v1/offers", headers=_headers(tenant["id"], "interviewer"))
         with app.state.session_factory() as session:
             assert session.query(ApprovalDecision).count() == 0
             assert session.query(OutboxEvent).count() == 0
+        accepted = client.post(
+            f"/v1/offers/{offer['id']}/approvals",
+            headers=_headers(tenant["id"], "manager"),
+            json={"decision": "rejected", "expected_version": 1, "reason": "x" * 500},
+        )
 
     assert detail.json()["version"] == 1
     assert denied.status_code == 403
+    assert denied_list.status_code == 403
+    assert accepted.status_code == 200
+
+
+def test_can_decide_matches_approval_endpoint_for_each_role() -> None:
+    app = create_app("sqlite://")
+    with TestClient(app) as client:
+        tenant = _create_tenant(client, slug="deciders", admin_id="admin")
+        _add_roles(app, tenant["id"])
+        offer = _create_offer(client, tenant["id"], "admin", 1)
+        for actor_id, expected in (
+            ("admin", False),
+            ("recruiter", False),
+            ("auditor", False),
+            ("manager", True),
+        ):
+            detail = client.get(
+                f"/v1/offers/{offer['id']}", headers=_headers(tenant["id"], actor_id)
+            )
+            assert detail.json()["can_decide"] is expected
+            response = client.post(
+                f"/v1/offers/{offer['id']}/approvals",
+                headers=_headers(tenant["id"], actor_id),
+                json={"decision": "approved", "expected_version": 1},
+            )
+            assert response.status_code == (200 if expected else 403)
+        second_step = client.get(
+            f"/v1/offers/{offer['id']}", headers=_headers(tenant["id"], "admin")
+        )
+        assert second_step.json()["can_decide"] is True
+        assert (
+            client.post(
+                f"/v1/offers/{offer['id']}/approvals",
+                headers=_headers(tenant["id"], "manager"),
+                json={"decision": "approved", "expected_version": 2},
+            ).status_code
+            == 403
+        )
+
+
+def test_legacy_decision_reads_as_null_reason_and_timestamp() -> None:
+    app = create_app("sqlite://")
+    with TestClient(app) as client:
+        tenant = _create_tenant(client, slug="legacy", admin_id="admin")
+        _add_roles(app, tenant["id"])
+        offer = _create_offer(client, tenant["id"], "admin", 1)
+        with app.state.session_factory() as session:
+            session.add(
+                ApprovalDecision(
+                    offer_id=offer["id"],
+                    tenant_id=tenant["id"],
+                    step=1,
+                    actor_id="manager",
+                    decision="approved",
+                    reason=None,
+                    decided_at=None,
+                )
+            )
+            session.commit()
+        detail = client.get(f"/v1/offers/{offer['id']}", headers=_headers(tenant["id"], "admin"))
+
+    assert detail.status_code == 200
+    assert detail.json()["decisions"] == [
+        {
+            "step": 1,
+            "decision": "approved",
+            "actor_id": "manager",
+            "decided_at": None,
+            "reason": None,
+        }
+    ]
