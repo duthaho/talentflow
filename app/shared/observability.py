@@ -49,6 +49,10 @@ command_conflicts = Counter(
     "Optimistic concurrency conflicts by aggregate type.",
     ("aggregate_type",),
 )
+broker_depth = Gauge("talentflow_broker_queue_depth", "RabbitMQ ready messages.", ("queue",))
+consumer_outcomes = Counter(
+    "talentflow_consumer_messages", "Consumer outcomes.", ("consumer", "outcome")
+)
 outbox_backlog = Gauge("talentflow_outbox_backlog", "Pending outbox events.")
 delivery_attempts = Counter(
     "talentflow_delivery_attempts",

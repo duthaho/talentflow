@@ -7,6 +7,7 @@ Start with the [project README](../README.md) for what TalentFlow is, the quick 
 | Document | Purpose |
 | --- | --- |
 | [architecture.md](architecture.md) | Current and target architecture: C4 context and container views, bounded contexts, workflow, event flow, identity flow |
+| [events/operations.md](events/operations.md) | Relay, inbox, retry/DLQ operations, replay and verification |
 | [events/asyncapi.yaml](events/asyncapi.yaml) | Integration event catalog (AsyncAPI 3.1): envelope, event types, RabbitMQ topology |
 | [roadmap.md](roadmap.md) | The nine DUTH-43 stages: outcome, issues and the patterns each one teaches |
 

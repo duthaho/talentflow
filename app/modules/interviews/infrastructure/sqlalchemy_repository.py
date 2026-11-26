@@ -1,3 +1,5 @@
+from datetime import UTC
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,7 @@ from app.modules.interviews.domain.interview import Interview
 from app.modules.interviews.persistence import Interview as InterviewRecord
 from app.modules.interviews.persistence import InterviewFeedback
 from app.modules.organization.persistence import Membership
+from app.shared.events import record_event
 
 
 class SqlAlchemyInterviewRepository:
@@ -48,6 +51,24 @@ class SqlAlchemyInterviewRepository:
             )
         )
 
+        record_event(
+            self._session,
+            topic="interview.scheduled.v1",
+            tenant_id=interview.tenant_id,
+            subject=interview.id,
+            actor_id=created_by,
+            data={
+                "interview_id": interview.id,
+                "candidate_case_id": interview.candidate_case_id,
+                "interviewer_id": interview.interviewer_id,
+                "scheduled_at": (
+                    interview.scheduled_at.replace(tzinfo=UTC)
+                    if interview.scheduled_at.tzinfo is None
+                    else interview.scheduled_at
+                ).isoformat(),
+            },
+        )
+
     def get(self, *, interview_id: str, tenant_id: str) -> Interview | None:
         record = self._session.scalar(
             select(InterviewRecord).where(
@@ -86,6 +107,18 @@ class SqlAlchemyInterviewRepository:
             comments=comments,
         )
         self._session.add(record)
+        record_event(
+            self._session,
+            topic="interview.feedback_submitted.v1",
+            tenant_id=interview.tenant_id,
+            subject=interview.id,
+            actor_id=interview.interviewer_id,
+            data={
+                "interview_id": interview.id,
+                "candidate_case_id": interview.candidate_case_id,
+                "interviewer_id": interview.interviewer_id,
+            },
+        )
         self._session.flush()
         return Feedback(
             record.id, record.interview_id, record.score, record.recommendation, record.comments

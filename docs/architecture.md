@@ -194,19 +194,21 @@ The application handler owns the transaction, so a state change, its audit recor
 
 ## 7. Event flow
 
-### Current: outbox → notification deliveries
+### Current: outbox → RabbitMQ → notification deliveries
 
 ```mermaid
 flowchart LR
-  cmd["Offer decision handler"] -- "same transaction" --> ob[("outbox_events<br/>offer.approval_recorded.v1")]
-  ob --> pub["outbox publisher"] -- "unique outbox_event_id" --> nd[("notification_deliveries")]
-  nd --> w["email worker<br/>lease, retry"] --> sg["SendGrid"]
-  w --> dl["dead_letter after max attempts"]
+  cmd["Candidate / interview / offer commands"] -- "same transaction" --> ob[("outbox_events")]
+  ob --> pub["confirmed relay"] --> mq{{"RabbitMQ"}}
+  mq --> consumer["notifications consumer"]
+  consumer -- "same transaction" --> inbox[("inbox_messages")]
+  consumer -- "unique outbox_event_id" --> nd[("notification_deliveries")]
+  nd --> worker["leased email worker"] --> smtp["SMTP / Mailpit"]
 ```
 
-Delivery is **at-least-once**. Idempotency comes from the unique `notification_deliveries.outbox_event_id`; a crashed worker's expired lease is reclaimed and only the lease holder can finalize ([ADR 002](adr/002-transactional-outbox.md)).
+RabbitMQ delivery is **at least once**. The inbox and notification delivery commit before acknowledgement, giving one database effect per event. External SMTP delivery can repeat after a crash, since it cannot commit atomically with PostgreSQL. The leased email worker retries delivery separately ([ADR 002](adr/002-transactional-outbox.md), [operations](events/operations.md)).
 
-### Target: outbox → RabbitMQ → consumers with inbox dedup (stage 5)
+### Event bus: implemented notifications, future subscribers
 
 ```mermaid
 flowchart LR

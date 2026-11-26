@@ -24,6 +24,23 @@ services:
       timeout: 3s
       retries: 20
 
+  rabbitmq:
+    image: rabbitmq:4.1.8-management
+    environment:
+      RABBITMQ_DEFAULT_USER: talentflow
+      RABBITMQ_DEFAULT_PASS: talentflow
+      RABBITMQ_DEFAULT_VHOST: /talentflow
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   mailpit:
     image: axllent/mailpit:v1.28.1
     ports:
@@ -161,6 +178,7 @@ services:
       ATTACHMENT_CLAMAV_HOST: clamav
       ATTACHMENT_CLAMAV_PORT: 3310
       CALENDAR_PUBLIC_BASE_URL: http://localhost:${API_PORT:-8000}
+      RABBITMQ_URL: amqp://talentflow:talentflow@rabbitmq:5672/%2Ftalentflow
       NOTIFICATION_EMAIL_ADAPTER: smtp
       NOTIFICATION_FROM_EMAIL: notifications@talentflow.local
       NOTIFICATION_SMTP_HOST: mailpit
@@ -220,6 +238,25 @@ services:
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
 
+  outbox-relay:
+    build: .
+    command: ["python", "-m", "app.modules.notifications.application.run_outbox_publisher"]
+    environment:
+      <<: *runtime_environment
+      OTEL_SERVICE_NAME: talentflow-outbox-relay
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 35s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
   notification-worker:
     build: .
     command: ["python", "-m", "app.modules.notifications.application.run_email_worker"]
@@ -231,9 +268,10 @@ services:
         condition: service_completed_successfully
       mailpit:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 35s
-    profiles: ["workers"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health/ready', timeout=3)"]
       interval: 10s
@@ -278,5 +316,6 @@ services:
         condition: service_healthy
 
 volumes:
+  rabbitmq_data:
   postgres_data:
   seaweedfs_data:

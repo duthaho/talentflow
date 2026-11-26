@@ -1,50 +1,57 @@
-from sqlalchemy import func, select
+from datetime import UTC, datetime
+
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import sessionmaker
 
-from app.modules.notifications.persistence import NotificationDelivery, OutboxEvent
+from app.modules.notifications.persistence import OutboxEvent
+from app.shared.events import envelope
 from app.shared.observability import outbox_backlog
 
 
 class OutboxPublisher:
-    def __init__(self, sessions: sessionmaker):
-        self.sessions = sessions
+    """The only outbox reader. A crash after confirm intentionally republishes stable ids."""
 
-    def publish_pending(self) -> int:
-        with self.sessions() as session:
-            events = session.scalars(
-                select(OutboxEvent)
-                .where(OutboxEvent.status == "pending")
-                .order_by(OutboxEvent.created_at)
-            ).all()
-            published = 0
-            for event in events:
-                existing = session.scalar(
-                    select(NotificationDelivery).where(
-                        NotificationDelivery.outbox_event_id == event.id
-                    )
-                )
-                if existing is None:
-                    recipient_id = str(event.payload_json["actor_id"])
-                    session.add(
-                        NotificationDelivery(
-                            outbox_event_id=event.id,
-                            tenant_id=event.tenant_id,
-                            recipient_id=recipient_id,
-                            payload_json=event.payload_json,
+    def __init__(self, sessions: sessionmaker, broker, *, batch_size: int = 100):
+        self.sessions = sessions
+        self.broker = broker
+        self.batch_size = batch_size
+
+    def publish_pending(self, *, should_stop=lambda: False) -> int:
+        event_id = None
+        try:
+            with self.sessions.begin() as session:
+                events = session.scalars(
+                    select(OutboxEvent)
+                    .where(OutboxEvent.status == "pending")
+                    .order_by(OutboxEvent.created_at, OutboxEvent.id)
+                    .limit(self.batch_size)
+                    .with_for_update(skip_locked=True)
+                ).all()
+                published = 0
+                for event in events:
+                    if should_stop():
+                        break
+                    event_id = event.id
+                    self.broker.publish_event(envelope(event))
+                    event.status = "published"
+                    event.published_at = datetime.now(UTC)
+                    event.publish_attempts += 1
+                    event.last_error = None
+                    published += 1
+        except Exception as error:
+            if event_id is not None:
+                with self.sessions.begin() as session:
+                    session.execute(
+                        update(OutboxEvent)
+                        .where(OutboxEvent.id == event_id, OutboxEvent.status == "pending")
+                        .values(
+                            publish_attempts=OutboxEvent.publish_attempts + 1,
+                            last_error=type(error).__name__,
                         )
                     )
-                    published += 1
-                event.status = "published"
-            session.commit()
-            outbox_backlog.set(
-                session.scalar(
-                    select(func.count())
-                    .select_from(OutboxEvent)
-                    .where(OutboxEvent.status == "pending")
-                )
-                or 0
-            )
-            return published
+            raise RuntimeError("outbox_publish_failed") from None
+        outbox_backlog.set(self.pending_count())
+        return published
 
     def pending_count(self) -> int:
         with self.sessions() as session:

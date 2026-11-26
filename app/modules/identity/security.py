@@ -76,6 +76,7 @@ def resolve_actor(
         )
     if membership is None:
         raise forbidden("Actor is not a member of this tenant")
+    request.state.actor_id = actor_id
     return ActorContext(tenant_id=tenant_id, actor_id=actor_id, role=membership.role)
 
 

@@ -1,13 +1,82 @@
 {
-  "annotations": {"list": []},
+  "annotations": {
+    "list": []
+  },
   "editable": false,
   "panels": [
-    {"datasource": {"type": "prometheus", "uid": "prometheus"}, "title": "Request rate", "type": "timeseries", "targets": [{"expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"talentflow-api\"}[5m])) by (http_route)"}]},
-    {"datasource": {"type": "prometheus", "uid": "prometheus"}, "title": "Error rate", "type": "timeseries", "targets": [{"expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"talentflow-api\", http_response_status_code=~\"5..\"}[5m])) by (http_route)"}]},
-    {"datasource": {"type": "prometheus", "uid": "prometheus"}, "title": "p95 duration", "type": "timeseries", "targets": [{"expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service_name=\"talentflow-api\"}[5m])) by (le, http_route))"}]}
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "Request rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"talentflow-api\"}[5m])) by (http_route)"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "Error rate",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_request_duration_seconds_count{service_name=\"talentflow-api\", http_response_status_code=~\"5..\"}[5m])) by (http_route)"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "p95 duration",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{service_name=\"talentflow-api\"}[5m])) by (le, http_route))"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "RabbitMQ backlog, dead letters and unrouted events",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "talentflow_broker_queue_depth",
+          "legendFormat": "{{queue}}"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "Consumer retries and poison messages",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(talentflow_consumer_messages_total[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ]
+    }
   ],
   "schemaVersion": 39,
-  "tags": ["talentflow", "red"],
+  "tags": [
+    "talentflow",
+    "red"
+  ],
   "title": "TalentFlow RED",
   "uid": "talentflow-red",
   "version": 1

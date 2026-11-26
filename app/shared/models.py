@@ -5,7 +5,11 @@ from app.modules.audit.infrastructure.models import AuditEvent
 from app.modules.calendar.infrastructure.models import CalendarSubscription
 from app.modules.candidates.infrastructure.models import CandidateCase
 from app.modules.interviews.infrastructure.models import Interview, InterviewFeedback
-from app.modules.notifications.infrastructure.models import NotificationDelivery, OutboxEvent
+from app.modules.notifications.infrastructure.models import (
+    InboxMessage,
+    NotificationDelivery,
+    OutboxEvent,
+)
 from app.modules.offers.infrastructure.models import ApprovalDecision, Offer
 from app.modules.organization.infrastructure.models import Membership, Requisition, Tenant, User
 from app.modules.retention.infrastructure.models import CandidateLegalHold, RetentionPolicy
@@ -21,6 +25,7 @@ __all__ = [
     "CandidateCase",
     "CandidateLegalHold",
     "IdempotencyRecord",
+    "InboxMessage",
     "Interview",
     "InterviewFeedback",
     "Membership",

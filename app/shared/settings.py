@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     notification_from_email: str = "notifications@talentflow.local"
     notification_smtp_host: str = "mailpit"
     notification_smtp_port: int = 1025
+    rabbitmq_url: SecretStr = SecretStr("amqp://talentflow:talentflow@rabbitmq:5672/%2Ftalentflow")
+    outbox_batch_size: int = Field(default=100, gt=0, le=1000)
     worker_lease_seconds: int = 60
     worker_max_attempts: int = 5
     worker_poll_seconds: float = 1.0

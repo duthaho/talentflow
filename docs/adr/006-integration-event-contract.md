@@ -4,6 +4,8 @@
 - **Date:** 2026-11-26
 - **Issue:** DUTH-58 (parent DUTH-43)
 
+**Implementation update (DUTH-59):** the planned producers, relay and notifications inbox consumer are implemented. The context below records the pre-relay baseline. The nullable metadata expansion remains in place; no outbox pruning or NOT NULL contract step has run. See [operations](../events/operations.md) for current verification and rollback constraints: the old unfiltered publisher must not be re-enabled against mixed event types.
+
 ## Context
 
 ADR 002 commits every state change and its event to the same transaction through `outbox_events`, and defers the broker contract to this ADR. Stage 5 publishes those events to RabbitMQ (DUTH-59). Later stages consume them: webhooks (DUTH-62), the onboarding process manager (DUTH-64), the OpenSearch projection (DUTH-66), and the AI pipeline (DUTH-72). Each consumer is written by a different issue at a different time, so the contract has to be fixed first and be checkable by a machine:

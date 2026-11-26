@@ -59,7 +59,19 @@ def test_offer_decision_and_outbox_event_are_transactionally_recorded() -> None:
             from app.shared.models import ApprovalDecision, OutboxEvent
 
             assert session.query(ApprovalDecision).count() == 1
-            event = session.query(OutboxEvent).one()
+            event = session.query(OutboxEvent).filter_by(topic="offer.approval_recorded.v1").one()
             assert event.topic == "offer.approval_recorded.v1"
             assert event.payload_json["decision"] == "approved"
-            assert set(event.payload_json) == {"offer_id", "decision", "actor_id"}
+            assert set(event.payload_json) == {
+                "offer_id",
+                "decision",
+                "actor_id",
+                "candidate_case_id",
+                "approval_step",
+                "offer_status",
+                "version",
+            }
+            assert event.payload_json["version"] == 2
+            assert event.payload_json["approval_step"] == 1
+            assert event.payload_json["offer_status"] == "pending_approval"
+            assert session.query(OutboxEvent).count() == 6

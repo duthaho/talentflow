@@ -10,6 +10,7 @@ from app.modules.offers.application.views import DecisionView, OfferView
 from app.modules.offers.domain.offer import Offer
 from app.modules.offers.persistence import ApprovalDecision
 from app.modules.offers.persistence import Offer as OfferRecord
+from app.shared.events import record_event
 
 
 class SqlAlchemyOfferRepository:
@@ -62,6 +63,32 @@ class SqlAlchemyOfferRepository:
                 created_by=created_by,
             )
         )
+
+        record_event(
+            self._session,
+            topic="offer.created.v1",
+            tenant_id=offer.tenant_id,
+            subject=offer.id,
+            actor_id=created_by,
+            data={
+                "offer_id": offer.id,
+                "candidate_case_id": offer.candidate_case_id,
+                "offer_status": offer.status,
+                "approval_step": offer.approval_step,
+                "version": offer.version,
+            },
+        )
+        self._link_stage_event(offer)
+
+    def _link_stage_event(self, offer: Offer) -> None:
+        for event in self._session.new:
+            if (
+                isinstance(event, OutboxEvent)
+                and event.topic == "candidate_case.stage_changed.v1"
+                and event.subject == offer.candidate_case_id
+                and event.tenant_id == offer.tenant_id
+            ):
+                event.payload_json = {**event.payload_json, "offer_id": offer.id}
 
     def update(self, *, offer: Offer, expected_version: int) -> bool:
         result = self._session.execute(
@@ -164,17 +191,24 @@ class SqlAlchemyOfferRepository:
         )
 
     def record_outbox_event(self, *, offer: Offer, actor_id: str, decision: str) -> None:
-        self._session.add(
-            OutboxEvent(
-                tenant_id=offer.tenant_id,
-                topic="offer.approval_recorded.v1",
-                payload_json={
-                    "offer_id": offer.id,
-                    "decision": decision,
-                    "actor_id": actor_id,
-                },
-            )
+        current = self.get(offer_id=offer.id, tenant_id=offer.tenant_id)
+        record_event(
+            self._session,
+            topic="offer.approval_recorded.v1",
+            tenant_id=offer.tenant_id,
+            subject=offer.id,
+            actor_id=actor_id,
+            data={
+                "offer_id": offer.id,
+                "decision": decision,
+                "actor_id": actor_id,
+                "candidate_case_id": offer.candidate_case_id,
+                "approval_step": offer.approval_step,
+                "offer_status": current.status,
+                "version": current.version,
+            },
         )
+        self._link_stage_event(offer)
 
 
 class SqlAlchemyUnitOfWork:
