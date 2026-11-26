@@ -15,6 +15,9 @@ PROBLEM_TYPE_BASE = "https://github.com/duthaho/talentflow/blob/main/docs/api-er
 PROBLEM_TYPES = frozenset(
     {
         "validation-error",
+        "invalid-precondition",
+        "precondition-failed",
+        "precondition-required",
         "unauthorized",
         "version-conflict",
         "rate-limited",
@@ -33,6 +36,8 @@ _STATUS_TITLES = {
     404: "Not Found",
     409: "Conflict",
     410: "Gone",
+    412: "Precondition Failed",
+    428: "Precondition Required",
     422: "Unprocessable Content",
     429: "Too Many Requests",
     500: "Internal Server Error",

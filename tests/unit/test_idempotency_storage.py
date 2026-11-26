@@ -1,4 +1,6 @@
+import hashlib
 import importlib.util
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -29,12 +31,52 @@ def test_fingerprint_includes_target_and_canonical_unicode_json():
         path_format = "/v1/offers/{offer_id}/approvals"
 
     request = Request(
-        {"type": "http", "method": "POST", "route": Route(), "path_params": {"offer_id": "one"}}
+        {
+            "type": "http",
+            "method": "POST",
+            "route": Route(),
+            "path_params": {"offer_id": "one"},
+            "headers": [],
+        }
     )
     first = fingerprint(request, {"b": "Đ", "a": 1})
     assert first == fingerprint(request, {"a": 1, "b": "Đ"})
     request.scope["path_params"] = {"offer_id": "two"}
     assert first != fingerprint(request, {"a": 1, "b": "Đ"})
+
+
+def test_conditional_fingerprints_preserve_legacy_keys_and_include_header():
+    class Route:
+        path_format = "/v1/offers/{offer_id}/approvals"
+
+    body = {"decision": "approved", "expected_version": 1}
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "route": Route(),
+        "path_params": {"offer_id": "one"},
+        "headers": [],
+    }
+    legacy = hashlib.sha256(
+        json.dumps(
+            ["POST", Route.path_format, {"offer_id": "one"}, body],
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+    assert fingerprint(Request(scope), body) == legacy
+    matching = fingerprint(Request({**scope, "headers": [(b"if-match", b'"1"')]}), body)
+    stale = fingerprint(Request({**scope, "headers": [(b"if-match", b'"2"')]}), body)
+    assert len({legacy, matching, stale}) == 3
+
+    class UnversionedRoute:
+        path_format = "/v1/requisitions"
+
+    scope["route"] = UnversionedRoute()
+    assert fingerprint(Request(scope), body) == fingerprint(
+        Request({**scope, "headers": [(b"if-match", b"ignored")]}), body
+    )
 
 
 def test_expiry_cleanup_is_bounded_and_preserves_live_rows():
@@ -88,16 +130,22 @@ def test_response_storage_allowlists_headers():
                 headers={
                     "Content-Type": "application/json",
                     "Location": "/v1/example",
+                    "ETag": '"3"',
                     "Set-Cookie": "secret",
                     "Authorization": "secret",
                 },
             ),
         )
         record = session.get(IdempotencyRecord, "row")
-        assert record.headers == {"content-type": "application/json", "location": "/v1/example"}
+        assert record.headers == {
+            "content-type": "application/json",
+            "location": "/v1/example",
+            "etag": '"3"',
+        }
         replay = Replay(record).response
         assert replay.status_code == 201
         assert replay.headers["Location"] == "/v1/example"
+        assert replay.headers["ETag"] == '"3"'
         assert "Set-Cookie" not in replay.headers
     engine.dispose()
 

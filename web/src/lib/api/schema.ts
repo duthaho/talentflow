@@ -503,8 +503,11 @@ export interface components {
         ApproveOfferRequest: {
             /** Decision */
             decision: string;
-            /** Expected Version */
-            expected_version: number;
+            /**
+             * Expected Version
+             * @description Legacy version precondition; alternatively supply If-Match
+             */
+            expected_version?: number | null;
             /** Reason */
             reason?: string | null;
         };
@@ -1014,8 +1017,11 @@ export interface components {
         };
         /** TransitionCandidateCaseRequest */
         TransitionCandidateCaseRequest: {
-            /** Expected Version */
-            expected_version: number;
+            /**
+             * Expected Version
+             * @description Legacy version precondition; alternatively supply If-Match
+             */
+            expected_version?: number | null;
             /** Target Stage */
             target_stage: string;
         };
@@ -1374,6 +1380,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1698,10 +1706,14 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Strong aggregate ETag, e.g. "3", a list of strong tags, or *. Alternative to expected_version; both must agree. Missing: 428; stale: 412; malformed or conflicting: 400. Idempotent replays are resolved first. */
+                "If-Match"?: string | null;
                 "X-Correlation-Id"?: string | null;
                 authorization?: string | null;
                 "X-Tenant-Id"?: string | null;
                 "X-Actor-Id"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
             };
             path: {
                 candidate_case_id: string;
@@ -1717,10 +1729,54 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["CandidateCaseResponse"];
+                };
+            };
+            /** @description Invalid or contradictory preconditions */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Precondition failed; refetch before retrying */
+            412: {
+                headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -1730,6 +1786,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Supply If-Match or expected_version */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -1935,6 +2011,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -1956,6 +2034,8 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                /** @description Strong aggregate ETag, e.g. "3", a list of strong tags, or *. Alternative to expected_version; both must agree. Missing: 428; stale: 412; malformed or conflicting: 400. Idempotent replays are resolved first. */
+                "If-Match"?: string | null;
                 authorization?: string | null;
                 "X-Tenant-Id"?: string | null;
                 "X-Actor-Id"?: string | null;
@@ -1976,10 +2056,54 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["OfferResponse"];
+                };
+            };
+            /** @description Invalid or contradictory preconditions */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Precondition failed; refetch before retrying */
+            412: {
+                headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -1989,6 +2113,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Supply If-Match or expected_version */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

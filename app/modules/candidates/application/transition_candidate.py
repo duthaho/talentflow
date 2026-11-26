@@ -10,6 +10,7 @@ from app.modules.candidates.application.ports import (
 )
 from app.modules.candidates.domain.candidate_case import CandidateCase
 from app.modules.workflow.domain.candidate_state_machine import CandidateStage
+from app.shared.concurrency import resolve_expected_version
 
 
 class CandidateNotFoundError(LookupError):
@@ -33,9 +34,10 @@ class TransitionCandidateCommand:
     candidate_id: str
     tenant_id: str
     target_stage: str
-    expected_version: int
+    expected_version: int | None
     actor_id: str
     correlation_id: str
+    if_match: tuple[str, ...] | None = None
 
 
 class TransitionCandidateHandler:
@@ -58,7 +60,12 @@ class TransitionCandidateHandler:
         )
         if candidate is None:
             raise CandidateNotFoundError(command.candidate_id)
-        if candidate.version != command.expected_version:
+        expected_version = resolve_expected_version(
+            current_version=candidate.version,
+            expected_version=command.expected_version,
+            if_match=command.if_match,
+        )
+        if candidate.version != expected_version:
             raise ConcurrencyConflictError(command.candidate_id)
         target_stage = CandidateStage(command.target_stage)
         if target_stage in {
@@ -81,7 +88,7 @@ class TransitionCandidateHandler:
             )
         transitioned = candidate.transition(target_stage)
         if not self._repository.transition(
-            candidate=transitioned, expected_version=command.expected_version
+            candidate=transitioned, expected_version=expected_version
         ):
             raise ConcurrencyConflictError(command.candidate_id)
         self._audit.candidate_stage_transitioned(

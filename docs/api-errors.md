@@ -22,6 +22,23 @@ The caller must authenticate or present valid credentials before retrying.
 
 An optimistic-lock version was stale. The response includes `current_version`.
 
+## invalid-precondition
+
+400: `If-Match` is malformed (including weak or unquoted tags), or the header
+and body `expected_version` disagree. Supply strong quoted tags or a lone `*`.
+
+## precondition-failed
+
+412: `If-Match` did not match the aggregate version, or a conditional write lost
+a concurrent update race. The response includes the current `ETag` header and
+`current_version`. Refetch before choosing whether to retry the command.
+
+## precondition-required
+
+428: a candidate stage transition or offer approval supplied neither `If-Match`
+nor `expected_version`. This response is not cacheable. Read the aggregate first
+and send its ETag with the command.
+
 ## rate-limited
 
 The request exceeded the configured rate limit. The response retains `Retry-After`.

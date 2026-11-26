@@ -4,6 +4,9 @@ Status: Accepted (DUTH-60, Phương-CTO's approved issue contract).
 Date: 2026-11-26.
 Issue: DUTH-60.
 
+Amended by [ADR-006](006-conditional-requests.md): candidate stage PATCH support,
+conditional-command header fingerprints, and stored ETag responses.
+
 ## Context
 
 Clients need to retry commands after losing a response without creating duplicate
