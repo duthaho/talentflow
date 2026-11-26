@@ -176,4 +176,114 @@ This issue adds the first anonymous write endpoint and an untrusted file upload.
 
 ## Plan
 
-(added at the `plan` step)
+This plan draws on Đông-SA's design notes, Diễm-QA's test plan and Hoàng-Security's threat model, all posted on DUTH-63 on 2026-11-26. Hoàng-Security approved the design on condition that the must-haves under Threat model are in the plan.
+
+### Spec amendments from the design and security reviews
+
+These are additive and keep the HTTP contract as reviewed, apart from the stricter rejections listed:
+
+- `consent.text` in the staff response is `string | null`, because AC9 clears it on anonymization. `candidate_consents.text` is nullable.
+- Step 1 also answers any `Transfer-Encoding` header with `411`. The apply route takes `Request` only, so the cap and the IP limit run before `request.form(max_files=1, max_fields=8, max_part_size=64 KiB)`. FastAPI `File()`/`Form()` would parse the body first.
+- If Redis fails during either careers limit, the route returns `503` and fails closed, like the scanner.
+- The public apply route returns `403` when it gets an `Origin` that is not in `CORS_ALLOWED_ORIGINS`. The Next apply handler accepts only same-origin requests.
+- A tenant with no published requisitions returns `200` with an empty list, not `404`. Tenant names are not secret, and an empty careers page is the expected UX.
+- New problem types `length-required` (`411`) and `payload-too-large` (`413`), plus the careers `503`, are documented in `docs/api-errors.md`.
+- **Accepted risk (needs duthaho's explicit acceptance with the plan):** the timing side channel on known emails (spec Risks). A response-time floor is a follow-up.
+
+### Design summary (Đông-SA)
+
+- **Code placement.**
+  - `candidates/application/submit_application.py` holds the apply use case (steps 3–9).
+  - `candidates/application/consent.py` holds the pure `careers-v1` template.
+  - `organization/application/` holds the public listing and the publish/unpublish use cases.
+- **Router.** The public routes get their own `app/api/public_careers_router.py` with no auth dependency. An architecture test asserts that every `/v1/public/*` route has no auth dependency and every other `/v1/*` route has one. `PATCH /v1/requisitions/{id}/publication` goes in `organization_router`.
+- **Upload reuse.**
+  - `AttachmentService.upload` splits into `inspect()` (validate and scan) and `attach()` (store, add and audit, with no commit). `upload()` stays a wrapper, so existing behaviour and tests are unchanged.
+  - Candidates reach it through a `CvIntake` port, implemented in `candidates/infrastructure/attachment_intake.py` on the same session.
+  - `CandidateRepository.add` flushes before the CV is stored, so a `(tenant_id, email)` race fails before any object is written. On `IntegrityError` the use case rolls back, deletes any stored object, and records `candidate_case.reapplied`.
+- **Rate limits.**
+  - Both limits reuse `app.state.rate_limiter` and `client_identifier`. No new middleware.
+  - Keys are `talentflow:careers:ip:{client}` (1 h) and `talentflow:careers:email:{sha256(tenant_id + email)}` (24 h), so no email is stored in Redis.
+  - Fixed windows can allow up to twice the limit across a window boundary. That is accepted and noted in the ADR.
+- **Migration** `add_careers_self_apply` (down-revision `2d110f23a001`), expand-only:
+  - `requisitions.published` / `published_at`, with a partial index `(tenant_id, published_at DESC) WHERE published`.
+  - `candidate_cases.source`, with a check constraint for `staff` / `careers`.
+  - The `candidate_consents` table.
+  - An idempotent insert of `system:careers`. The downgrade keeps that user.
+  - A shared `ensure_system_users()` runs from the non-production lifespan and the test fixtures, because `create_all` doesn't seed rows.
+  - The identity layer rejects any token whose `sub` starts with `system:`.
+- **Architecture allow-list.** Add `("candidates", "retention")`: rendering the consent text reads the tenant retention period, read-only.
+
+### Threat model (Hoàng-Security): must-haves before merge
+
+1. A server-only `clientIp()` helper in the web app. It reads the configured number of trusted hops, validates the IP, and **sets** a single-value `X-Forwarded-For`, never appending. The apply handler **and** the public SSR fetches both use it. Test: a browser-sent `X-Forwarded-For` never reaches the API as the client.
+2. The public listing and consent fetches are cached for about 60 s, so careers traffic cannot starve the staff app's shared bucket.
+3. `web` gets a fixed IP on the compose network, and `RATE_LIMIT_TRUSTED_PROXY_CIDRS` trusts only that `/32`, not the bridge gateway. The deployment note says the API must be reachable only through web.
+4. The Next handler counts bytes while it reads the stream and aborts at the cap. It does not use `request.formData()`, which buffers without a limit.
+5. Origin checks: same-origin only at the Next handler, and `CORS_ALLOWED_ORIGINS` at the API.
+6. ClamAV in compose sets `AlertExceedsMax yes`, `AlertEncrypted yes`, and explicit `MaxScanSize` and `MaxRecursion`. A nested-ZIP bomb fixture must come back rejected.
+7. If Redis fails, both careers limits return `503`.
+8. Email rate-limit keys are hashed.
+9. When the race loses, the stored object is deleted and the response is still `202`.
+10. A reapply changes nothing on the existing case. `candidate_case.reapplied` metadata holds only `requisition_id`, which is added to `METADATA_ALLOWLIST`.
+11. `system:careers` never gets a membership. A test checks that a token with that `sub` is rejected.
+12. Session isolation:
+    - The `(public)` group and its handler never import the session.
+    - The handler forwards only `content-type`, `content-length`, `x-forwarded-for` and `x-correlation-id`.
+    - It passes back only the status, `content-type` and `retry-after`.
+    - Test: a request carrying a session cookie reaches the API with no `Authorization` header.
+13. Consent text is rendered as plain text and comes only from the server. Names reject control and bidi characters. The `careers_applications_total` metric uses the `outcome` label only.
+
+**Follow-ups, not in this issue:**
+- A response-time floor for the timing channel.
+- A concurrency cap on scans.
+- IPv6 keyed per `/64`.
+- Slow-body timeouts at a reverse proxy.
+- CAPTCHA.
+- CSV-formula escaping for exports.
+- `attachment` + `nosniff` on staff downloads.
+- Tuning the limit for shared NAT.
+
+### Test plan (Diễm-QA)
+
+| AC | Level | Key evidence |
+|---|---|---|
+| AC1 | unit, API, Playwright | Clean PDF and DOCX are scanned before anything persists. The case is `applied` with `source=careers`, and the consent and both audit actions are recorded as `system:careers`. A forced persistence failure leaves no row and no object behind. |
+| AC2 | API, web component | Unknown slug, unpublished requisition or another tenant's requisition all get an identical `404` with no writes. The listing has published jobs only, newest first, at most 100, and only the contracted fields. |
+| AC3 | unit, API, Next handler, real `clamd` | Separate cases: missing length and `Transfer-Encoding` → `411`; exactly at the cap passes and one byte over → `413`. File max and max+1, bad names, MIME/signature swaps between PDF and DOCX. A DOCX that contains EICAR and a nested-ZIP bomb both → `422`. Scanner down or timing out → `503`. |
+| AC4 | unit, API, web component | The honeypot gets exactly the success `202`, increments the metric, and never reaches the scanner or storage. The field has the accessibility attributes from the spec. |
+| AC5 | unit (fake clock), real Redis | IP attempts 1–5 pass and the 6th gets `429`. Email attempts 1–3 pass and the 4th gets `429`. Window reset, concurrent attempts at the threshold, and the counting rules for each step. Trusted versus untrusted `X-Forwarded-For`. A Redis error → `503`. |
+| AC6 | PostgreSQL integration | Repeat email in mixed case gets an identical `202`, the existing case is unchanged, and one reapply audit is written. A synchronized two-transaction race leaves exactly one case, no `500` and no orphaned object. |
+| AC7 | API, web component, Playwright | Consent validation errors. The rendered text with and without a retention policy is stored exactly as shown. Staff see the source and the consent panel; staff-created cases have no panel. |
+| AC8 | API, web component, Playwright | Publish and unpublish change the listing, set or clear the timestamp and write audit. Setting the same value again → `200` with no audit. A role without permission gets `403` and no switch. Another tenant's id → `404`. |
+| AC9 | retention unit and integration | An expired terminal careers case is anonymized and its consent text cleared, keeping version and time. Active, unexpired and legally held cases are untouched. Boundary cases, and running the job twice. |
+| AC10 | full gates | `uv run ruff format --check .`, `uv run ruff check .`, `uv run python -m pytest` (coverage ≥ 85%, including `tests/architecture`). In `web/`: `npm run lint`, `typecheck`, `test`, `build`, `api:check`, `test:e2e`. Alembic upgrade/downgrade test. Checks against live services are reported separately from the suites that use fakes. |
+
+A fake scanner covers ordering, the honeypot, dedupe and transaction tests. Real `clamd` is needed only for the clean and infected verdicts, the scanner-down case and the Playwright flow.
+
+### Sub-issues
+
+The work ships in two serial stages, each with one PR and the normal `code_review → security_review → qa → in_review` path. Stage 2 needs stage 1's published flag, because nothing can be listed or applied to before it lands.
+
+**Stage 1: Publish requisitions to the careers page.** Handler: Quốc-BE. Starts at `todo`.
+- **Goal:** staff with `requisition:create` can publish and unpublish requisitions through the API and from Settings → Requisitions.
+- **Scope:**
+  - The migration columns and index on `requisitions`.
+  - `PATCH /v1/requisitions/{id}/publication`.
+  - `published` and `published_at` on `GET /v1/requisitions`.
+  - Audit events `requisition.published` and `requisition.unpublished`.
+  - The Settings page with the switch and the careers URL, regenerated OpenAPI and client, and a seed step that publishes two demo requisitions.
+- **Acceptance criteria:** AC8 except the "careers page reflects it" part, which moves to stage 2. AC10 gates for the touched code.
+- **Depends on:** nothing.
+
+**Stage 2: Public careers page and anonymous self-apply.** Handler: Quốc-BE (API and `web/`). Starts at `backlog`.
+- **Goal:** anonymous visitors list a tenant's published jobs and apply with a CV and consent. Staff see the source and the consent record.
+- **Scope:**
+  - The rest of the migration: `source`, `candidate_consents` and `system:careers`.
+  - The public router and the apply use case, the `AttachmentService` split, the careers limits, and the ClamAV config.
+  - The web `(public)/careers` pages and the apply handler, and the consent panel on candidate detail.
+  - Consent clearing in retention, the ADR on the untrusted-input pipeline, the `docs/api-errors.md` entries, the README env-var names, and Playwright publish → apply → staff view.
+- **Acceptance criteria:** AC1–AC7, AC9, AC10 and the remaining part of AC8. Every must-have under Threat model has a test.
+- **Depends on:** stage 1 merged, and on the latest `main` because DUTH-60 (Idempotency-Key) touches the command routers in parallel.
+
+I kept this as two pieces instead of the single PR Đông-SA suggested. Stage 1 is user-visible and can be checked on its own: a recruiter publishes a job and sees the toggle and the URL. It also keeps the security-heavy stage 2 PR focused for Hoàng-Security and Diễm-QA.
