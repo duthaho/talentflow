@@ -12,6 +12,7 @@ class ListCandidatesQuery:
     requisition_id: str | None
     cursor: str | None
     limit: int
+    q: str | None = None
 
 
 class ListCandidatesHandler:
@@ -25,4 +26,5 @@ class ListCandidatesHandler:
             requisition_id=query.requisition_id,
             cursor=query.cursor,
             limit=query.limit,
+            q=query.q,
         )

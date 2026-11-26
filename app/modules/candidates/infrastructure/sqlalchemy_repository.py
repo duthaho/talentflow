@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.audit.persistence import AuditEvent
@@ -106,12 +106,28 @@ class SqlAlchemyCandidateRepository:
         requisition_id: str | None,
         cursor: str | None,
         limit: int,
+        q: str | None = None,
     ) -> CandidatePage:
         filters = [CandidateCaseRecord.tenant_id == tenant_id]
         if stage:
             filters.append(CandidateCaseRecord.stage == stage)
         if requisition_id:
             filters.append(CandidateCaseRecord.requisition_id == requisition_id)
+        if q is not None:
+            searchable = (
+                CandidateCaseRecord.first_name,
+                CandidateCaseRecord.last_name,
+                CandidateCaseRecord.first_name + " " + CandidateCaseRecord.last_name,
+                CandidateCaseRecord.email,
+            )
+            filters.append(
+                or_(
+                    *(
+                        func.lower(column).contains(q.lower(), autoescape=True)
+                        for column in searchable
+                    )
+                )
+            )
         cursor_filters = [*filters, CandidateCaseRecord.id > cursor] if cursor else filters
         records = self._session.scalars(
             select(CandidateCaseRecord)

@@ -17,7 +17,7 @@ def build_engine(database_url: str):
     options: dict[str, object] = {}
     if database_url.startswith("sqlite"):
         options = {"connect_args": {"check_same_thread": False}, "poolclass": StaticPool}
-    return create_engine(database_url, future=True, **options)
+    return create_engine(database_url, future=True, hide_parameters=True, **options)
 
 
 def build_session_factory(database_url: str) -> sessionmaker[Session]:

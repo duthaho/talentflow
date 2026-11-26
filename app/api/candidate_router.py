@@ -1,6 +1,9 @@
+import unicodedata
+from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from pydantic import BeforeValidator
 
 from app.api.schemas import (
     CandidateCaseDetailResponse,
@@ -42,6 +45,15 @@ from app.modules.workflow.domain.candidate_state_machine import InvalidTransitio
 from app.shared.database import SessionDep
 from app.shared.observability import command_conflicts
 
+
+def _normalize_search_term(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if any(unicodedata.category(character) == "Cc" for character in value):
+        raise ValueError("Search term must not contain control characters")
+    return value.strip()
+
+
 router = APIRouter()
 
 
@@ -53,6 +65,15 @@ def list_candidate_cases(
     requisition_id: str | None = None,
     cursor: str | None = None,
     limit: int = Query(default=25, ge=1, le=100),
+    q: Annotated[
+        str | None,
+        Query(
+            min_length=2,
+            max_length=100,
+            description="Case-insensitive substring of name or email; trimmed, literal wildcards, no control characters.",
+        ),
+        BeforeValidator(_normalize_search_term),
+    ] = None,
 ) -> CandidateListResponse:
     page = ListCandidatesHandler(SqlAlchemyCandidateRepository(session)).handle(
         ListCandidatesQuery(
@@ -61,6 +82,7 @@ def list_candidate_cases(
             requisition_id=requisition_id,
             cursor=cursor,
             limit=limit,
+            q=q,
         )
     )
     return CandidateListResponse(

@@ -57,6 +57,7 @@ class CandidateRepository(Protocol):
         requisition_id: str | None,
         cursor: str | None,
         limit: int,
+        q: str | None = None,
     ) -> CandidatePage: ...
 
 
