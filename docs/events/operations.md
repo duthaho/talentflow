@@ -24,7 +24,7 @@ Transient consumer failures roll back the inbox and effect, publish the unchange
 
 ## Metrics and dashboard
 
-Worker probes expose `/health/live`, `/health/ready`, `/metrics` on relay port 8001 and notification port 8002 inside Compose. The Collector scrapes both workers into Grafana. The TalentFlow RED dashboard includes queue depth (`talentflow_broker_queue_depth`, including DLQ and unrouted) and consumer outcomes (`talentflow_consumer_messages_total`: applied, duplicate, skipped_enum, retry, poison, exhausted). Depth is ready messages, excluding in-flight deliveries. Inspect RabbitMQ management for in-flight or retry queue details. The pre-existing `talentflow_outbox_backlog` metric reports unpublished events.
+Worker probes expose `/health/live`, `/health/ready`, `/metrics` on relay port 8001 and notification port 8002 inside Compose. The Collector scrapes both workers into Grafana. The TalentFlow messaging dashboard includes queue depth (`talentflow_broker_queue_depth`, including DLQ and unrouted) and consumer outcomes (`talentflow_consumer_messages_total`: applied, duplicate, skipped_enum, retry, poison, exhausted). Depth is ready messages, excluding in-flight deliveries. Inspect RabbitMQ management for in-flight or retry queue details. The pre-existing `talentflow_outbox_backlog` metric reports unpublished events.
 
 ## Verification and migration
 
