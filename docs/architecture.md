@@ -221,7 +221,7 @@ flowchart LR
   q1 & q2 & q3 & q4 -. "after N retries" .-> dlq["dead-letter queues"]
 ```
 
-Each consumer records `(consumer, event_id)` in an inbox table in the same transaction as its side effect, so a redelivered event is applied once. The envelope, event catalog and topology are defined by DUTH-58 (`docs/events/asyncapi.yaml`). Payloads carry identifiers, not free-text PII.
+Each consumer records `(consumer, event_id)` in an inbox table in the same transaction as its side effect, so a redelivered event is applied once. The envelope, event catalog and topology are defined in [ADR 006](adr/006-integration-event-contract.md) and [`docs/events/asyncapi.yaml`](events/asyncapi.yaml). Payloads carry identifiers, not free-text PII.
 
 ## 8. Identity and tenancy
 
