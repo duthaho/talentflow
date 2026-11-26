@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class CreateTenantRequest(BaseModel):
@@ -37,6 +37,12 @@ class RequisitionResponse(BaseModel):
     id: str
     title: str
     department: str
+
+
+class RequisitionListResponse(BaseModel):
+    items: list[RequisitionResponse]
+    next_cursor: str | None
+    total: int
 
 
 class CreateCandidateCaseRequest(BaseModel):
@@ -191,13 +197,21 @@ class OfferDetailResponse(OfferSummaryResponse):
 
 
 class CreateCalendarSubscriptionRequest(BaseModel):
-    interviewer_id: str = Field(min_length=1, max_length=128)
+    interviewer_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class CalendarSubscriptionResponse(BaseModel):
     id: str
     interviewer_id: str
     feed_url: str
+    expires_at: datetime
+
+
+class CalendarSubscriptionSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    created_at: datetime
     expires_at: datetime
 
 
