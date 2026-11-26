@@ -1,10 +1,11 @@
 # Web component tests under CPU contention
 
-**Status: not stabilized.** Independent QA's REQUEST CHANGES remains open.
+**Status: not stabilized under heavy shared-runner load; accepted as documented.**
 Follow-up experiments did not validate a safe fix at the observed shared-runner
 pressure. Their code/environment changes were reverted; the follow-up retains
-measurement and evidence improvements only. A bounded CPU allocation is needed
-for a reproducible acceptance comparison before this PR can be accepted.
+measurement and evidence improvements only. No reserved CPU window was available,
+so the project owner accepted the loaded-timing results as known risk (see
+[Acceptance decision](#acceptance-decision)).
 
 DUTH-125 investigates the feedback timeout first observed on DUTH-54 / PR #27
 (`636d4fa6efa90d0eb883349dff37fd0d40c6a96a`). The follow-up starts from
@@ -202,9 +203,15 @@ unchanged test cases were also checked through that launch path. No session or
 scheduler policy changes are retained in the helper.
 
 A fixed five-second behavior budget needs a bounded execution allocation to be
-meaningfully compared. Phương-CTO and duthaho need to arrange a local QA window
-with a CPU reserved for the test command plus its three controlled competitors,
-or specify another reproducible scheduling envelope. Other builds can use the
-other allowed CPU. This requests scheduling/capacity, not a larger timeout,
-weaker assertions or acceptance of the remaining failures. Hiếu-FE should repeat
-independent QA after that condition is available; all review gates remain required.
+meaningfully compared. A reserved QA window (one CPU for the test command plus its
+three controlled competitors) was proposed but could not be arranged.
+
+### Acceptance decision
+
+The project owner decided to skip the CPU-contention acceptance comparison. The
+loaded timeouts recorded above (QA-3, QA-5, QA-6, R2-1 to R2-13) are accepted as a
+known risk of running on the shared two-CPU runner, not as a passing result. Timeouts,
+retries, isolation and assertions stay unchanged. Independent QA of the final head
+covered the diff, the ledger and the helper, and ran lint, typecheck and the full web
+suite without synthetic load. If these tests time out in CI, first check
+host load with the helper before changing tests.
