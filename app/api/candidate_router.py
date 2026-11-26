@@ -1,3 +1,4 @@
+from datetime import UTC
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
@@ -82,7 +83,11 @@ def get_candidate_case(
             status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
         )
     response.headers["Cache-Control"] = "private, no-store"
-    return CandidateCaseDetailResponse.model_validate(record, from_attributes=True)
+    detail = CandidateCaseDetailResponse.model_validate(record, from_attributes=True)
+    created_at = detail.created_at
+    if created_at.tzinfo is None:
+        detail = detail.model_copy(update={"created_at": created_at.replace(tzinfo=UTC)})
+    return detail
 
 
 @router.post(

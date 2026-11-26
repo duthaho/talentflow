@@ -1,3 +1,4 @@
+from datetime import UTC
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
@@ -107,8 +108,11 @@ def get_legal_hold(
     hold = session.get(CandidateLegalHold, candidate_case_id)
     if hold is None or hold.tenant_id != actor.tenant_id:
         return LegalHoldResponse(held=False, reason=None, placed_at=None, placed_by=None)
+    placed_at = hold.created_at
+    if placed_at.tzinfo is None:
+        placed_at = placed_at.replace(tzinfo=UTC)
     return LegalHoldResponse(
-        held=True, reason=hold.reason, placed_at=hold.created_at, placed_by=hold.created_by
+        held=True, reason=hold.reason, placed_at=placed_at, placed_by=hold.created_by
     )
 
 
