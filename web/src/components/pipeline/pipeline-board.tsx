@@ -1,6 +1,7 @@
 "use client";
 
 import { LoaderCircle, RefreshCw } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
 
@@ -403,7 +404,9 @@ function CandidateCard({
       }`}
     >
       <p className="flex items-center gap-1.5 font-medium">
-        {name}
+        <Link href={`/candidates/${encodeURIComponent(candidate.id)}`} draggable={false} className="hover:underline focus-visible:underline">
+          {name}
+        </Link>
         {pending && <LoaderCircle aria-label="Moving" className="size-3.5 animate-spin" />}
       </p>
       <p className="truncate text-xs text-muted-foreground">{candidate.email}</p>
