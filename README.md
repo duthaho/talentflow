@@ -69,6 +69,9 @@ call so they use the same ports. The imported Keycloak realm JSON starts with th
 default web URL; `make seed` updates its redirect, web-origin, and logout URLs to
 match `WEB_PORT`, so seeding is required after changing ports.
 
+For browser QA on a runner with Snap Chromium, see the
+[headless browser recovery runbook](docs/runbooks/agent-browser.md).
+
 ## Pattern catalog
 
 Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `implemented` in the PR that delivers it. Paths are relative to the repository root.
