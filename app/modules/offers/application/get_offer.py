@@ -4,6 +4,7 @@ from app.modules.offers.application.decide_offer import OfferNotFoundError
 from app.modules.offers.application.ports import OfferRepository
 from app.modules.offers.application.views import DecisionView, OfferView
 from app.modules.offers.domain.approval_policy import ApprovalPolicy
+from app.modules.offers.domain.offer import Offer
 
 
 @dataclass(frozen=True)
@@ -27,10 +28,17 @@ class GetOfferHandler:
         self._policy = policy
 
     def handle(self, query: GetOfferQuery) -> OfferDetailView:
-        offer = self._offers.get(offer_id=query.offer_id, tenant_id=query.tenant_id)
         view = self._offers.get_view(offer_id=query.offer_id, tenant_id=query.tenant_id)
-        if offer is None or view is None:
+        if view is None:
             raise OfferNotFoundError(query.offer_id)
+        offer = Offer(
+            id=view.id,
+            tenant_id=view.tenant_id,
+            candidate_case_id=view.candidate_case_id,
+            status=view.status,
+            approval_step=view.approval_step,
+            version=view.version,
+        )
         awaiting_role = (
             self._policy.required_role(offer.approval_step)
             if offer.status == "pending_approval"

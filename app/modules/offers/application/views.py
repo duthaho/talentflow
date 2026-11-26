@@ -5,6 +5,7 @@ from datetime import datetime
 @dataclass(frozen=True)
 class OfferView:
     id: str
+    tenant_id: str
     candidate_case_id: str
     title: str
     annual_salary: int

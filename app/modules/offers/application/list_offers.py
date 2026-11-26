@@ -32,7 +32,7 @@ class ListOffersHandler:
         steps = self._policy.steps_for_role(query.actor_role) if query.awaiting_me else None
         if query.awaiting_me and not steps:
             return OfferPage(items=[], next_cursor=None, total=0)
-        items, next_cursor, total = self._offers.list(
+        items, next_cursor, total = self._offers.list_offers(
             tenant_id=query.tenant_id,
             status="pending_approval" if query.awaiting_me else query.status,
             candidate_case_id=query.candidate_case_id,

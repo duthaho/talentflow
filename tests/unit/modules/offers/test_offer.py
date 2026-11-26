@@ -58,3 +58,13 @@ def test_rejection_requires_and_normalizes_a_reason() -> None:
     )
 
     assert result.reason == "Budget constraint"
+
+
+def test_can_be_decided_by_matches_the_pending_step() -> None:
+    policy = ApprovalPolicy.standard()
+    first_step = Offer.pending(tenant_id="tenant", candidate_case_id="candidate")
+    second_step = Offer("offer", "tenant", "candidate", "pending_approval", 2, 2)
+
+    assert first_step.can_be_decided_by(actor_role="hiring_manager", policy=policy)
+    assert not first_step.can_be_decided_by(actor_role="tenant_admin", policy=policy)
+    assert second_step.can_be_decided_by(actor_role="tenant_admin", policy=policy)

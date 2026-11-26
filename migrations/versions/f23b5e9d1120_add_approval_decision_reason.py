@@ -1,7 +1,7 @@
 """add approval decision reason and timestamp
 
 Revision ID: f23b5e9d1120
-Revises: ef1b28c33b03
+Revises: c91e5b7d2a64
 Create Date: 2026-11-26 00:00:00.000000
 """
 

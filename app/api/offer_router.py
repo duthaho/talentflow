@@ -49,7 +49,7 @@ router = APIRouter()
 def _summary(*, view: OfferView, actor_role: str, policy: ApprovalPolicy) -> OfferSummaryResponse:
     offer = DomainOffer(
         view.id,
-        "",
+        view.tenant_id,
         view.candidate_case_id,
         view.status,
         view.approval_step,
@@ -59,7 +59,14 @@ def _summary(*, view: OfferView, actor_role: str, policy: ApprovalPolicy) -> Off
         policy.required_role(view.approval_step) if view.status == "pending_approval" else None
     )
     return OfferSummaryResponse(
-        **view.__dict__,
+        id=view.id,
+        candidate_case_id=view.candidate_case_id,
+        title=view.title,
+        annual_salary=view.annual_salary,
+        currency=view.currency,
+        status=view.status,
+        approval_step=view.approval_step,
+        version=view.version,
         awaiting_role=awaiting_role,
         can_decide=offer.can_be_decided_by(actor_role=actor_role, policy=policy),
     )
@@ -115,7 +122,14 @@ def get_offer(
         ) from error
     response.headers["Cache-Control"] = "private, no-store"
     return OfferDetailResponse(
-        **detail.offer.__dict__,
+        id=detail.offer.id,
+        candidate_case_id=detail.offer.candidate_case_id,
+        title=detail.offer.title,
+        annual_salary=detail.offer.annual_salary,
+        currency=detail.offer.currency,
+        status=detail.offer.status,
+        approval_step=detail.offer.approval_step,
+        version=detail.offer.version,
         awaiting_role=detail.awaiting_role,
         can_decide=detail.can_decide,
         decisions=[OfferDecisionResponse(**decision.__dict__) for decision in detail.decisions],

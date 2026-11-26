@@ -20,7 +20,7 @@ class OfferRepository(Protocol):
         self, *, offer: Offer, step: int, actor_id: str, decision: str, reason: str | None
     ) -> None: ...
 
-    def list(
+    def list_offers(
         self,
         *,
         tenant_id: str,

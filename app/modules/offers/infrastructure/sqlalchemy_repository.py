@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from datetime import UTC
+
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -89,7 +93,7 @@ class SqlAlchemyOfferRepository:
             )
         )
 
-    def list(
+    def list_offers(
         self,
         *,
         tenant_id: str,
@@ -134,7 +138,13 @@ class SqlAlchemyOfferRepository:
         ).all()
         return [
             DecisionView(
-                record.step, record.decision, record.actor_id, record.decided_at, record.reason
+                record.step,
+                record.decision,
+                record.actor_id,
+                record.decided_at.replace(tzinfo=UTC)
+                if record.decided_at is not None and record.decided_at.tzinfo is None
+                else record.decided_at,
+                record.reason,
             )
             for record in records
         ]
@@ -143,6 +153,7 @@ class SqlAlchemyOfferRepository:
     def _view(record: OfferRecord) -> OfferView:
         return OfferView(
             record.id,
+            record.tenant_id,
             record.candidate_case_id,
             record.title,
             record.annual_salary,
