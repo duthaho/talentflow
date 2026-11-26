@@ -170,7 +170,7 @@ stateDiagram-v2
 
 Transitions are defined in `app/modules/workflow/domain/candidate_state_machine.py`. Every write carries `expected_version`; the repository issues a version-guarded `UPDATE` and a `rowcount` of 0 becomes a 409 conflict instead of a lost update. Stage 5 adds `ETag`/`If-Match` as an HTTP-native alternative.
 
-Offer approval is ordered by `ApprovalPolicy.standard()`: hiring manager, then tenant admin. A rejection at either step moves the candidate to `offer_rejected`.
+Offer approval is ordered by `ApprovalPolicy.standard()`: hiring manager, then tenant admin. The same policy drives the read-side `awaiting_role` and `can_decide` fields, so the approval inbox displays exactly the actions the write path permits. A rejection at either step moves the candidate to `offer_rejected`.
 
 ## 6. Command flow and transaction ownership
 

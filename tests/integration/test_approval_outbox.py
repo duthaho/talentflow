@@ -62,3 +62,4 @@ def test_offer_decision_and_outbox_event_are_transactionally_recorded() -> None:
             event = session.query(OutboxEvent).one()
             assert event.topic == "offer.approval_recorded.v1"
             assert event.payload_json["decision"] == "approved"
+            assert set(event.payload_json) == {"offer_id", "decision", "actor_id"}

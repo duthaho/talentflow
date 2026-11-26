@@ -1,7 +1,12 @@
-from sqlalchemy import select, update
+from __future__ import annotations
+
+from datetime import UTC
+
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.notifications.persistence import OutboxEvent
+from app.modules.offers.application.views import DecisionView, OfferView
 from app.modules.offers.domain.offer import Offer
 from app.modules.offers.persistence import ApprovalDecision
 from app.modules.offers.persistence import Offer as OfferRecord
@@ -74,7 +79,9 @@ class SqlAlchemyOfferRepository:
         )
         return result.rowcount == 1
 
-    def record_decision(self, *, offer: Offer, step: int, actor_id: str, decision: str) -> None:
+    def record_decision(
+        self, *, offer: Offer, step: int, actor_id: str, decision: str, reason: str | None
+    ) -> None:
         self._session.add(
             ApprovalDecision(
                 offer_id=offer.id,
@@ -82,7 +89,78 @@ class SqlAlchemyOfferRepository:
                 step=step,
                 actor_id=actor_id,
                 decision=decision,
+                reason=reason,
             )
+        )
+
+    def list_offers(
+        self,
+        *,
+        tenant_id: str,
+        status: str | None,
+        candidate_case_id: str | None,
+        approval_steps: frozenset[int] | None,
+        cursor: str | None,
+        limit: int,
+    ) -> tuple[list[OfferView], str | None, int]:
+        predicates = [OfferRecord.tenant_id == tenant_id]
+        if status is not None:
+            predicates.append(OfferRecord.status == status)
+        if candidate_case_id is not None:
+            predicates.append(OfferRecord.candidate_case_id == candidate_case_id)
+        if approval_steps is not None:
+            predicates.append(OfferRecord.approval_step.in_(approval_steps))
+        total = self._session.scalar(
+            select(func.count()).select_from(OfferRecord).where(*predicates)
+        )
+        page_predicates = [*predicates]
+        if cursor is not None:
+            page_predicates.append(OfferRecord.id > cursor)
+        records = self._session.scalars(
+            select(OfferRecord).where(*page_predicates).order_by(OfferRecord.id).limit(limit + 1)
+        ).all()
+        next_cursor = records[limit - 1].id if len(records) > limit else None
+        return [self._view(record) for record in records[:limit]], next_cursor, total or 0
+
+    def get_view(self, *, offer_id: str, tenant_id: str) -> OfferView | None:
+        record = self._session.scalar(
+            select(OfferRecord).where(
+                OfferRecord.id == offer_id, OfferRecord.tenant_id == tenant_id
+            )
+        )
+        return self._view(record) if record is not None else None
+
+    def list_decisions(self, *, offer_id: str, tenant_id: str) -> list[DecisionView]:
+        records = self._session.scalars(
+            select(ApprovalDecision)
+            .where(ApprovalDecision.offer_id == offer_id, ApprovalDecision.tenant_id == tenant_id)
+            .order_by(ApprovalDecision.step)
+        ).all()
+        return [
+            DecisionView(
+                record.step,
+                record.decision,
+                record.actor_id,
+                record.decided_at.replace(tzinfo=UTC)
+                if record.decided_at is not None and record.decided_at.tzinfo is None
+                else record.decided_at,
+                record.reason,
+            )
+            for record in records
+        ]
+
+    @staticmethod
+    def _view(record: OfferRecord) -> OfferView:
+        return OfferView(
+            record.id,
+            record.tenant_id,
+            record.candidate_case_id,
+            record.title,
+            record.annual_salary,
+            record.currency,
+            record.status,
+            record.approval_step,
+            record.version,
         )
 
     def record_outbox_event(self, *, offer: Offer, actor_id: str, decision: str) -> None:

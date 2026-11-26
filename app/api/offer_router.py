@@ -1,6 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Literal
 
-from app.api.schemas import ApproveOfferRequest, CreateOfferRequest, OfferResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+
+from app.api.schemas import (
+    ApproveOfferRequest,
+    CreateOfferRequest,
+    OfferDecisionResponse,
+    OfferDetailResponse,
+    OfferPageResponse,
+    OfferResponse,
+    OfferSummaryResponse,
+)
 from app.modules.candidates.infrastructure.sqlalchemy_repository import (
     SqlAlchemyCandidateRepository,
 )
@@ -18,7 +28,12 @@ from app.modules.offers.application.decide_offer import (
     OfferConcurrencyConflictError,
     OfferNotFoundError,
 )
+from app.modules.offers.application.get_offer import GetOfferHandler, GetOfferQuery
+from app.modules.offers.application.list_offers import ListOffersHandler, ListOffersQuery
+from app.modules.offers.application.views import OfferView
 from app.modules.offers.domain.approval_policy import ApprovalPolicy
+from app.modules.offers.domain.offer import InvalidOfferReasonError
+from app.modules.offers.domain.offer import Offer as DomainOffer
 from app.modules.offers.infrastructure.models import Offer
 from app.modules.offers.infrastructure.sqlalchemy_repository import (
     SqlAlchemyOfferRepository,
@@ -29,6 +44,96 @@ from app.shared.database import SessionDep
 from app.shared.observability import command_conflicts
 
 router = APIRouter()
+
+
+def _summary(*, view: OfferView, actor_role: str, policy: ApprovalPolicy) -> OfferSummaryResponse:
+    offer = DomainOffer(
+        view.id,
+        view.tenant_id,
+        view.candidate_case_id,
+        view.status,
+        view.approval_step,
+        view.version,
+    )
+    awaiting_role = (
+        policy.required_role(view.approval_step) if view.status == "pending_approval" else None
+    )
+    return OfferSummaryResponse(
+        id=view.id,
+        candidate_case_id=view.candidate_case_id,
+        title=view.title,
+        annual_salary=view.annual_salary,
+        currency=view.currency,
+        status=view.status,
+        approval_step=view.approval_step,
+        version=view.version,
+        awaiting_role=awaiting_role,
+        can_decide=offer.can_be_decided_by(actor_role=actor_role, policy=policy),
+    )
+
+
+@router.get("/v1/offers", response_model=OfferPageResponse)
+def list_offers(
+    response: Response,
+    session: SessionDep,
+    actor: ActorContext = Depends(require("tenant:read")),
+    awaiting: Literal["me"] | None = None,
+    candidate_case_id: str | None = Query(default=None, max_length=64),
+    status_filter: Literal["pending_approval", "approved", "rejected"] | None = Query(
+        default=None, alias="status"
+    ),
+    cursor: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=25, ge=1, le=100),
+) -> OfferPageResponse:
+    policy = ApprovalPolicy.standard()
+    page = ListOffersHandler(offers=SqlAlchemyOfferRepository(session), policy=policy).handle(
+        ListOffersQuery(
+            tenant_id=actor.tenant_id,
+            actor_role=actor.role,
+            awaiting_me=awaiting == "me",
+            candidate_case_id=candidate_case_id,
+            status=status_filter,
+            cursor=cursor,
+            limit=limit,
+        )
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return OfferPageResponse(
+        items=[_summary(view=item, actor_role=actor.role, policy=policy) for item in page.items],
+        next_cursor=page.next_cursor,
+        total=page.total,
+    )
+
+
+@router.get("/v1/offers/{offer_id}", response_model=OfferDetailResponse)
+def get_offer(
+    offer_id: str,
+    response: Response,
+    session: SessionDep,
+    actor: ActorContext = Depends(require("tenant:read")),
+) -> OfferDetailResponse:
+    try:
+        detail = GetOfferHandler(
+            offers=SqlAlchemyOfferRepository(session), policy=ApprovalPolicy.standard()
+        ).handle(GetOfferQuery(tenant_id=actor.tenant_id, offer_id=offer_id, actor_role=actor.role))
+    except OfferNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found"
+        ) from error
+    response.headers["Cache-Control"] = "private, no-store"
+    return OfferDetailResponse(
+        id=detail.offer.id,
+        candidate_case_id=detail.offer.candidate_case_id,
+        title=detail.offer.title,
+        annual_salary=detail.offer.annual_salary,
+        currency=detail.offer.currency,
+        status=detail.offer.status,
+        approval_step=detail.offer.approval_step,
+        version=detail.offer.version,
+        awaiting_role=detail.awaiting_role,
+        can_decide=detail.can_decide,
+        decisions=[OfferDecisionResponse(**decision.__dict__) for decision in detail.decisions],
+    )
 
 
 @router.post(
@@ -89,6 +194,7 @@ def approve_offer(
                 actor_role=actor.role,
                 decision=payload.decision,
                 expected_version=payload.expected_version,
+                reason=payload.reason,
             )
         )
     except OfferNotFoundError as error:
@@ -109,6 +215,10 @@ def approve_offer(
                 "problem_type": "version-conflict",
                 "current_version": current.version,
             },
+        ) from error
+    except InvalidOfferReasonError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
         ) from error
     except InvalidOfferApprovalError as error:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error)) from error

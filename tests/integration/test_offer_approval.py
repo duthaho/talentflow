@@ -51,13 +51,22 @@ def test_offer_approval_requires_ordered_roles() -> None:
             json={"title": "Staff Engineer", "annual_salary": 180000, "currency": "USD"},
         )
         assert offer.status_code == 201
+        manager_headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "manager"}
+        inbox = client.get("/v1/offers?awaiting=me", headers=manager_headers)
+        assert inbox.status_code == 200
+        assert inbox.headers["cache-control"] == "private, no-store"
+        assert inbox.json()["total"] == 1
+        assert inbox.json()["items"][0]["can_decide"] is True
+        detail = client.get(f"/v1/offers/{offer.json()['id']}", headers=manager_headers)
+        assert detail.status_code == 200
+        assert detail.json()["candidate_case_id"] == candidate["id"]
+        assert detail.json()["decisions"] == []
         wrong_order = client.post(
             f"/v1/offers/{offer.json()['id']}/approvals",
             headers=headers,
             json={"decision": "approved", "expected_version": 1},
         )
         assert wrong_order.status_code == 403
-        manager_headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "manager"}
         step_one = client.post(
             f"/v1/offers/{offer.json()['id']}/approvals",
             headers=manager_headers,

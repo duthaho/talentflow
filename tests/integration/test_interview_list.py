@@ -324,7 +324,7 @@ def test_interviewers_are_tenant_scoped_ordered_and_match_scheduling_roles() -> 
     }
     assert denied.status_code == 403
     assert other_recruiter["X-Tenant-Id"] != tenant_id
-    assert ROLE_PERMISSIONS["interviewer"] == frozenset({"feedback:submit"})
+    assert ROLE_PERMISSIONS["interviewer"] == frozenset({"feedback:submit", "calendar:self"})
     assert {
         role for role, permissions in ROLE_PERMISSIONS.items() if "feedback:submit" in permissions
     } == {"interviewer"}
