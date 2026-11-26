@@ -25,6 +25,7 @@ Trung-PM flagged this in the PR #27 code review. Real tenants have more than 100
 - Searching on any other screen (pipeline board, offers). They can adopt the parameter later without a contract change.
 - A multi-stage filter (`stage=a,b`). The picker keeps its one-request-per-stage approach.
 - Searching on fields other than first name, last name, full name and email.
+- Accent-insensitive matching (`nguyen` → `Nguyễn`). It needs `unaccent` or an analyzer, so it belongs with the OpenSearch projection in DUTH-66.
 
 ## Users and use cases
 
@@ -46,10 +47,11 @@ Trung-PM flagged this in the PR #27 code review. Real tenants have more than 100
 Matching:
 
 - Case-insensitive **substring** match. A case matches when the term occurs in any of `first_name`, `last_name`, `first_name || ' ' || last_name`, or `email`.
+- Case folding uses the database's `lower()`. PostgreSQL, the target runtime, folds non-ASCII letters too (`Đ`/`đ`). SQLite folds ASCII only, so non-ASCII case tests run in the PostgreSQL integration suite only. Matching is **not** accent-insensitive: `nguyen` does not find `Nguyễn` (see Non-goals).
 - `%`, `_` and `\` in the term are literal characters: they are escaped, never treated as wildcards.
 - `q` is ANDed with `stage` and `requisition_id`. The tenant predicate is unchanged and always applied.
 - Ordering, the `cursor`/`limit` semantics and the response shape don't change. `total` counts the cases matching every filter, `q` included.
-- Omitting `q` behaves exactly as today, byte for byte.
+- Omitting `q` returns exactly the same response as today, byte for byte. `openapi.json` changes by design.
 
 Errors use the existing types in `docs/api-errors.md`; no new types:
 
@@ -63,9 +65,10 @@ Example: `GET /v1/candidate-cases?stage=screening&q=nguyen&limit=20` returns `{"
 
 ### Privacy of the search term
 
-The search term is usually a name or an email, so it is PII inside a URL. The request must not leak it into telemetry:
+The search term is usually a name or an email, so it is PII inside a URL. The request must not leak it into telemetry or logs:
 
 - The OTel server span for `GET /v1/candidate-cases` must not carry the raw `q` value in `url.query`, `http.target`, `http.url` or `url.full`. Redact it to `q=REDACTED` with the existing span hook pattern (`_redact_calendar_feed_span` in `app/shared/observability.py`).
+- **Uvicorn access log.** `Dockerfile` runs `uvicorn app.main:app` with the access log on, and uvicorn logs the path *with* the query string. `configure_logging()` in `app/shared/observability.py` attaches a `logging.Filter` to the `uvicorn.access` logger. The filter rewrites the value of every `q` parameter in the logged request line to `REDACTED` and leaves the other parameters as they are. The access log stays on, because it is useful in `docker compose logs api`.
 - Prometheus labels already use the route template, so they need no change. No application log line may include `q`.
 
 ## Web picker behavior
@@ -90,8 +93,9 @@ The empty-state copy for a tenant with no candidates in either stage stays as it
 - AC5: API tests cover: a match on each field and on the full name; case-insensitivity; literal `%` and `_`; combination with `stage` and `requisition_id`; `total` and `next_cursor` with `q`; a match in another tenant is never returned (tenant isolation); `403` without `tenant:read`; each `422` case; unchanged behavior without `q`. The matching and escaping cases also run against PostgreSQL in `tests/integration/`, following `test_interview_list_postgres.py`. (Issue AC3)
 - AC6: Component tests (Vitest + Testing Library, mocked API) cover: the initial list; no request below 2 characters; one request per stage after the debounce; a stale response doesn't overwrite a newer one; the loading, no-results, truncated and error-with-retry states; the selection is kept while results change. (Issue AC3)
 - AC7: The server span for a request with `q` does not contain the raw term. A unit test covers the redaction hook.
-- AC8: `web/openapi.json` and `web/src/lib/api/schema.ts` are regenerated. `web/README.md` no longer mentions the 100-candidate limit and describes the search. (Issue AC4)
-- AC9: `ruff format --check`, `ruff check`, `python -m pytest` (coverage ≥ 85%), the web lint, typecheck, tests and build all pass, with the results in the PR.
+- AC8: A `uvicorn.access` record for `GET /v1/candidate-cases?stage=screening&q=<term>` is emitted with `q=REDACTED`, and `stage` stays intact. A unit test sends a record through the configured filter and asserts that the raw term does not appear in the formatted message.
+- AC9: `web/openapi.json` and `web/src/lib/api/schema.ts` are regenerated. `web/README.md` no longer mentions the 100-candidate limit and describes the search. (Issue AC4)
+- AC10: `ruff format --check`, `ruff check`, `python -m pytest` (coverage ≥ 85%), the web lint, typecheck, tests and build all pass, with the results in the PR.
 
 ## Constraints
 
@@ -105,7 +109,7 @@ The empty-state copy for a tenant with no candidates in either stage stays as it
 
 - **Interaction with DUTH-68 (PII encryption, stage 7).** Once names and emails are encrypted with OpenBao transit, `LIKE` over ciphertext stops working, and a blind index supports only exact equality. The DUTH-68 spec must say how `q` keeps working, for example by serving it from the DUTH-66 OpenSearch projection or by accepting exact-match-only email search. I'll add a note on DUTH-68 when this spec is approved, so the contract isn't silently broken.
 - **Sequential scans on large tenants.** A leading-wildcard `LIKE` can't use a b-tree index. That's acceptable at showcase scale. If p95 latency on the list endpoint regresses noticeably in the k6 runs (stage 9), add `pg_trgm` GIN indexes through an expand-only migration.
-- **PII in URLs.** Reverse proxies or uvicorn access logs outside the app could record the query string. In the local compose stack the API is reached directly. Production log configuration is out of scope here; the risk is recorded in this spec.
+- **PII in URLs.** In the compose stack, the uvicorn access log and the OTel spans are the only places a URL is recorded, and both are redacted (AC7, AC8). A reverse proxy added in front of the API later must apply the same redaction. The web app calls the API with `fetch`, so the term never enters browser history.
 - **Enumeration.** A caller with `tenant:read` can already list every case in their tenant, so `q` reveals nothing new. The existing rate limiting still applies.
 
 ## Open questions
