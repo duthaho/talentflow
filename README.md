@@ -50,6 +50,22 @@ make seed        # demo tenant + admin, recruiter, hiring manager, interviewer i
 
 Open the web app at http://localhost:3000 and sign in with a seeded account (`admin@`, `recruiter@`, `manager@` or `interviewer@talentflow.local`, password `dev-demo-password`); the navigation follows the account's role. See [`web/README.md`](web/README.md). The seeded accounts also work with Keycloak's token endpoint for direct API calls.
 
+All published Compose ports can be overridden without changing container-to-container
+traffic. Copy `.env.example` to `.env` and choose free ports before starting the
+stack, for example:
+
+```bash
+KEYCLOAK_PORT=18081 WEB_PORT=13000 API_PORT=18000 \
+POSTGRES_PORT=15432 MAILPIT_PORT=18025 SEAWEEDFS_PORT=18333 \
+OTEL_GRPC_PORT=14317 OTEL_METRICS_PORT=18888 GRAFANA_PORT=13001 \
+docker compose up -d --build
+make seed
+```
+
+Then open `http://localhost:13000` and sign in normally. The Compose configuration
+derives the browser redirect URLs, API issuer, calendar public URL and SeaweedFS
+public URL from these values; the API JWKS URL remains the internal Keycloak address.
+
 ## Pattern catalog
 
 Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `implemented` in the PR that delivers it. Paths are relative to the repository root.
