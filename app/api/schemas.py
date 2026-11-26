@@ -39,6 +39,12 @@ class RequisitionResponse(BaseModel):
     department: str
 
 
+class RequisitionListResponse(BaseModel):
+    items: list[RequisitionResponse]
+    next_cursor: str | None
+    total: int
+
+
 class CreateCandidateCaseRequest(BaseModel):
     requisition_id: str = Field(min_length=36, max_length=36)
     first_name: str = Field(min_length=1, max_length=100)

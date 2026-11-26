@@ -337,7 +337,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Requisitions */
+        get: operations["list_requisitions_v1_requisitions_get"];
         put?: never;
         /** Create Requisition */
         post: operations["create_requisition_v1_requisitions_post"];
@@ -717,6 +718,15 @@ export interface components {
             candidates: components["schemas"]["PipelineCandidateSummary"];
             interviews: components["schemas"]["PipelineInterviewSummary"];
             offers: components["schemas"]["PipelineOfferSummary"];
+        };
+        /** RequisitionListResponse */
+        RequisitionListResponse: {
+            /** Items */
+            items: components["schemas"]["RequisitionResponse"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Total */
+            total: number;
         };
         /** RequisitionResponse */
         RequisitionResponse: {
@@ -1534,6 +1544,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PipelineReportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_requisitions_v1_requisitions_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequisitionListResponse"];
                 };
             };
             /** @description Validation Error */
