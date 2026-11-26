@@ -2072,6 +2072,26 @@
             }
           },
           {
+            "description": "Case-insensitive substring of name or email; trimmed, literal wildcards, no control characters.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring of name or email; trimmed, literal wildcards, no control characters.",
+              "title": "Q"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
