@@ -20,3 +20,6 @@ class ApprovalPolicy:
             if approval_step.number == step:
                 return approval_step.role
         raise ValueError("Unknown approval step")
+
+    def steps_for_role(self, role: str) -> frozenset[int]:
+        return frozenset(step.number for step in self.steps if step.role == role)

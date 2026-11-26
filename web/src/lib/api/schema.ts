@@ -348,6 +348,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/offers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Offers */
+        get: operations["list_offers_v1_offers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/offers/{offer_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Offer */
+        get: operations["get_offer_v1_offers__offer_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/offers/{offer_id}/approvals": {
         parameters: {
             query?: never;
@@ -462,6 +496,8 @@ export interface components {
             decision: string;
             /** Expected Version */
             expected_version: number;
+            /** Reason */
+            reason?: string | null;
         };
         /** AttachmentPolicyResponse */
         AttachmentPolicyResponse: {
@@ -797,6 +833,53 @@ export interface components {
             /** Reason */
             reason: string | null;
         };
+        /** OfferDecisionResponse */
+        OfferDecisionResponse: {
+            /** Actor Id */
+            actor_id: string;
+            /** Decided At */
+            decided_at: string | null;
+            /** Decision */
+            decision: string;
+            /** Reason */
+            reason: string | null;
+            /** Step */
+            step: number;
+        };
+        /** OfferDetailResponse */
+        OfferDetailResponse: {
+            /** Annual Salary */
+            annual_salary: number;
+            /** Approval Step */
+            approval_step: number;
+            /** Awaiting Role */
+            awaiting_role: string | null;
+            /** Can Decide */
+            can_decide: boolean;
+            /** Candidate Case Id */
+            candidate_case_id: string;
+            /** Currency */
+            currency: string;
+            /** Decisions */
+            decisions: components["schemas"]["OfferDecisionResponse"][];
+            /** Id */
+            id: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /** OfferPageResponse */
+        OfferPageResponse: {
+            /** Items */
+            items: components["schemas"]["OfferSummaryResponse"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Total */
+            total: number;
+        };
         /** OfferResponse */
         OfferResponse: {
             /** Approval Step */
@@ -807,6 +890,29 @@ export interface components {
             id: string;
             /** Status */
             status: string;
+            /** Version */
+            version: number;
+        };
+        /** OfferSummaryResponse */
+        OfferSummaryResponse: {
+            /** Annual Salary */
+            annual_salary: number;
+            /** Approval Step */
+            approval_step: number;
+            /** Awaiting Role */
+            awaiting_role: string | null;
+            /** Can Decide */
+            can_decide: boolean;
+            /** Candidate Case Id */
+            candidate_case_id: string;
+            /** Currency */
+            currency: string;
+            /** Id */
+            id: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
             /** Version */
             version: number;
         };
@@ -1740,6 +1846,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurrentActorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_offers_v1_offers_get: {
+        parameters: {
+            query?: {
+                awaiting?: "me" | null;
+                candidate_case_id?: string | null;
+                status?: ("pending_approval" | "approved" | "rejected") | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_offer_v1_offers__offer_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path: {
+                offer_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OfferDetailResponse"];
                 };
             };
             /** @description Validation Error */

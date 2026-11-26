@@ -27,6 +27,7 @@ class DecideOfferCommand:
     actor_role: str
     decision: str
     expected_version: int
+    reason: str | None = None
 
 
 class DecideOfferHandler:
@@ -50,7 +51,10 @@ class DecideOfferHandler:
         if offer.version != command.expected_version:
             raise OfferConcurrencyConflictError(command.offer_id)
         outcome = offer.decide(
-            decision=command.decision, actor_role=command.actor_role, policy=self._policy
+            decision=command.decision,
+            actor_role=command.actor_role,
+            policy=self._policy,
+            reason=command.reason,
         )
         if not self._offers.update(offer=outcome.offer, expected_version=command.expected_version):
             raise OfferConcurrencyConflictError(command.offer_id)
@@ -70,6 +74,7 @@ class DecideOfferHandler:
             step=outcome.step,
             actor_id=command.actor_id,
             decision=outcome.decision,
+            reason=outcome.reason,
         )
         self._offers.record_outbox_event(
             offer=offer, actor_id=command.actor_id, decision=outcome.decision
