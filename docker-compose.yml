@@ -244,6 +244,7 @@ services:
     environment:
       <<: *runtime_environment
       OTEL_SERVICE_NAME: talentflow-outbox-relay
+      WORKER_MAX_BACKOFF_SECONDS: 5
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -263,6 +264,7 @@ services:
     environment:
       <<: *runtime_environment
       OTEL_SERVICE_NAME: talentflow-notification-worker
+      WORKER_MAX_BACKOFF_SECONDS: 5
     depends_on:
       migrate:
         condition: service_completed_successfully
