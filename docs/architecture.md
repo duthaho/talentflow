@@ -130,6 +130,7 @@ flowchart LR
 | Offers | staged approvals | implemented | aggregate, policy object, immutable decisions, outbox |
 | Notifications | outbox materialization, email delivery | implemented | outbox, leased worker, retry, dead letter |
 | Audit | tenant-scoped append-only evidence | implemented | same-transaction audit write; hash chain planned (stage 7) |
+| Audit read side | case-scoped timeline | implemented | keyset pagination; metadata is projected through a default-deny PII allowlist |
 | Attachments | upload, scan, private storage, download | implemented (filesystem) | file-signature checks, malware-scan port; S3 + presigned URLs planned (stage 2) |
 | Calendar | revocable iCalendar feeds | implemented | capability URL, hashed tokens, expiry |
 | Reporting | PII-free pipeline read model | implemented | read model |
