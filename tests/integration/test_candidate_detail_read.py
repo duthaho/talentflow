@@ -1,6 +1,13 @@
+from datetime import datetime, timedelta
+
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.modules.attachments.application.attachment_service import ALLOWED_CONTENT_TYPES
+from app.shared.models import Membership, User
+from app.shared.problem_details import PROBLEM_TYPE_BASE
+from app.shared.settings import Settings
 from tests.integration.test_tenant_rbac import bootstrap_tenant
 
 
@@ -87,3 +94,94 @@ def test_read_policies_return_null_when_unset_and_enforce_permissions() -> None:
         attachment_policy.json()["allowed_content_types"]
     )
     assert forbidden.status_code == 403
+
+
+@pytest.mark.parametrize("suffix", ["", "/audit-events", "/legal-hold"])
+def test_unknown_and_foreign_case_have_equivalent_problem_responses(suffix: str) -> None:
+    with TestClient(create_app("sqlite://")) as client:
+        tenant = bootstrap_tenant(client, "acme-not-found", "admin-a")
+        foreign = bootstrap_tenant(client, "globex-not-found", "admin-b")
+        headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "admin-a"}
+        foreign_case = _candidate(
+            client, {"X-Tenant-Id": foreign["id"], "X-Actor-Id": "admin-b"}, "foreign@example.test"
+        )
+        responses = [
+            client.get(f"/v1/candidate-cases/{case_id}{suffix}", headers=headers)
+            for case_id in ["missing", foreign_case["id"]]
+        ]
+        for response in responses:
+            assert response.status_code == 404
+            assert response.headers["content-type"] == "application/problem+json"
+            assert response.json()["type"] == f"{PROBLEM_TYPE_BASE}not-found"
+        bodies = [
+            {
+                key: value
+                for key, value in response.json().items()
+                if key not in {"instance", "correlation_id"}
+            }
+            for response in responses
+        ]
+        assert bodies[0] == bodies[1]
+
+
+@pytest.mark.parametrize(
+    ("role", "route"),
+    [
+        ("hiring_manager", "/v1/candidate-cases/{id}/audit-events"),
+        ("hiring_manager", "/v1/candidate-cases/{id}/legal-hold"),
+        ("hiring_manager", "/v1/retention-policy"),
+        ("auditor", "/v1/candidate-cases/{id}/legal-hold"),
+        ("auditor", "/v1/retention-policy"),
+        ("interviewer", "/v1/candidate-cases/{id}"),
+        ("interviewer", "/v1/attachment-policy"),
+    ],
+)
+@pytest.mark.parametrize("exists", [True, False], ids=["real-case", "unknown-case"])
+def test_read_route_permission_is_checked_before_case_lookup(
+    role: str, route: str, exists: bool
+) -> None:
+    with TestClient(create_app("sqlite://")) as client:
+        tenant = bootstrap_tenant(client, "acme-forbidden", "admin")
+        headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "admin"}
+        case = _candidate(client, headers, "permission@example.test")
+        with client.app.state.session_factory() as session:
+            session.add(User(id="restricted"))
+            session.add(Membership(tenant_id=tenant["id"], user_id="restricted", role=role))
+            session.commit()
+        response = client.get(
+            route.format(id=case["id"] if exists else "missing"),
+            headers={**headers, "X-Actor-Id": "restricted"},
+        )
+        assert response.status_code == 403, response.text
+        assert response.headers["content-type"] == "application/problem+json"
+        assert response.json()["type"] == f"{PROBLEM_TYPE_BASE}forbidden"
+
+
+def test_attachment_policy_uses_runtime_override_and_exact_sorted_types() -> None:
+    app = create_app("sqlite://", app_settings=Settings(app_env="test", attachment_max_bytes=1234))
+    with TestClient(app) as client:
+        tenant = bootstrap_tenant(client, "acme-override", "admin")
+        response = client.get(
+            "/v1/attachment-policy",
+            headers={"X-Tenant-Id": tenant["id"], "X-Actor-Id": "admin"},
+        )
+    assert response.status_code == 200
+    assert response.json() == {
+        "max_bytes": 1234,
+        "allowed_content_types": sorted(ALLOWED_CONTENT_TYPES),
+    }
+
+
+@pytest.mark.parametrize(("suffix", "field"), [("", "created_at"), ("/legal-hold", "placed_at")])
+def test_candidate_read_timestamps_have_utc_offset(suffix: str, field: str) -> None:
+    with TestClient(create_app("sqlite://")) as client:
+        tenant = bootstrap_tenant(client, "acme-timestamp", "admin")
+        headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "admin"}
+        case = _candidate(client, headers, "timestamp@example.test")
+        route = f"/v1/candidate-cases/{case['id']}{suffix}"
+        if suffix:
+            placed = client.put(route, headers=headers, json={"held": True, "reason": "Test hold"})
+            assert placed.status_code == 204
+        response = client.get(route, headers=headers)
+        assert response.status_code == 200
+        assert datetime.fromisoformat(response.json()[field]).utcoffset() == timedelta(0)
