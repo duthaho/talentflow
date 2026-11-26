@@ -100,6 +100,7 @@ Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `imple
 | PII-free reporting read model | Analytics without exposing candidate data | [`app/modules/reporting/application/pipeline_report.py`](app/modules/reporting/application/pipeline_report.py), [`web/src/components/reports/`](web/src/components/reports) (DUTH-56) | [`tests/integration/test_pipeline_report.py`](tests/integration/test_pipeline_report.py), [`web/src/components/reports/pipeline-report-view.test.tsx`](web/src/components/reports/pipeline-report-view.test.tsx) | — | implemented |
 | Versioned schema migrations | Reviewable, repeatable schema changes; no `create_all` in production | [`migrations/versions/`](migrations/versions) | CI migration job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | — | implemented |
 | CI quality and security gates | Lint, tests, coverage, image smoke, CodeQL, Trivy on every PR | [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`.github/workflows/security.yml`](.github/workflows/security.yml) | the workflows themselves | — | implemented |
+| Hiring browser E2E | Verify the multi-role hiring flow, SMTP delivery and stale-version recovery against Compose | [`web/playwright.config.ts`](web/playwright.config.ts), [run guide](docs/testing-e2e.md) | [`web/e2e/hiring.spec.ts`](web/e2e/hiring.spec.ts) | ADR-003, ADR-004 | implemented |
 
 ### Planned
 

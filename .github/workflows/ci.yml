@@ -13,6 +13,59 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  hiring-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: hiring-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      COMPOSE_FILE: docker-compose.yml:docker-compose.e2e.yml
+      POSTGRES_PORT: 25432
+      MAILPIT_PORT: 28025
+      KEYCLOAK_PORT: 28081
+      SEAWEEDFS_PORT: 28333
+      OTEL_GRPC_PORT: 24317
+      OTEL_METRICS_PORT: 28888
+      GRAFANA_PORT: 23001
+      API_PORT: 28000
+      WEB_PORT: 23000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - name: Start the real hiring stack, including the email worker
+        run: |
+          docker compose up --detach --build --wait api web notification-worker
+          make seed
+      - name: Run hiring and stale-version browser scenarios
+        run: npm run test:e2e
+        working-directory: web
+      - name: Collect compose diagnostics
+        if: failure()
+        run: |
+          mkdir -p web/test-results
+          docker compose --profile workers ps --all > web/test-results/compose-status.txt
+          docker compose --profile workers logs --no-color > web/test-results/compose.log
+      - name: Upload failure traces, screenshots and diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hiring-e2e-failure
+          path: |
+            web/test-results/
+            web/playwright-report/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Stop this job's stack
+        if: always()
+        run: docker compose --profile workers down --volumes
+
   quality-and-migrations:
     runs-on: ubuntu-24.04
     services:
