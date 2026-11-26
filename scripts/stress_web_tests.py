@@ -6,6 +6,7 @@ Invoke from web/, for example:
 
 import argparse
 import os
+import resource
 import subprocess
 import sys
 import time
@@ -20,7 +21,8 @@ def main() -> int:
     if args.competitors < 0 or not command:
         parser.error("supply a command and a non-negative competitor count")
 
-    cpu = min(os.sched_getaffinity(0))
+    available_cpus = sorted(os.sched_getaffinity(0))
+    cpu = available_cpus[0]
     os.sched_setaffinity(0, {cpu})
     workers = []
     started = time.monotonic()
@@ -28,13 +30,30 @@ def main() -> int:
         for _ in range(args.competitors):
             workers.append(subprocess.Popen([sys.executable, "-c", "while True: pass"]))
         print(f"LOAD cpu={cpu}, competitors={args.competitors}, command={command}", flush=True)
-        return subprocess.run(command, check=False).returncode
+        print(
+            f"LOAD available_cpus={available_cpus}, host_loadavg_start={os.getloadavg()}",
+            flush=True,
+        )
+        before = resource.getrusage(resource.RUSAGE_CHILDREN)
+        command_started = time.monotonic()
+        result = subprocess.run(command, check=False)
+        after = resource.getrusage(resource.RUSAGE_CHILDREN)
+        cpu_seconds = after.ru_utime + after.ru_stime - before.ru_utime - before.ru_stime
+        elapsed = time.monotonic() - command_started
+        # Read usage before reaping competitors, so their CPU is excluded.
+        print(
+            f"LOAD command_cpu_s={cpu_seconds:.2f}, command_wall_s={elapsed:.2f}, "
+            f"command_cpu_percent={100 * cpu_seconds / elapsed:.2f}",
+            flush=True,
+        )
+        return result.returncode
     finally:
         for worker in workers:
             worker.terminate()
         for worker in workers:
             worker.wait()
         print(f"LOAD elapsed={time.monotonic() - started:.2f}s", flush=True)
+        print(f"LOAD host_loadavg_end={os.getloadavg()}", flush=True)
 
 
 if __name__ == "__main__":
