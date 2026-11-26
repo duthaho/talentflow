@@ -248,7 +248,7 @@ export function OffersWorkspace({
   );
 }
 
-function Section<T>({
+export function Section<T>({
   id,
   title,
   description,
