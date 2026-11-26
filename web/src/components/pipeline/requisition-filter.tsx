@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { PagedList } from "@/lib/offers/use-paged-list";
 
 import type { RequisitionOption } from "./create-dialogs";
@@ -30,7 +31,7 @@ export function RequisitionFilter({
         <select
           id="pipeline-requisition"
           aria-describedby="pipeline-requisition-status"
-          className={`${CONTROL_CLASS} w-64`}
+          className={cn(CONTROL_CLASS, "w-64")}
           value={value ?? ""}
           onChange={(event) => onChange(event.target.value || null)}
         >
