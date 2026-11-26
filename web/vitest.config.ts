@@ -14,6 +14,9 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // DOM-heavy files compete for CPU on shared runners. Keep the five-second
+    // per-test budget and isolation; opt into more workers explicitly if needed.
+    maxWorkers: 1,
     coverage: {
       include: ["src/lib/**", "src/components/**"],
       exclude: ["src/lib/api/schema.ts", "src/components/ui/**", "**/*.test.*"],
