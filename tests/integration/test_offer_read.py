@@ -1,6 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -202,6 +203,28 @@ def test_offer_list_cursor_case_filter_and_invalid_filters() -> None:
     assert no_offer == {"items": [], "next_cursor": None, "total": 0}
     assert unknown_case == {"items": [], "next_cursor": None, "total": 0}
     assert all(response.status_code == 422 for response in invalid)
+
+
+@pytest.mark.parametrize("status_filter", ["pending_approval", "approved", "rejected"])
+def test_offer_inbox_combines_status_filter_with_awaiting_me(status_filter: str) -> None:
+    app = create_app("sqlite://")
+    with TestClient(app) as client:
+        tenant = _create_tenant(client, slug="combined-filters", admin_id="admin")
+        _add_roles(app, tenant["id"])
+        offer = _create_offer(client, tenant["id"], "admin", 1)
+        response = client.get(
+            "/v1/offers",
+            headers=_headers(tenant["id"], "manager"),
+            params={"awaiting": "me", "status": status_filter, "limit": 1},
+        )
+
+    assert response.status_code == 200
+    page = response.json()
+    if status_filter == "pending_approval":
+        assert [item["id"] for item in page["items"]] == [offer["id"]]
+        assert page["total"] == 1
+    else:
+        assert page == {"items": [], "next_cursor": None, "total": 0}
 
 
 def test_offer_detail_reason_and_not_found_are_tenant_safe() -> None:
