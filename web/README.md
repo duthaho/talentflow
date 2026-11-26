@@ -51,6 +51,7 @@ CI fails when `openapi.json` or `src/lib/api/schema.ts` differ from a fresh gene
 - `src/lib/pipeline/`, `src/components/pipeline/`: the candidate pipeline board (`/candidates`)
 - `src/lib/interviews/`, `src/components/interviews/`: interview scheduling, feedback and calendar links (`/interviews`)
 - `src/lib/offers/`, `src/components/offers/`: offer creation and the approval inbox (`/offers`)
+- `src/lib/candidates/`, `src/components/candidate-detail/`: candidate detail (`/candidates/{id}`)
 - `src/lib/reports/`, `src/components/reports/`: the pipeline reporting dashboard (`/reports`)
 
 ## Pipeline board
@@ -61,6 +62,16 @@ Each stage column loads its own cursor-paginated page from `GET /v1/candidate-ca
 - **Version conflicts**: a 409 opens a "Changed by someone else" prompt whose only action is to refresh the board. The move is never retried with a newer version, so another user's change is never silently overwritten.
 - **Permissions**: without `candidate:transition` the board is read-only; New candidate and New requisition need `candidate:create` and `requisition:create`.
 - **Requisitions**: the API has no requisition list yet, so the filter offers requisitions seen on loaded cards or created in this session, and the selected one is kept in `?requisition=`.
+
+## Candidate detail
+
+`/candidates/{id}` (open it from a card's name on the board) shows the profile and stage from `GET /v1/candidate-cases/{id}`, then one panel per data source so a failure in one never hides the others:
+
+- **Attachments** (`candidate:attachment`): `GET …/attachments`, upload as `multipart/form-data` to `POST …/attachments`, and Download links to `GET …/attachments/{id}/download` through the BFF, which passes the API's 307 to the presigned URL straight to the browser.
+- **Upload validation**: the size limit and content types come from `GET /v1/attachment-policy`, never a web copy, and the form stays hidden until they load. The browser checks type, extension, empty and oversize files for early feedback; the API stays the authority (file signature, malware scan) and its 422/503 problem is shown inline with its reference. Document types mirror `ALLOWED_DOCUMENT_TYPES` with a drift test (`src/lib/candidates/detail.test.ts`).
+- **Audit timeline** (`audit:read`): `GET …/audit-events`, newest first, "Show older activity" follows `next_cursor`. Entries render only the allowlisted metadata the API returns; an upload refreshes it.
+- **Retention and legal hold** (`retention:manage`, admins and recruiters): `GET …/legal-hold` and `GET /v1/retention-policy`, read-only.
+- **Permissions**: panels the session's role cannot use are replaced by a no-access note and their APIs are never called; a 403 from the API renders the same note.
 
 ## Offers and approval inbox
 
