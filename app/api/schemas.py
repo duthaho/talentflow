@@ -89,6 +89,32 @@ class InterviewResponse(BaseModel):
     scheduled_at: datetime
 
 
+class InterviewListItem(BaseModel):
+    id: str
+    candidate_case_id: str
+    candidate_name: str
+    requisition_title: str
+    interviewer_id: str
+    interviewer_email: str | None
+    scheduled_at: datetime
+    feedback_submitted: bool
+
+
+class InterviewListResponse(BaseModel):
+    items: list[InterviewListItem]
+    next_cursor: str | None
+    total: int
+
+
+class InterviewerItem(BaseModel):
+    id: str
+    email: str | None
+
+
+class InterviewerListResponse(BaseModel):
+    items: list[InterviewerItem]
+
+
 class SubmitFeedbackRequest(BaseModel):
     score: int = Field(ge=1, le=5)
     recommendation: str = Field(pattern=r"^(strong_hire|hire|no_hire|strong_no_hire)$")
