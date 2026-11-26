@@ -21,7 +21,16 @@ function candidate(id: string, stage: string, version = 1): Candidate {
 
 type Handler = (request: Request) => Response | Promise<Response>;
 
-function fakeApi(candidates: Candidate[], overrides: { patch?: Handler; list?: Handler; post?: Handler } = {}) {
+const OTHER = "33333333-3333-4333-8333-333333333333";
+const REQUISITIONS = [
+  { id: REQ, title: "Platform Engineer", department: "Eng" },
+  { id: OTHER, title: "Product Designer", department: "Design" },
+];
+
+function fakeApi(
+  candidates: Candidate[],
+  overrides: { patch?: Handler; list?: Handler; post?: Handler; requisitions?: Handler } = {},
+) {
   const requests: Request[] = [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const request = input as Request;
@@ -32,6 +41,10 @@ function fakeApi(candidates: Candidate[], overrides: { patch?: Handler; list?: H
       const stage = url.searchParams.get("stage");
       const items = candidates.filter((item) => item.stage === stage);
       return Response.json({ items, next_cursor: null, total: items.length });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/requisitions") {
+      if (overrides.requisitions) return overrides.requisitions(request);
+      return Response.json({ items: REQUISITIONS, next_cursor: null, total: REQUISITIONS.length });
     }
     if (request.method === "PATCH" && overrides.patch) return overrides.patch(request);
     if (request.method === "POST" && overrides.post) return overrides.post(request);
@@ -50,7 +63,11 @@ function card(id: string): HTMLElement {
 
 async function renderBoard(api: ReturnType<typeof fakeApi>["api"], permissions = RECRUITER, requisition: string | null = REQ) {
   render(<PipelineBoard api={api} permissions={permissions} initialRequisitionId={requisition} />);
-  await waitFor(() => expect(document.querySelectorAll('section[aria-busy="true"]')).toHaveLength(0));
+  await waitFor(() => expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(0));
+}
+
+function candidateLists(requests: Request[]) {
+  return requests.filter((request) => request.method === "GET" && new URL(request.url).pathname === "/v1/candidate-cases");
 }
 
 function dataTransfer() {
@@ -64,7 +81,7 @@ describe("PipelineBoard", () => {
     const { api, requests } = fakeApi([candidate("c1", "applied"), candidate("c2", "screening")]);
     await renderBoard(api);
 
-    const lists = requests.filter((request) => request.method === "GET").map((request) => new URL(request.url).searchParams);
+    const lists = candidateLists(requests).map((request) => new URL(request.url).searchParams);
     expect(lists.map((params) => params.get("stage"))).toHaveLength(9);
     expect(lists.every((params) => params.get("requisition_id") === REQ && params.get("limit") === "20")).toBe(true);
     expect(within(column("applied")).getByText("Ada c1")).toBeInTheDocument();
@@ -257,6 +274,107 @@ describe("PipelineBoard", () => {
     expect(screen.getByRole("option", { name: "Backend Engineer" })).toBeInTheDocument();
     expect(window.location.search).toBe(`?requisition=${NEW}`);
     await waitFor(() => expect(requests.some((request) => new URL(request.url).searchParams.get("requisition_id") === NEW)).toBe(true));
+  });
+
+  it("lists the tenant's requisitions from the API and keeps the selection in the URL", async () => {
+    const user = userEvent.setup();
+    const { api, requests } = fakeApi([]);
+    await renderBoard(api, RECRUITER, null);
+
+    const list = requests.find((request) => new URL(request.url).pathname === "/v1/requisitions")!;
+    expect(new URL(list.url).searchParams.get("limit")).toBe("100");
+    const select = screen.getByRole("combobox", { name: "Requisition" });
+    expect(within(select).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "All requisitions",
+      "Platform Engineer",
+      "Product Designer",
+    ]);
+
+    await user.selectOptions(select, OTHER);
+    expect(window.location.search).toBe(`?requisition=${OTHER}`);
+    await waitFor(() => expect(requests.some((request) => new URL(request.url).searchParams.get("requisition_id") === OTHER)).toBe(true));
+
+    await user.selectOptions(select, "");
+    expect(window.location.search).toBe("");
+  });
+
+  it("follows the requisition cursor to load more options", async () => {
+    const user = userEvent.setup();
+    const { api } = fakeApi([], {
+      requisitions: (request) =>
+        new URL(request.url).searchParams.get("cursor") === "req-2"
+          ? Response.json({ items: [REQUISITIONS[1]], next_cursor: null, total: 2 })
+          : Response.json({ items: [REQUISITIONS[0]], next_cursor: "req-2", total: 2 }),
+    });
+    await renderBoard(api, RECRUITER, null);
+
+    await user.click(screen.getByRole("button", { name: "Load more requisitions (1 left)" }));
+    expect(await screen.findByRole("option", { name: "Product Designer" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Platform Engineer" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Load more requisitions/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps a URL requisition selectable before its page is loaded", async () => {
+    const { api } = fakeApi([], { requisitions: () => Response.json({ items: [REQUISITIONS[1]], next_cursor: "req-2", total: 2 }) });
+    await renderBoard(api, RECRUITER, REQ);
+
+    expect(screen.getByRole("combobox", { name: "Requisition" })).toHaveValue(REQ);
+    expect(screen.getByRole("option", { name: "Requisition 11111111" })).toBeInTheDocument();
+  });
+
+  it("shows a retryable error when requisitions fail to load, without blocking the board", async () => {
+    const user = userEvent.setup();
+    let fail = true;
+    const { api } = fakeApi([candidate("c1", "applied")], {
+      requisitions: () =>
+        fail
+          ? Response.json({ type: "about:blank", title: "Internal Server Error", status: 500 }, { status: 500 })
+          : Response.json({ items: REQUISITIONS, next_cursor: null, total: 2 }),
+    });
+    await renderBoard(api, RECRUITER, null);
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Couldn't load requisitions.");
+    expect(within(column("applied")).getByText("Ada c1")).toBeInTheDocument();
+
+    fail = false;
+    await user.click(within(alert).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("option", { name: "Platform Engineer" })).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load requisitions.")).not.toBeInTheDocument();
+  });
+
+  it("explains a 403 on the requisition list instead of offering a retry", async () => {
+    const forbidden = { type: `${PROBLEM_TYPE_BASE}forbidden`, title: "Forbidden", status: 403, detail: "Insufficient permissions" };
+    const { api } = fakeApi([], { requisitions: () => Response.json(forbidden, { status: 403 }) });
+    await renderBoard(api, HIRING_MANAGER, null);
+
+    expect(screen.getByText("You don't have permission to list requisitions.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("combobox", { name: "Requisition" })).getAllByRole("option")).toHaveLength(1);
+  });
+
+  it("shows an empty state when the tenant has no requisitions", async () => {
+    const { api } = fakeApi([], { requisitions: () => Response.json({ items: [], next_cursor: null, total: 0 }) });
+    await renderBoard(api, RECRUITER, null);
+
+    expect(screen.getByText("No requisitions yet. Create one with New requisition.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Load more requisitions/ })).not.toBeInTheDocument();
+  });
+
+  it("announces requisitions while they load", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const { api } = fakeApi([], {
+      requisitions: async () => {
+        await gate;
+        return Response.json({ items: REQUISITIONS, next_cursor: null, total: 2 });
+      },
+    });
+    render(<PipelineBoard api={api} permissions={RECRUITER} initialRequisitionId={null} />);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading requisitions…");
+    await act(async () => release());
+    await waitFor(() => expect(screen.queryByText("Loading requisitions…")).not.toBeInTheDocument());
   });
 
   it("follows the cursor to load more candidates in a stage", async () => {

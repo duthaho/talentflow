@@ -11,13 +11,16 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi, settle, type ApiClient, type ApiResult } from "@/lib/api/client";
+import { usePagedList } from "@/lib/offers/use-paged-list";
 import { boardReducer, initialBoard, type Candidate, type CandidatePage, type Column } from "@/lib/pipeline/board-state";
 import { GENERIC_STAGE_TRANSITIONS, canMove, isStage, STAGE_LABELS, STAGES, type Stage } from "@/lib/pipeline/stages";
 
 import { NewCandidateDialog, NewRequisitionDialog, type RequisitionOption } from "./create-dialogs";
 import { CONTROL_CLASS } from "./form-fields";
+import { RequisitionFilter, RequisitionStatus } from "./requisition-filter";
 
 export const PAGE_SIZE = 20;
+export const REQUISITION_PAGE_SIZE = 100;
 
 export type BoardPermissions = { transition: boolean; createCandidate: boolean; createRequisition: boolean };
 
@@ -40,8 +43,13 @@ export function PipelineBoard({
 }) {
   const api = useMemo(() => injectedApi ?? browserApi(), [injectedApi]);
   const [requisitionId, setRequisitionId] = useState(initialRequisitionId);
-  const [requisitionTitles, setRequisitionTitles] = useState<ReadonlyMap<string, string | null>>(
-    () => new Map(initialRequisitionId ? [[initialRequisitionId, null]] : []),
+  const [createdRequisitions, setCreatedRequisitions] = useState<readonly RequisitionOption[]>([]);
+  const requisitionList = usePagedList(
+    useCallback(
+      (cursor: string | null) =>
+        settle(api.GET("/v1/requisitions", { params: { query: { cursor: cursor ?? undefined, limit: REQUISITION_PAGE_SIZE } } })),
+      [api],
+    ),
   );
   const [board, dispatch] = useReducer(boardReducer, undefined, initialBoard);
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
@@ -50,13 +58,6 @@ export function PipelineBoard({
   const [announcement, setAnnouncement] = useState("");
   const [reloads, setReloads] = useState(0);
   const generation = useRef(0);
-
-  const rememberRequisitions = useCallback((entries: [string, string | null][]) => {
-    setRequisitionTitles((current) => {
-      const missing = entries.filter(([id, title]) => !current.has(id) || (title && current.get(id) !== title));
-      return missing.length === 0 ? current : new Map([...current, ...missing]);
-    });
-  }, []);
 
   const fetchColumn = useCallback(
     (stage: Stage, cursor: string | null) =>
@@ -73,13 +74,12 @@ export function PipelineBoard({
       if (run !== generation.current) return;
       if (result.ok) {
         dispatch({ type: "loaded", stage, page: result.data, append: cursor !== null });
-        rememberRequisitions(result.data.items.map((item) => [item.requisition_id, null]));
       } else {
         dispatch({ type: "failed", stage, problem: result.problem });
         if (cursor !== null) toastProblem(result.problem);
       }
     },
-    [rememberRequisitions],
+    [],
   );
 
   function loadColumn(stage: Stage, cursor: string | null) {
@@ -137,7 +137,12 @@ export function PipelineBoard({
     refresh();
   }
 
-  const requisitions: RequisitionOption[] = [...requisitionTitles].map(([id, title]) => ({ id, label: title ?? shortLabel(id) }));
+  const requisitionTitles = new Map<string, string>([
+    ...requisitionList.list.items.map((item): [string, string] => [item.id, item.title]),
+    ...createdRequisitions.map((item): [string, string] => [item.id, item.label]),
+  ]);
+  if (requisitionId && !requisitionTitles.has(requisitionId)) requisitionTitles.set(requisitionId, shortLabel(requisitionId));
+  const requisitions: RequisitionOption[] = [...requisitionTitles].map(([id, label]) => ({ id, label }));
   const columns = STAGES.map((stage) => [stage, board[stage]] as const);
   const allFailed = columns.every(([, column]) => column.status === "error");
   const emptyBoard = columns.every(([, column]) => column.status === "ready" && column.total === 0);
@@ -145,24 +150,13 @@ export function PipelineBoard({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="grid gap-1.5">
-          <label htmlFor="pipeline-requisition" className="text-sm font-medium">
-            Requisition
-          </label>
-          <select
-            id="pipeline-requisition"
-            className={`${CONTROL_CLASS} w-64`}
-            value={requisitionId ?? ""}
-            onChange={(event) => selectRequisition(event.target.value || null)}
-          >
-            <option value="">All requisitions</option>
-            {requisitions.map((requisition) => (
-              <option key={requisition.id} value={requisition.id}>
-                {requisition.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <RequisitionFilter
+          list={requisitionList.list}
+          options={requisitions}
+          value={requisitionId}
+          onChange={selectRequisition}
+          onLoadMore={() => void requisitionList.loadMore(toastProblem)}
+        />
         <Button variant="outline" onClick={refresh}>
           <RefreshCw aria-hidden />
           Refresh
@@ -172,7 +166,7 @@ export function PipelineBoard({
             <NewRequisitionDialog
               api={api}
               onCreated={(requisition) => {
-                rememberRequisitions([[requisition.id, requisition.title]]);
+                setCreatedRequisitions((current) => [...current, { id: requisition.id, label: requisition.title }]);
                 selectRequisition(requisition.id);
                 toast.success(`Requisition "${requisition.title}" created.`);
               }}
@@ -185,13 +179,14 @@ export function PipelineBoard({
               defaultRequisitionId={requisitionId}
               onCreated={(candidate) => {
                 if (!requisitionId || requisitionId === candidate.requisition_id) dispatch({ type: "created", candidate });
-                rememberRequisitions([[candidate.requisition_id, null]]);
                 toast.success(`${fullName(candidate)} added to Applied.`);
               }}
             />
           )}
         </div>
       </div>
+
+      <RequisitionStatus list={requisitionList.list} canCreate={permissions.createRequisition} onRetry={requisitionList.reload} />
 
       {!permissions.transition && (
         <p className="text-sm text-muted-foreground">Read-only: your role can view the pipeline but cannot move candidates.</p>
