@@ -29,7 +29,7 @@ uv run uvicorn app.main:app --reload          # SQLite, development header auth
 curl http://127.0.0.1:8000/health/ready
 ```
 
-In development mode requests authenticate with `X-Tenant-Id` and `X-Actor-Id` headers. With Docker, `docker compose up -d` runs PostgreSQL, Redis, migrations and the API on port 8000. `docker compose --profile workers up -d` also runs the long-lived notification and retention workers, still in development header-auth mode.
+The local Python server uses `X-Tenant-Id` and `X-Actor-Id` headers in development mode. With Docker, `docker compose up -d` starts the local OIDC stack, including the API on port 8000, RabbitMQ, the outbox relay and notification worker. `docker compose --profile workers up -d` additionally enables the scheduled retention worker.
 
 Quality gates (same as CI):
 

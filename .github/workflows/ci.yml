@@ -39,9 +39,9 @@ jobs:
         working-directory: web
       - run: npx playwright install --with-deps chromium
         working-directory: web
-      - name: Start the real hiring stack, including the email worker
+      - name: Start the real hiring stack, including the relay and email worker
         run: |
-          docker compose up --detach --build --wait api web notification-worker
+          docker compose up --detach --build --wait api web outbox-relay notification-worker
           make seed
       - name: Run hiring and stale-version browser scenarios
         run: npm run test:e2e

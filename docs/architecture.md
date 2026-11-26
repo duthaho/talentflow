@@ -82,7 +82,7 @@ flowchart LR
   rw --> fs
 ```
 
-Workers are long-lived processes built from the API image. They poll with bounded exponential backoff, drain on SIGTERM (releasing email leases if the grace period expires), expose `/health/live`, `/health/ready` and `/metrics`, and record cycle-success and backlog metrics. Retention uses a configurable interval and PostgreSQL advisory lock, so only one replica purges at a time. `docker compose --profile workers up -d` starts the notification and retention services.
+Workers are long-lived processes built from the API image. They poll with bounded exponential backoff, drain on SIGTERM (releasing email leases if the grace period expires), expose `/health/live`, `/health/ready` and `/metrics`, and record cycle-success and backlog metrics. Retention uses a configurable interval and PostgreSQL advisory lock, so only one replica purges at a time. `docker compose up -d` starts the outbox relay and notification worker in the default stack. `docker compose --profile workers up -d` additionally enables the scheduled retention service.
 
 ### Target
 
