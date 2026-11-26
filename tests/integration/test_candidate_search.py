@@ -96,6 +96,7 @@ def search_context(request):
                 )
             )
             session.add(User(id=f"interviewer-{suffix}"))
+            session.flush()
             session.add(
                 Membership(
                     tenant_id=tenant["id"], user_id=f"interviewer-{suffix}", role="interviewer"
