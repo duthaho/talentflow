@@ -3,8 +3,9 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse, Response
 
-from app.api.schemas import AttachmentResponse
+from app.api.schemas import AttachmentPolicyResponse, AttachmentResponse
 from app.modules.attachments.application.attachment_service import (
+    ALLOWED_CONTENT_TYPES,
     AttachmentNotFoundError,
     AttachmentService,
     AttachmentTooLargeError,
@@ -28,6 +29,19 @@ from app.shared.settings import Settings
 router = APIRouter(
     prefix="/v1/candidate-cases/{candidate_case_id}/attachments", tags=["attachments"]
 )
+policy_router = APIRouter(tags=["attachments"])
+
+
+@policy_router.get("/v1/attachment-policy", response_model=AttachmentPolicyResponse)
+def get_attachment_policy(
+    request: Request,
+    actor: ActorContext = Depends(require("tenant:read")),
+) -> AttachmentPolicyResponse:
+    del actor
+    return AttachmentPolicyResponse(
+        max_bytes=request.app.state.runtime_settings.attachment_max_bytes,
+        allowed_content_types=sorted(ALLOWED_CONTENT_TYPES),
+    )
 
 
 def _service(request: Request, session: SessionDep) -> AttachmentService:

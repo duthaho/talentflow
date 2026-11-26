@@ -1,9 +1,11 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 
 from app.api.schemas import (
     LegalHoldRequest,
+    LegalHoldResponse,
+    RetentionPolicyReadResponse,
     RetentionPolicyRequest,
     RetentionPolicyResponse,
     RetentionPurgeResponse,
@@ -49,6 +51,17 @@ def set_retention_policy(
     return RetentionPolicyResponse(retention_days=policy.retention_days)
 
 
+@router.get("/v1/retention-policy", response_model=RetentionPolicyReadResponse)
+def get_retention_policy(
+    session: SessionDep,
+    actor: ActorContext = Depends(require("retention:manage")),
+) -> RetentionPolicyReadResponse:
+    from app.modules.retention.persistence import RetentionPolicy as RetentionPolicyRecord
+
+    record = session.get(RetentionPolicyRecord, actor.tenant_id)
+    return RetentionPolicyReadResponse(retention_days=record.retention_days if record else None)
+
+
 @router.put(
     "/v1/candidate-cases/{candidate_case_id}/legal-hold", status_code=status.HTTP_204_NO_CONTENT
 )
@@ -73,6 +86,30 @@ def set_legal_hold(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
         ) from error
+
+
+@router.get("/v1/candidate-cases/{candidate_case_id}/legal-hold", response_model=LegalHoldResponse)
+def get_legal_hold(
+    candidate_case_id: str,
+    response: Response,
+    session: SessionDep,
+    actor: ActorContext = Depends(require("retention:manage")),
+) -> LegalHoldResponse:
+    from app.modules.candidates.persistence import CandidateCase
+    from app.modules.retention.persistence import CandidateLegalHold
+
+    candidate = session.get(CandidateCase, candidate_case_id)
+    if candidate is None or candidate.tenant_id != actor.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
+        )
+    response.headers["Cache-Control"] = "private, no-store"
+    hold = session.get(CandidateLegalHold, candidate_case_id)
+    if hold is None or hold.tenant_id != actor.tenant_id:
+        return LegalHoldResponse(held=False, reason=None, placed_at=None, placed_by=None)
+    return LegalHoldResponse(
+        held=True, reason=hold.reason, placed_at=hold.created_at, placed_by=hold.created_by
+    )
 
 
 @router.post("/v1/retention/purge", response_model=RetentionPurgeResponse)

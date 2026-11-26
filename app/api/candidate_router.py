@@ -1,8 +1,9 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 
 from app.api.schemas import (
+    CandidateCaseDetailResponse,
     CandidateCaseResponse,
     CandidateListItem,
     CandidateListResponse,
@@ -66,6 +67,22 @@ def list_candidate_cases(
         next_cursor=page.next_cursor,
         total=page.total,
     )
+
+
+@router.get("/v1/candidate-cases/{candidate_case_id}", response_model=CandidateCaseDetailResponse)
+def get_candidate_case(
+    candidate_case_id: str,
+    response: Response,
+    session: SessionDep,
+    actor: ActorContext = Depends(require("tenant:read")),
+) -> CandidateCaseDetailResponse:
+    record = session.get(CandidateCase, candidate_case_id)
+    if record is None or record.tenant_id != actor.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
+        )
+    response.headers["Cache-Control"] = "private, no-store"
+    return CandidateCaseDetailResponse.model_validate(record, from_attributes=True)
 
 
 @router.post(
