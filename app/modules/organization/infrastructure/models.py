@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.database import Base
@@ -52,7 +52,18 @@ class Requisition(Base):
     )
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     department: Mapped[str] = mapped_column(String(120), nullable=False)
+    published: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, nullable=False
     )
+
+
+Index(
+    "ix_requisitions_public",
+    Requisition.tenant_id,
+    Requisition.published_at.desc(),
+    postgresql_where=Requisition.published,
+    sqlite_where=Requisition.published,
+)

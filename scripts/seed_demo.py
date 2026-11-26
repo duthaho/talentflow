@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.shared.models import Membership, Tenant, User
+from app.shared.models import Membership, Requisition, Tenant, User
 
 TENANT_ID = "00000000-0000-4000-8000-000000000001"
 USERS = (
@@ -139,6 +140,23 @@ def seed_database() -> None:
             )
             if membership is None:
                 session.add(Membership(tenant_id=TENANT_ID, user_id=user_id, role=role))
+        session.flush()
+        for job_id, title in (
+            ("00000000-0000-4000-8000-000000000101", "Backend Engineer"),
+            ("00000000-0000-4000-8000-000000000102", "Product Designer"),
+        ):
+            job = session.get(Requisition, job_id)
+            if job is None:
+                job = Requisition(
+                    id=job_id,
+                    tenant_id=TENANT_ID,
+                    title=title,
+                    department="Engineering" if title == "Backend Engineer" else "Design",
+                    created_by=USERS[0][0],
+                )
+                session.add(job)
+            job.published = True
+            job.published_at = job.published_at or datetime.now(UTC)
         session.commit()
     engine.dispose()
 
@@ -146,4 +164,5 @@ def seed_database() -> None:
 if __name__ == "__main__":
     seed_keycloak()
     seed_database()
-    print("Seeded TalentFlow demo tenant and Keycloak users.")
+    print("Seeded TalentFlow demo tenant, users and two published requisitions.")
+    print("Careers: /careers/talentflow-demo")

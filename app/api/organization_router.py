@@ -8,6 +8,7 @@ from app.api.schemas import (
     CreateTenantRequest,
     RequisitionListResponse,
     RequisitionResponse,
+    SetRequisitionPublicationRequest,
     TenantResponse,
 )
 from app.modules.identity.security import ActorContext, require
@@ -20,6 +21,10 @@ from app.modules.organization.application.commands import (
 from app.modules.organization.application.list_requisitions import (
     ListRequisitionsHandler,
     ListRequisitionsQuery,
+)
+from app.modules.organization.application.set_requisition_publication import (
+    RequisitionNotFoundError,
+    SetRequisitionPublicationHandler,
 )
 from app.modules.organization.infrastructure.sqlalchemy_repository import (
     SqlAlchemyOrganizationRepository,
@@ -60,6 +65,7 @@ def list_requisitions(
         ListRequisitionsQuery(tenant_id=actor.tenant_id, cursor=cursor, limit=limit)
     )
     return RequisitionListResponse(
+        tenant_slug=page.tenant_slug,
         items=[RequisitionResponse(**item.__dict__) for item in page.items],
         next_cursor=page.next_cursor,
         total=page.total,
@@ -90,3 +96,26 @@ def create_requisition(
     return RequisitionResponse(
         id=requisition.id, title=requisition.title, department=requisition.department
     )
+
+
+@router.patch("/v1/requisitions/{id}/publication", response_model=RequisitionResponse)
+def set_requisition_publication(
+    id: str,
+    payload: SetRequisitionPublicationRequest,
+    session: SessionDep,
+    actor: ActorContext = Depends(require("requisition:create")),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+) -> RequisitionResponse:
+    try:
+        result = SetRequisitionPublicationHandler(
+            SqlAlchemyOrganizationRepository(session), SqlAlchemyUnitOfWork(session)
+        ).handle(
+            tenant_id=actor.tenant_id,
+            requisition_id=id,
+            published=payload.published,
+            actor_id=actor.actor_id,
+            correlation_id=correlation_id or str(uuid4()),
+        )
+    except RequisitionNotFoundError as error:
+        raise HTTPException(status_code=404, detail="Requisition not found") from error
+    return RequisitionResponse(**result.__dict__)

@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/offers", label: "Offers", description: "Offers and staged approvals.", anyOf: ["tenant:read"], icon: "file-signature" },
   { href: "/reports", label: "Reports", description: "Pipeline reporting.", anyOf: ["report:read"], icon: "chart" },
   { href: "/audit", label: "Audit log", description: "Who did what, and when.", anyOf: ["audit:read"], icon: "scroll" },
+  { href: "/settings/requisitions", label: "Requisitions", description: "Publish jobs to your careers page.", anyOf: ["tenant:read"], icon: "file-signature" },
   { href: "/settings/retention", label: "Retention", description: "Retention policy and legal holds.", anyOf: ["retention:manage"], icon: "archive" },
 ];
 

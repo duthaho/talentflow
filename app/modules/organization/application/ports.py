@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 
@@ -14,6 +15,8 @@ class RequisitionView:
     id: str
     title: str
     department: str
+    published: bool = False
+    published_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -21,9 +24,20 @@ class RequisitionPage:
     items: list[RequisitionView]
     next_cursor: str | None
     total: int
+    tenant_slug: str = ""
 
 
 class OrganizationRepository(Protocol):
+    def set_publication(
+        self,
+        *,
+        tenant_id: str,
+        requisition_id: str,
+        published: bool,
+        actor_id: str,
+        correlation_id: str,
+    ) -> RequisitionView | None: ...
+
     def slug_exists(self, *, slug: str) -> bool: ...
     def create_tenant(
         self, *, name: str, slug: str, admin_id: str, correlation_id: str

@@ -10,13 +10,13 @@ const labelsFor = (role: Role) => visibleNav(ROLE_PERMISSIONS[role]).map((item) 
 
 describe("role-aware navigation", () => {
   it("shows every section to the tenant admin and the recruiter", () => {
-    const all = ["Overview", "Candidates", "Interviews", "Offers", "Reports", "Audit log", "Retention"];
+    const all = ["Overview", "Candidates", "Interviews", "Offers", "Reports", "Audit log", "Requisitions", "Retention"];
     expect(labelsFor("tenant_admin")).toEqual(all);
     expect(labelsFor("recruiter")).toEqual(all);
   });
 
   it("limits the hiring manager to read-only hiring sections", () => {
-    expect(labelsFor("hiring_manager")).toEqual(["Overview", "Candidates", "Offers"]);
+    expect(labelsFor("hiring_manager")).toEqual(["Overview", "Candidates", "Offers", "Requisitions"]);
   });
 
   it("limits the interviewer to interviews", () => {
@@ -24,7 +24,7 @@ describe("role-aware navigation", () => {
   });
 
   it("gives the auditor read-only sections and the audit log", () => {
-    expect(labelsFor("auditor")).toEqual(["Overview", "Candidates", "Offers", "Audit log"]);
+    expect(labelsFor("auditor")).toEqual(["Overview", "Candidates", "Offers", "Audit log", "Requisitions"]);
   });
 
   it("shows only the overview without permissions", () => {

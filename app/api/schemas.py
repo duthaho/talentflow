@@ -33,13 +33,20 @@ class CreateRequisitionRequest(BaseModel):
     department: str = Field(min_length=2, max_length=120)
 
 
+class SetRequisitionPublicationRequest(BaseModel):
+    published: bool = Field(strict=True)
+
+
 class RequisitionResponse(BaseModel):
     id: str
     title: str
     department: str
+    published: bool = False
+    published_at: datetime | None = None
 
 
 class RequisitionListResponse(BaseModel):
+    tenant_slug: str
     items: list[RequisitionResponse]
     next_cursor: str | None
     total: int
