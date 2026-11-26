@@ -15,7 +15,8 @@ test("recruiter hires a candidate after interview feedback and two approvals, wi
   await recruiter.goto("/interviews");
   await recruiter.getByRole("button", { name: "Schedule interview", exact: true }).click();
   const schedule = recruiter.getByRole("dialog", { name: "Schedule interview" });
-  await schedule.getByLabel("Candidate", { exact: true }).selectOption(candidate.id);
+  await schedule.getByRole("combobox", { name: "Candidate", exact: true }).fill(candidate.name);
+  await schedule.getByRole("listbox", { name: "Candidates", exact: true }).getByRole("option", { name: new RegExp(candidate.name) }).click();
   await schedule.getByLabel("Interviewer", { exact: true }).selectOption({ label: "interviewer@talentflow.local" });
   const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 16);
   await schedule.getByLabel("Date and time (your local time)").fill(tomorrow);
