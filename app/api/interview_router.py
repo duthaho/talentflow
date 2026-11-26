@@ -1,14 +1,28 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
 from app.api.schemas import (
     CreateInterviewRequest,
     FeedbackResponse,
+    InterviewerItem,
+    InterviewerListResponse,
+    InterviewListItem,
+    InterviewListResponse,
     InterviewResponse,
     SubmitFeedbackRequest,
 )
-from app.modules.identity.security import ActorContext, require
+from app.modules.identity.security import ROLE_PERMISSIONS, ActorContext, require, resolve_actor
+from app.modules.interviews.application.list_interviewers import (
+    ListInterviewersHandler,
+    ListInterviewersQuery,
+)
+from app.modules.interviews.application.list_interviews import (
+    InterviewListForbiddenError,
+    ListInterviewsHandler,
+    ListInterviewsQuery,
+)
+from app.modules.interviews.application.ports import InvalidCursorError
 from app.modules.interviews.application.schedule_interview import (
     InterviewSchedulingTargetNotFoundError,
     ScheduleInterviewCommand,
@@ -23,13 +37,68 @@ from app.modules.interviews.domain.feedback import (
     FeedbackAlreadySubmittedError,
     InterviewerNotAssignedError,
 )
+from app.modules.interviews.infrastructure.sqlalchemy_read_model import SqlAlchemyInterviewReadModel
 from app.modules.interviews.infrastructure.sqlalchemy_repository import (
     SqlAlchemyInterviewRepository,
     SqlAlchemyUnitOfWork,
 )
-from app.shared.database import SessionDep
+from app.shared.database import SessionDep, forbidden
 
 router = APIRouter()
+
+
+@router.get("/v1/interviews", response_model=InterviewListResponse)
+def list_interviews(
+    response: Response,
+    session: SessionDep,
+    actor: ActorContext = Depends(resolve_actor),
+    interviewer: str | None = None,
+    cursor: str | None = None,
+    limit: int = Query(default=25, ge=1, le=100),
+) -> InterviewListResponse:
+    permissions = ROLE_PERMISSIONS.get(actor.role, frozenset())
+    if not ({"interview:manage", "feedback:submit"} & permissions):
+        raise forbidden("Actor does not have the required permission")
+    try:
+        page = ListInterviewsHandler(SqlAlchemyInterviewReadModel(session)).handle(
+            ListInterviewsQuery(
+                tenant_id=actor.tenant_id,
+                actor_id=actor.actor_id,
+                can_manage="interview:manage" in permissions,
+                interviewer=interviewer,
+                cursor=cursor,
+                limit=limit,
+            )
+        )
+    except InterviewListForbiddenError as error:
+        raise forbidden("Actor does not have the required permission") from error
+    except InvalidCursorError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Invalid pagination cursor",
+        ) from error
+    response.headers["Cache-Control"] = "private, no-store"
+    return InterviewListResponse(
+        items=[InterviewListItem(**item.__dict__) for item in page.items],
+        next_cursor=page.next_cursor,
+        total=page.total,
+    )
+
+
+@router.get("/v1/interviewers", response_model=InterviewerListResponse)
+def list_interviewers(
+    response: Response,
+    session: SessionDep,
+    actor: ActorContext = Depends(require("interview:manage")),
+) -> InterviewerListResponse:
+    feedback_roles = frozenset(
+        role for role, permissions in ROLE_PERMISSIONS.items() if "feedback:submit" in permissions
+    )
+    items = ListInterviewersHandler(SqlAlchemyInterviewReadModel(session)).handle(
+        ListInterviewersQuery(tenant_id=actor.tenant_id, roles=feedback_roles)
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return InterviewerListResponse(items=[InterviewerItem(**item.__dict__) for item in items])
 
 
 @router.post(
