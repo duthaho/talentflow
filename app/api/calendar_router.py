@@ -32,6 +32,7 @@ def _service(session: SessionDep, request: Request) -> CalendarSubscriptionServi
 
 @router.post(
     "/v1/calendar-subscriptions",
+    description="Idempotency-Key is ignored: this response contains a bearer secret.",
     response_model=CalendarSubscriptionResponse,
     status_code=status.HTTP_201_CREATED,
 )

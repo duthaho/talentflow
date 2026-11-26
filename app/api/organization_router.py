@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
+from app.api.idempotency import CommandRoute
 from app.api.schemas import (
     CreateRequisitionRequest,
     CreateTenantRequest,
@@ -26,10 +27,15 @@ from app.modules.organization.infrastructure.sqlalchemy_repository import (
 )
 from app.shared.database import SessionDep
 
-router = APIRouter()
+router = APIRouter(route_class=CommandRoute)
 
 
-@router.post("/v1/tenants", response_model=TenantResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/v1/tenants",
+    response_model=TenantResponse,
+    status_code=status.HTTP_201_CREATED,
+    description="Bootstrap: Idempotency-Key is ignored (no authenticated tenant/actor).",
+)
 def create_tenant(payload: CreateTenantRequest, session: SessionDep) -> TenantResponse:
     try:
         tenant = OrganizationService(

@@ -118,7 +118,7 @@ Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `imple
 | End-to-end tests against the real stack (DUTH-57) | The hiring flow is proven in a browser on every PR | — | — | — | planned — stage 4 |
 | Versioned event envelope and AsyncAPI catalog (DUTH-58) | Explicit integration contracts and evolution rules | — | — | planned with DUTH-58 | planned — stage 5 |
 | Outbox relay to RabbitMQ, inbox dedup, DLQ (DUTH-59) | At-least-once delivery, exactly-once effect | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 5 |
-| Idempotency keys (DUTH-60) | Safe client retries for POST commands | — | — | — | planned — stage 5 |
+| Idempotency keys (DUTH-60) | Safe client retries for POST commands | `app/api/idempotency.py`, `app/shared/idempotency.py` | `tests/integration/test_idempotency.py`, `tests/integration/test_idempotency_postgres.py` | [005](docs/adr/005-idempotency-keys.md) | implemented |
 | ETag / If-Match conditional requests (DUTH-61) | HTTP-native optimistic concurrency | — | — | — | planned — stage 5 |
 | Signed outbound webhooks with SSRF guard (DUTH-62) | Verifiable integrations that cannot reach internal hosts | — | — | — | planned — stage 5 |
 | Public self-apply with abuse controls (DUTH-63) | Handling anonymous, untrusted input and consent | — | — | — | planned — stage 5 |

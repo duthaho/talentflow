@@ -61,7 +61,12 @@ def _service(request: Request, session: SessionDep) -> AttachmentService:
     )
 
 
-@router.post("", response_model=AttachmentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=AttachmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    description="Idempotency-Key is ignored for multipart uploads.",
+)
 def upload_attachment(
     candidate_case_id: str,
     request: Request,
