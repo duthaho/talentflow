@@ -6,6 +6,8 @@ Next.js (App Router) + TypeScript + shadcn/ui. It acts as a backend-for-frontend
 
 The web app is part of the compose stack: `docker compose up -d && make seed`, then open http://localhost:3000. Sign in with a demo user (`admin@`, `recruiter@`, `manager@` or `interviewer@talentflow.local`, password `dev-demo-password` unless `DEMO_USER_PASSWORD` is set).
 
+If the default host ports conflict with another local stack, set `WEB_HOST_PORT` and `KEYCLOAK_HOST_PORT` for both commands (for example, `KEYCLOAK_HOST_PORT=18081 WEB_HOST_PORT=13000 docker compose up -d`). The browser URL, Keycloak redirects and API CORS origin stay aligned automatically.
+
 For a dev server against the compose stack:
 
 ```bash

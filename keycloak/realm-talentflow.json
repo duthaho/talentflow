@@ -8,11 +8,11 @@
       "publicClient": true,
       "directAccessGrantsEnabled": false,
       "standardFlowEnabled": true,
-      "redirectUris": ["http://localhost:3000/auth/callback"],
-      "webOrigins": ["http://localhost:3000"],
+      "redirectUris": ["${WEB_ORIGIN}/auth/callback"],
+      "webOrigins": ["${WEB_ORIGIN}"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:3000/signed-out"
+        "post.logout.redirect.uris": "${WEB_ORIGIN}/signed-out"
       },
       "protocolMappers": [
         {

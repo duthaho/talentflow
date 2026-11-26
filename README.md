@@ -50,6 +50,17 @@ make seed        # demo tenant + admin, recruiter, hiring manager, interviewer i
 
 Open the web app at http://localhost:3000 and sign in with a seeded account (`admin@`, `recruiter@`, `manager@` or `interviewer@talentflow.local`, password `dev-demo-password`); the navigation follows the account's role. See [`web/README.md`](web/README.md). The seeded accounts also work with Keycloak's token endpoint for direct API calls.
 
+### Shared runners or port conflicts
+
+Every published Compose port can be overridden without changing the repository. For example, when ports 8081 and 3000 are occupied:
+
+```bash
+KEYCLOAK_HOST_PORT=18081 WEB_HOST_PORT=13000 docker compose up -d
+KEYCLOAK_HOST_PORT=18081 WEB_HOST_PORT=13000 make seed
+```
+
+Open http://localhost:13000 and use the same seeded account. The API CORS origin, Keycloak issuer and hostname, and realm redirect/origin settings follow these variables automatically. See `.env.example` for all host-port variables.
+
 ## Pattern catalog
 
 Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `implemented` in the PR that delivers it. Paths are relative to the repository root.
