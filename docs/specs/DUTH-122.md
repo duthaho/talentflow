@@ -144,7 +144,7 @@ The contract, matching rules, validation and redaction are specified above (Cont
 
 | AC | Level | Test |
 |---|---|---|
-| AC2, AC5 | API (SQLite, `tests/unit`) | Match on first name, last name, `"first last"` and email; ASCII case-insensitivity; `%`, `_` and `\` matched literally; `q` + `stage`, `q` + `requisition_id`; `total` and `next_cursor` across two pages with `q`; a tenant B case matching `q` is absent for a tenant A caller; `403` for a role without `tenant:read`; no `q` → same response as before. |
+| AC2, AC5 | API (default test DB, extend `tests/integration/test_candidate_list_query.py`) | Match on first name, last name, `"first last"` and email; ASCII case-insensitivity; `%`, `_` and `\` matched literally; `q` + `stage`, `q` + `requisition_id`; `total` and `next_cursor` across two pages with `q`; a tenant B case matching `q` is absent for a tenant A caller; `403` for a role without `tenant:read`; no `q` → same response as before. |
 | AC5 | Integration (PostgreSQL, `tests/integration`) | Matching, escaping and non-ASCII case folding (`đ` finds `Đ`) against real PostgreSQL, following `test_interview_list_postgres.py`. |
 | AC4 | API | `422 validation-error` with pointer `/q` for: 1 character, 101 characters, whitespace only, `"ab\u0000"`; `" ab "` is trimmed and accepted. |
 | AC7 | Unit | The span hook replaces the raw term in all four URL attributes and leaves other parameters intact; requests without `q` are untouched. |
