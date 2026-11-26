@@ -49,6 +49,7 @@ CI fails when `openapi.json` or `src/lib/api/schema.ts` differ from a fresh gene
 - `src/app/auth/*`: login, callback and logout route handlers; `src/app/api/tf/[...path]`: BFF proxy
 - `src/app/(app)/`: authenticated screens
 - `src/lib/pipeline/`, `src/components/pipeline/`: the candidate pipeline board (`/candidates`)
+- `src/lib/interviews/`, `src/components/interviews/`: interview scheduling, feedback and calendar links (`/interviews`)
 - `src/lib/offers/`, `src/components/offers/`: offer creation and the approval inbox (`/offers`)
 
 ## Pipeline board
@@ -73,3 +74,13 @@ Each stage column loads its own cursor-paginated page from `GET /v1/candidate-ca
 ### Typed contract before the generated client
 
 The offer read routes (DUTH-115) and candidate detail (DUTH-110) are specified but not yet in `openapi.json`. `src/lib/offers/contract.ts` declares those routes in the same `paths` shape `openapi-typescript` emits and builds an `openapi-fetch` client over `paths` plus them, so call sites already look like the generated client. Tests run against an in-memory fake of the contract (`test/offers-fake.ts`). Once both routes ship and `make api-client` regenerates `schema.ts`, delete `contract.ts`, import the types from `schema.ts` and use `browserApi()`; `tsc` then flags any field that drifted from the spec. Until then the page shows its error state against a real API.
+
+## Interviews
+
+`/interviews` shows each part only to roles that can use it:
+
+- **Schedule** (`interview:manage`): the dialog loads candidates in Screening or Interviewing (`GET /v1/candidate-cases?stage=…`, the first 100 per stage) and the tenant's interviewers (`GET /v1/interviewers`, shown by email because users have no display name). It converts the local `datetime-local` value to an ISO instant before it sends `POST /v1/candidate-cases/{id}/interviews`. "All interviews" lists `GET /v1/interviews` and can filter by interviewer.
+- **My interviews and feedback** (`feedback:submit`): lists `GET /v1/interviews?interviewer=me`. The feedback form checks score, recommendation and comments (1–5000 characters, trimmed) before it calls `POST /v1/interviews/{id}/feedback`, then locks the row. The API enforces one feedback per interview. A 409 says feedback already exists and marks the row as submitted, and the form is not offered again.
+- **Calendar link** (`calendar:self`): `GET /v1/calendar-subscriptions?interviewer=me` lists active links by id and dates only. "Generate link" posts an empty body, so the caller is the interviewer. The feed URL appears once, in a dialog with a copy button, and is held only in component state until the dialog closes. Revoke asks for confirmation; a 404 means the link is already gone and is treated as success.
+
+The calendar routes follow [DUTH-109](../docs/specs/DUTH-109.md). Until that PR merges, `src/lib/interviews/contract.ts` overlays their hand-written types on the generated `paths`. After `make api-client` picks up DUTH-109, delete the overlay; the call sites stay the same.
