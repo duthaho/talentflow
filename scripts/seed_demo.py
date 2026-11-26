@@ -78,6 +78,28 @@ def admin_token(base_url: str) -> str:
 def seed_keycloak() -> None:
     base_url = os.environ["KEYCLOAK_ADMIN_URL"]
     token = admin_token(base_url)
+    web_base_url = os.environ["KEYCLOAK_WEB_BASE_URL"]
+    clients = request_json(
+        f"{base_url}/admin/realms/talentflow/clients?clientId=talentflow-api",
+        token=token,
+    )
+    if not isinstance(clients, list) or len(clients) != 1:
+        raise RuntimeError("Expected exactly one talentflow-api Keycloak client")
+    client = clients[0]
+    if not isinstance(client, dict) or not isinstance(client.get("id"), str):
+        raise RuntimeError("Keycloak client response did not include an id")
+    client["redirectUris"] = [f"{web_base_url}/auth/callback"]
+    client["webOrigins"] = [web_base_url]
+    attributes = client.setdefault("attributes", {})
+    if not isinstance(attributes, dict):
+        raise RuntimeError("Keycloak client attributes were not an object")
+    attributes["post.logout.redirect.uris"] = f"{web_base_url}/signed-out"
+    request_json(
+        f"{base_url}/admin/realms/talentflow/clients/{client['id']}",
+        method="PUT",
+        payload=client,
+        token=token,
+    )
     password = os.environ["DEMO_USER_PASSWORD"]
     users = []
     for user_id, email, first_name, last_name, _role in USERS:

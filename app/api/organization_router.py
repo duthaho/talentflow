@@ -1,10 +1,11 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from app.api.schemas import (
     CreateRequisitionRequest,
     CreateTenantRequest,
+    RequisitionListResponse,
     RequisitionResponse,
     TenantResponse,
 )
@@ -14,6 +15,10 @@ from app.modules.organization.application.commands import (
     CreateTenantCommand,
     OrganizationService,
     TenantSlugAlreadyExistsError,
+)
+from app.modules.organization.application.list_requisitions import (
+    ListRequisitionsHandler,
+    ListRequisitionsQuery,
 )
 from app.modules.organization.infrastructure.sqlalchemy_repository import (
     SqlAlchemyOrganizationRepository,
@@ -36,6 +41,23 @@ def create_tenant(payload: CreateTenantRequest, session: SessionDep) -> TenantRe
     except TenantSlugAlreadyExistsError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     return TenantResponse(id=tenant.id, name=tenant.name, slug=tenant.slug)
+
+
+@router.get("/v1/requisitions", response_model=RequisitionListResponse)
+def list_requisitions(
+    session: SessionDep,
+    actor: ActorContext = Depends(require("tenant:read")),
+    cursor: str | None = None,
+    limit: int = Query(default=25, ge=1, le=100),
+) -> RequisitionListResponse:
+    page = ListRequisitionsHandler(SqlAlchemyOrganizationRepository(session)).handle(
+        ListRequisitionsQuery(tenant_id=actor.tenant_id, cursor=cursor, limit=limit)
+    )
+    return RequisitionListResponse(
+        items=[RequisitionResponse(**item.__dict__) for item in page.items],
+        next_cursor=page.next_cursor,
+        total=page.total,
+    )
 
 
 @router.post(

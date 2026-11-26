@@ -20,5 +20,5 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   recruiter: MANAGE,
   auditor: ["audit:read", "tenant:read"],
   hiring_manager: ["tenant:read"],
-  interviewer: ["feedback:submit"],
+  interviewer: ["calendar:self", "feedback:submit"],
 };

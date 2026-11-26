@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CreateTenantRequest(BaseModel):
@@ -37,6 +37,12 @@ class RequisitionResponse(BaseModel):
     id: str
     title: str
     department: str
+
+
+class RequisitionListResponse(BaseModel):
+    items: list[RequisitionResponse]
+    next_cursor: str | None
+    total: int
 
 
 class CreateCandidateCaseRequest(BaseModel):
@@ -93,6 +99,32 @@ class InterviewResponse(BaseModel):
     scheduled_at: datetime
 
 
+class InterviewListItem(BaseModel):
+    id: str
+    candidate_case_id: str
+    candidate_name: str
+    requisition_title: str
+    interviewer_id: str
+    interviewer_email: str | None
+    scheduled_at: datetime
+    feedback_submitted: bool
+
+
+class InterviewListResponse(BaseModel):
+    items: list[InterviewListItem]
+    next_cursor: str | None
+    total: int
+
+
+class InterviewerItem(BaseModel):
+    id: str
+    email: str | None
+
+
+class InterviewerListResponse(BaseModel):
+    items: list[InterviewerItem]
+
+
 class SubmitFeedbackRequest(BaseModel):
     score: int = Field(ge=1, le=5)
     recommendation: str = Field(pattern=r"^(strong_hire|hire|no_hire|strong_no_hire)$")
@@ -127,13 +159,21 @@ class OfferResponse(BaseModel):
 
 
 class CreateCalendarSubscriptionRequest(BaseModel):
-    interviewer_id: str = Field(min_length=1, max_length=128)
+    interviewer_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class CalendarSubscriptionResponse(BaseModel):
     id: str
     interviewer_id: str
     feed_url: str
+    expires_at: datetime
+
+
+class CalendarSubscriptionSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    created_at: datetime
     expires_at: datetime
 
 

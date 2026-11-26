@@ -126,7 +126,7 @@ flowchart LR
 | Organization | tenants, memberships, requisitions | implemented | application service, unit of work, audit |
 | Identity | JWT validation, actor context, RBAC permissions | implemented | ports/adapters, JWKS rotation |
 | Candidates | case creation, list/filter, lifecycle transitions | implemented | aggregate, state machine (`workflow`), optimistic locking, CQRS-lite |
-| Interviews | scheduling, structured feedback | implemented | authorization policy, one-feedback-per-interview |
+| Interviews | scheduling, scoped interview listing, structured feedback | implemented | authorization policy, application-layer ownership rule, opaque `(scheduled_at, id)` keyset read model, one-feedback-per-interview |
 | Offers | staged approvals | implemented | aggregate, policy object, immutable decisions, outbox |
 | Notifications | outbox materialization, email delivery | implemented | outbox, leased worker, retry, dead letter |
 | Audit | tenant-scoped append-only evidence | implemented | same-transaction audit write; hash chain planned (stage 7) |
@@ -230,6 +230,26 @@ Each consumer records `(consumer, event_id)` in an inbox table in the same trans
 - `AUTH_MODE=oidc_jwt`: the API validates signature, issuer, audience and expiry against the configured JWKS (`app/modules/identity/infrastructure/jwt_validator.py`), refreshing keys once on an unknown `kid`. The token must carry `sub` and a `tenant_id` claim; `sub` is used as the local actor id, then tenant membership and role permissions are checked (`app/modules/identity/security.py`).
 - `AUTH_MODE=development_headers`: `X-Tenant-Id` and `X-Actor-Id`, rejected by settings validation in production.
 - Every aggregate lookup and write is tenant-scoped in the application; Row-Level Security adds a database-level guard in stage 7.
+
+<!-- permission-matrix:start -->
+| Permission | `tenant_admin` | `recruiter` | `auditor` | `hiring_manager` | `interviewer` |
+| --- | --- | --- | --- | --- | --- |
+| `requisition:create` | ✓ | ✓ |  |  |  |
+| `candidate:create` | ✓ | ✓ |  |  |  |
+| `candidate:transition` | ✓ | ✓ |  |  |  |
+| `candidate:attachment` | ✓ | ✓ |  |  |  |
+| `calendar:manage` | ✓ | ✓ |  |  |  |
+| `calendar:self` |  |  |  |  | ✓ |
+| `interview:manage` | ✓ | ✓ |  |  |  |
+| `feedback:submit` |  |  |  |  | ✓ |
+| `audit:read` | ✓ | ✓ | ✓ |  |  |
+| `report:read` | ✓ | ✓ |  |  |  |
+| `tenant:read` | ✓ | ✓ | ✓ | ✓ |  |
+| `retention:manage` | ✓ | ✓ |  |  |  |
+| `retention:purge` | ✓ | ✓ |  |  |  |
+<!-- permission-matrix:end -->
+
+`calendar:self` is scoped to the caller: it permits an interviewer to manage only links whose interviewer is their own authenticated identity, while `calendar:manage` remains the tenant-wide administrative permission.
 
 ### Target: login through Keycloak (stages 2–3)
 

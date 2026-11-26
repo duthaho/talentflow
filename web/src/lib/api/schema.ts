@@ -96,7 +96,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Calendar Subscriptions */
+        get: operations["list_calendar_subscriptions_v1_calendar_subscriptions_get"];
         put?: never;
         /** Create Calendar Subscription */
         post: operations["create_calendar_subscription_v1_calendar_subscriptions_post"];
@@ -279,6 +280,40 @@ export interface paths {
         patch: operations["transition_candidate_case_stage_v1_candidate_cases__candidate_case_id__stage_patch"];
         trace?: never;
     };
+    "/v1/interviewers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Interviewers */
+        get: operations["list_interviewers_v1_interviewers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/interviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Interviews */
+        get: operations["list_interviews_v1_interviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/interviews/{interview_id}/feedback": {
         parameters: {
             query?: never;
@@ -354,7 +389,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Requisitions */
+        get: operations["list_requisitions_v1_requisitions_get"];
         put?: never;
         /** Create Requisition */
         post: operations["create_requisition_v1_requisitions_post"];
@@ -488,6 +524,21 @@ export interface components {
             /** Interviewer Id */
             interviewer_id: string;
         };
+        /** CalendarSubscriptionSummary */
+        CalendarSubscriptionSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Id */
+            id: string;
+        };
         /** CandidateCaseDetailResponse */
         CandidateCaseDetailResponse: {
             /**
@@ -585,7 +636,7 @@ export interface components {
         /** CreateCalendarSubscriptionRequest */
         CreateCalendarSubscriptionRequest: {
             /** Interviewer Id */
-            interviewer_id: string;
+            interviewer_id?: string | null;
         };
         /** CreateCandidateCaseRequest */
         CreateCandidateCaseRequest: {
@@ -671,6 +722,37 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** InterviewListItem */
+        InterviewListItem: {
+            /** Candidate Case Id */
+            candidate_case_id: string;
+            /** Candidate Name */
+            candidate_name: string;
+            /** Feedback Submitted */
+            feedback_submitted: boolean;
+            /** Id */
+            id: string;
+            /** Interviewer Email */
+            interviewer_email: string | null;
+            /** Interviewer Id */
+            interviewer_id: string;
+            /** Requisition Title */
+            requisition_title: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+        };
+        /** InterviewListResponse */
+        InterviewListResponse: {
+            /** Items */
+            items: components["schemas"]["InterviewListItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Total */
+            total: number;
+        };
         /** InterviewResponse */
         InterviewResponse: {
             /** Candidate Case Id */
@@ -684,6 +766,18 @@ export interface components {
              * Format: date-time
              */
             scheduled_at: string;
+        };
+        /** InterviewerItem */
+        InterviewerItem: {
+            /** Email */
+            email: string | null;
+            /** Id */
+            id: string;
+        };
+        /** InterviewerListResponse */
+        InterviewerListResponse: {
+            /** Items */
+            items: components["schemas"]["InterviewerItem"][];
         };
         /** LegalHoldRequest */
         LegalHoldRequest: {
@@ -746,6 +840,15 @@ export interface components {
             candidates: components["schemas"]["PipelineCandidateSummary"];
             interviews: components["schemas"]["PipelineInterviewSummary"];
             offers: components["schemas"]["PipelineOfferSummary"];
+        };
+        /** RequisitionListResponse */
+        RequisitionListResponse: {
+            /** Items */
+            items: components["schemas"]["RequisitionResponse"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Total */
+            total: number;
         };
         /** RequisitionResponse */
         RequisitionResponse: {
@@ -940,6 +1043,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditEventResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_calendar_subscriptions_v1_calendar_subscriptions_get: {
+        parameters: {
+            query: {
+                interviewer: string;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarSubscriptionSummary"][];
                 };
             };
             /** @description Validation Error */
@@ -1473,6 +1611,76 @@ export interface operations {
             };
         };
     };
+    list_interviewers_v1_interviewers_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewerListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_interviews_v1_interviews_get: {
+        parameters: {
+            query?: {
+                interviewer?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_interview_feedback_v1_interviews__interview_id__feedback_post: {
         parameters: {
             query?: never;
@@ -1604,6 +1812,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PipelineReportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_requisitions_v1_requisitions_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequisitionListResponse"];
                 };
             };
             /** @description Validation Error */

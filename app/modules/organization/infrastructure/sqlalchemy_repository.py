@@ -1,8 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.modules.audit.persistence import AuditEvent
-from app.modules.organization.application.ports import RequisitionView, TenantView
+from app.modules.organization.application.ports import RequisitionPage, RequisitionView, TenantView
 from app.modules.organization.persistence import Membership, Requisition, Tenant, User
 
 
@@ -62,6 +62,24 @@ class SqlAlchemyOrganizationRepository:
             )
         )
         return RequisitionView(requisition.id, requisition.title, requisition.department)
+
+    def list_requisitions_page(
+        self, *, tenant_id: str, cursor: str | None, limit: int
+    ) -> RequisitionPage:
+        filters = [Requisition.tenant_id == tenant_id]
+        cursor_filters = [*filters, Requisition.id > cursor] if cursor else filters
+        records = self._session.scalars(
+            select(Requisition).where(*cursor_filters).order_by(Requisition.id).limit(limit + 1)
+        ).all()
+        page = records[:limit]
+        total = (
+            self._session.scalar(select(func.count()).select_from(Requisition).where(*filters)) or 0
+        )
+        return RequisitionPage(
+            items=[RequisitionView(record.id, record.title, record.department) for record in page],
+            next_cursor=page[-1].id if len(records) > limit else None,
+            total=total,
+        )
 
 
 class SqlAlchemyUnitOfWork:

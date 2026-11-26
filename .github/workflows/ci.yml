@@ -154,6 +154,40 @@ jobs:
   compose-oidc-smoke:
     needs: quality-and-migrations
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: defaults
+            postgres_port: 5432
+            mailpit_port: 8025
+            keycloak_port: 8081
+            seaweedfs_port: 8333
+            otel_grpc_port: 4317
+            otel_metrics_port: 8888
+            grafana_port: 3001
+            api_port: 8000
+            web_port: 3000
+          - name: non-default-host-ports
+            postgres_port: 15432
+            mailpit_port: 18025
+            keycloak_port: 18081
+            seaweedfs_port: 18333
+            otel_grpc_port: 14317
+            otel_metrics_port: 18888
+            grafana_port: 13001
+            api_port: 18000
+            web_port: 13000
+    env:
+      POSTGRES_PORT: ${{ matrix.postgres_port }}
+      MAILPIT_PORT: ${{ matrix.mailpit_port }}
+      KEYCLOAK_PORT: ${{ matrix.keycloak_port }}
+      SEAWEEDFS_PORT: ${{ matrix.seaweedfs_port }}
+      OTEL_GRPC_PORT: ${{ matrix.otel_grpc_port }}
+      OTEL_METRICS_PORT: ${{ matrix.otel_metrics_port }}
+      GRAFANA_PORT: ${{ matrix.grafana_port }}
+      API_PORT: ${{ matrix.api_port }}
+      WEB_PORT: ${{ matrix.web_port }}
     steps:
       - uses: actions/checkout@v4
       - name: Start the local OIDC stack and seed demo data
@@ -167,14 +201,14 @@ jobs:
             curl --fail --silent --show-error \
               --data 'grant_type=password' --data 'client_id=talentflow-dev-cli' \
               --data "username=$1" --data 'password=dev-demo-password' \
-              http://localhost:8081/realms/talentflow/protocol/openid-connect/token \
+              "http://localhost:${KEYCLOAK_PORT}/realms/talentflow/protocol/openid-connect/token" \
               | python -c 'import json, sys; print(json.load(sys.stdin)["access_token"])'
           }
           assert_status() {
             expected=$1
             token=$2
             actual=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-              --header "Authorization: Bearer $token" http://localhost:8000/v1/candidate-cases)
+              --header "Authorization: Bearer $token" "http://localhost:${API_PORT}/v1/candidate-cases")
             test "$actual" = "$expected"
           }
           assert_status 200 "$(get_token admin@talentflow.local)"
@@ -183,15 +217,15 @@ jobs:
           assert_status 403 "$(get_token interviewer@talentflow.local)"
       - name: Verify the web app starts a PKCE login against Keycloak
         run: |
-          location=$(curl --silent --output /dev/null --write-out '%{redirect_url}' http://localhost:3000/auth/login)
-          echo "$location" | grep -q '^http://localhost:8081/realms/talentflow/protocol/openid-connect/auth?'
+          location=$(curl --silent --output /dev/null --write-out '%{redirect_url}' "http://localhost:${WEB_PORT}/auth/login")
+          echo "$location" | grep -q "^http://localhost:${KEYCLOAK_PORT}/realms/talentflow/protocol/openid-connect/auth?"
           echo "$location" | grep -q 'code_challenge_method=S256'
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:3000/signed-out)" = 200
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://localhost:${WEB_PORT}/signed-out")" = 200
       - name: Verify the Collector received an API trace
         run: |
-          curl --fail --silent --show-error http://localhost:8000/health/live >/dev/null
+          curl --fail --silent --show-error "http://localhost:${API_PORT}/health/live" >/dev/null
           for attempt in $(seq 1 30); do
-            accepted=$(curl --fail --silent http://localhost:8888/metrics \
+            accepted=$(curl --fail --silent "http://localhost:${OTEL_METRICS_PORT}/metrics" \
               | awk '/otelcol_receiver_accepted_spans_total/ && $1 !~ /^#/ { total += $2 } END { print total + 0 }')
             test "$accepted" -gt 0 && exit 0
             sleep 1
@@ -200,11 +234,11 @@ jobs:
           exit 1
       - name: Verify Grafana RED dashboard has queryable data
         run: |
-          curl --fail --silent http://localhost:3001/api/datasources/uid/prometheus >/dev/null
+          curl --fail --silent "http://localhost:${GRAFANA_PORT}/api/datasources/uid/prometheus" >/dev/null
           for attempt in $(seq 1 30); do
             result=$(curl --fail --silent --get \
               --data-urlencode 'query=sum(rate(http_server_request_duration_seconds_count{service_name="talentflow-api"}[5m])) by (http_route)' \
-              http://localhost:3001/api/datasources/proxy/uid/prometheus/api/v1/query)
+              "http://localhost:${GRAFANA_PORT}/api/datasources/proxy/uid/prometheus/api/v1/query")
             if echo "$result" | python -c 'import json, sys; assert json.load(sys.stdin)["data"]["result"]'; then
               exit 0
             fi
