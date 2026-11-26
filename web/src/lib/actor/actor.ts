@@ -5,6 +5,7 @@ const PERMISSIONS = [
   "candidate:create",
   "candidate:transition",
   "candidate:attachment",
+  "calendar:self",
   "calendar:manage",
   "interview:manage",
   "feedback:submit",
