@@ -11,7 +11,7 @@ services:
       timeout: 3s
       retries: 20
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -27,7 +27,7 @@ services:
   mailpit:
     image: axllent/mailpit:v1.28.1
     ports:
-      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 5s
@@ -41,10 +41,10 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-dev-keycloak-admin-password}
       KC_HTTP_PORT: 8080
-      KC_HOSTNAME: http://localhost:8081
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8081}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     ports:
-      - "127.0.0.1:8081:8080"
+      - "127.0.0.1:${KEYCLOAK_PORT:-8081}:8080"
     volumes:
       - ./keycloak/realm-talentflow.json:/opt/keycloak/data/import/realm-talentflow.json:ro
     healthcheck:
@@ -52,6 +52,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+      # First-start Quarkus augmentation plus realm import can take several minutes on slow runners.
+      start_period: 8m
 
   seaweedfs:
     image: chrislusf/seaweedfs:3.88
@@ -73,7 +75,7 @@ services:
       - seaweedfs_data:/data
       - ./seaweedfs/s3.json.tmpl:/etc/seaweedfs/s3.json.tmpl:ro
     ports:
-      - "127.0.0.1:8333:8333"
+      - "127.0.0.1:${SEAWEEDFS_PORT:-8333}:8333"
     healthcheck:
       test: ["CMD-SHELL", "wget -S --spider http://127.0.0.1:8333/ 2>&1 | grep -Eq 'HTTP/1.1 (200|403)' "]
       interval: 5s
@@ -111,8 +113,8 @@ services:
     volumes:
       - ./observability/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "127.0.0.1:4317:4317"
-      - "127.0.0.1:8888:8888"
+      - "127.0.0.1:${OTEL_GRPC_PORT:-4317}:4317"
+      - "127.0.0.1:${OTEL_METRICS_PORT:-8888}:8888"
     healthcheck:
       test: ["CMD", "/otelcol-contrib", "validate", "--config=/etc/otelcol-contrib/config.yaml"]
       interval: 10s
@@ -139,8 +141,8 @@ services:
       APP_ENV: development
       AUTH_MODE: oidc_jwt
       DATABASE_URL: postgresql+psycopg://talentflow:talentflow@postgres:5432/talentflow
-      CORS_ALLOWED_ORIGINS: http://localhost:3000
-      OIDC_ISSUER: http://localhost:8081/realms/talentflow
+      CORS_ALLOWED_ORIGINS: http://localhost:${WEB_PORT:-3000}
+      OIDC_ISSUER: http://localhost:${KEYCLOAK_PORT:-8081}/realms/talentflow
       OIDC_AUDIENCE: talentflow-api
       OIDC_JWKS_URL: http://keycloak:8080/realms/talentflow/protocol/openid-connect/certs
       REDIS_URL: redis://redis:6379/0
@@ -148,7 +150,7 @@ services:
       ATTACHMENT_STORAGE_ROOT: /app/data/attachments
       ATTACHMENT_STORAGE_BACKEND: s3
       ATTACHMENT_S3_ENDPOINT_URL: http://seaweedfs:8333
-      ATTACHMENT_S3_PUBLIC_ENDPOINT_URL: http://localhost:8333
+      ATTACHMENT_S3_PUBLIC_ENDPOINT_URL: http://localhost:${SEAWEEDFS_PORT:-8333}
       ATTACHMENT_S3_ACCESS_KEY_ID: ${SEAWEEDFS_ACCESS_KEY:-dev-seaweedfs-access-key}
       ATTACHMENT_S3_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_KEY:-dev-seaweedfs-secret-key}
       ATTACHMENT_S3_BUCKET: talentflow-attachments
@@ -158,7 +160,7 @@ services:
       ATTACHMENT_SCAN_MODE: clamav
       ATTACHMENT_CLAMAV_HOST: clamav
       ATTACHMENT_CLAMAV_PORT: 3310
-      CALENDAR_PUBLIC_BASE_URL: http://localhost:8000
+      CALENDAR_PUBLIC_BASE_URL: http://localhost:${API_PORT:-8000}
       NOTIFICATION_EMAIL_ADAPTER: smtp
       NOTIFICATION_FROM_EMAIL: notifications@talentflow.local
       NOTIFICATION_SMTP_HOST: mailpit
@@ -192,7 +194,7 @@ services:
       migrate:
         condition: service_completed_successfully
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)"]
       interval: 10s
@@ -202,9 +204,9 @@ services:
   web:
     build: ./web
     environment:
-      APP_BASE_URL: http://localhost:3000
+      APP_BASE_URL: http://localhost:${WEB_PORT:-3000}
       API_BASE_URL: http://api:8000
-      OIDC_ISSUER: http://localhost:8081/realms/talentflow
+      OIDC_ISSUER: http://localhost:${KEYCLOAK_PORT:-8081}/realms/talentflow
       OIDC_INTERNAL_ISSUER: http://keycloak:8080/realms/talentflow
       OIDC_CLIENT_ID: talentflow-api
       REDIS_URL: redis://redis:6379/1
@@ -216,7 +218,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
 
   notification-worker:
     build: .
@@ -265,6 +267,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://talentflow:talentflow@postgres:5432/talentflow
       KEYCLOAK_ADMIN_URL: http://keycloak:8080
+      KEYCLOAK_WEB_BASE_URL: http://localhost:${WEB_PORT:-3000}
       KEYCLOAK_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-dev-keycloak-admin-password}
       DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-dev-demo-password}

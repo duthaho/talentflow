@@ -227,6 +227,40 @@ export interface paths {
         patch: operations["transition_candidate_case_stage_v1_candidate_cases__candidate_case_id__stage_patch"];
         trace?: never;
     };
+    "/v1/interviewers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Interviewers */
+        get: operations["list_interviewers_v1_interviewers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/interviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Interviews */
+        get: operations["list_interviews_v1_interviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/interviews/{interview_id}/feedback": {
         parameters: {
             query?: never;
@@ -596,6 +630,37 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** InterviewListItem */
+        InterviewListItem: {
+            /** Candidate Case Id */
+            candidate_case_id: string;
+            /** Candidate Name */
+            candidate_name: string;
+            /** Feedback Submitted */
+            feedback_submitted: boolean;
+            /** Id */
+            id: string;
+            /** Interviewer Email */
+            interviewer_email: string | null;
+            /** Interviewer Id */
+            interviewer_id: string;
+            /** Requisition Title */
+            requisition_title: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+        };
+        /** InterviewListResponse */
+        InterviewListResponse: {
+            /** Items */
+            items: components["schemas"]["InterviewListItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Total */
+            total: number;
+        };
         /** InterviewResponse */
         InterviewResponse: {
             /** Candidate Case Id */
@@ -609,6 +674,18 @@ export interface components {
              * Format: date-time
              */
             scheduled_at: string;
+        };
+        /** InterviewerItem */
+        InterviewerItem: {
+            /** Email */
+            email: string | null;
+            /** Id */
+            id: string;
+        };
+        /** InterviewerListResponse */
+        InterviewerListResponse: {
+            /** Items */
+            items: components["schemas"]["InterviewerItem"][];
         };
         /** LegalHoldRequest */
         LegalHoldRequest: {
@@ -1298,6 +1375,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CandidateCaseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_interviewers_v1_interviewers_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewerListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_interviews_v1_interviews_get: {
+        parameters: {
+            query?: {
+                interviewer?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterviewListResponse"];
                 };
             };
             /** @description Validation Error */

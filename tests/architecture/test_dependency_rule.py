@@ -25,8 +25,11 @@ ALLOWED_CROSS_CONTEXT_PERSISTENCE_IMPORTS = {
     ("candidates", "organization"): "candidate creation validates a requisition",
     ("identity", "organization"): "authorization resolves the tenant membership record",
     ("interviews", "audit"): "interview lifecycle writes an audit event in the same transaction",
-    ("interviews", "candidates"): "interview scheduling validates candidate ownership",
-    ("interviews", "organization"): "interview scheduling validates interviewer membership",
+    ("interviews", "candidates"): "interview scheduling and reads validate candidate ownership",
+    (
+        "interviews",
+        "organization",
+    ): "interview scheduling and reads validate interviewer membership",
     ("notifications", "organization"): "email delivery resolves the recipient address",
     ("offers", "notifications"): "offer approval writes its transactional outbox event",
     (
