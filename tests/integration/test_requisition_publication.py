@@ -4,8 +4,41 @@ from sqlalchemy import select
 
 from app.main import create_app
 from app.modules.audit.persistence import AuditEvent
-from app.modules.organization.persistence import Membership
+from app.modules.organization.persistence import Membership, Requisition
 from tests.integration.test_requisition_list_query import create_requisition, create_tenant
+
+
+def test_publication_idempotency_replays_stored_response_without_second_audit() -> None:
+    app = create_app("sqlite://")
+    with TestClient(app) as client:
+        tenant = create_tenant(client, slug="acme", admin_id="admin-1")
+        headers = {"X-Tenant-Id": tenant["id"], "X-Actor-Id": "admin-1"}
+        job = create_requisition(client, headers, "Engineer")
+        url = f"/v1/requisitions/{job['id']}/publication"
+        keyed_headers = {**headers, "Idempotency-Key": "publish-once"}
+        first = client.patch(url, headers=keyed_headers, json={"published": True})
+        replay = client.patch(url, headers=keyed_headers, json={"published": True})
+        assert first.status_code == replay.status_code == 200
+        assert first.json()["published"] is True
+        assert first.json()["published_at"] is not None
+        assert replay.content == first.content
+        assert replay.headers["Idempotent-Replayed"] == "true"
+        with app.state.session_factory() as session:
+            assert session.query(AuditEvent).filter_by(action="requisition.published").count() == 1
+
+        # A stored response must replay even after a later command changes state.
+        assert client.patch(url, headers=headers, json={"published": False}).status_code == 200
+        later_replay = client.patch(url, headers=keyed_headers, json={"published": True})
+        assert later_replay.status_code == 200
+        assert later_replay.content == first.content
+        assert later_replay.headers["Idempotent-Replayed"] == "true"
+        with app.state.session_factory() as session:
+            record = session.get(Requisition, job["id"])
+            assert record.published is False and record.published_at is None
+            assert session.query(AuditEvent).filter_by(action="requisition.published").count() == 1
+            assert (
+                session.query(AuditEvent).filter_by(action="requisition.unpublished").count() == 1
+            )
 
 
 def test_publication_changes_are_audited_and_retries_are_noops() -> None:

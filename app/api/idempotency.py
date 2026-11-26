@@ -157,6 +157,7 @@ class CommandRoute(APIRoute):
             (
                 "POST" in (kwargs.get("methods") or [])
                 or path == "/v1/candidate-cases/{candidate_case_id}/stage"
+                or (kwargs.get("openapi_extra") or {}).get("x-idempotency-key", False)
             )
             and path != "/v1/tenants"
             and not getattr(endpoint, "__idempotent_command__", False)
@@ -190,10 +191,7 @@ class CommandRoute(APIRoute):
         super().__init__(path, endpoint, **kwargs)
 
     def get_route_handler(self):
-        if (
-            "POST" not in self.methods
-            and self.path != "/v1/candidate-cases/{candidate_case_id}/stage"
-        ) or self.path == "/v1/tenants":
+        if not getattr(self.endpoint, "__idempotent_command__", False):
             return super().get_route_handler()
         original = super().get_route_handler()
 

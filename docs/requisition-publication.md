@@ -13,6 +13,11 @@ and writes no audit event. A change writes `requisition.published` or
 `requisition.unpublished` in the same transaction. PostgreSQL row locking
 serializes changes to the same requisition.
 
+The command explicitly opts into the optional `Idempotency-Key` contract from DUTH-60
+with `x-idempotency-key` route metadata; other non-POST routes keep their existing behavior.
+Replaying a key returns the original response with `Idempotent-Replayed: true`
+and writes no second audit event, even if a later command changed publication.
+
 The endpoint requires `requisition:create`; missing permission returns `403`.
 An unknown or other tenant's requisition returns `404`. The body must contain a
 JSON boolean; invalid input returns `422`. Errors use existing problem+json
@@ -24,7 +29,7 @@ document these additive fields.
 The organization application use case stays framework-free and uses the existing
 repository and unit-of-work ports. No dependency or new runtime setting is needed.
 
-Migration `d126a001` adds the columns and the partial public-listing index.
+Migration `d126a001`, chained after DUTH-59's `d59a001`, adds the columns and the partial public-listing index.
 Existing rows default to unpublished. Upgrade before deploying the app; older
 app versions ignore these additive columns. To roll back, restore the older app
 first and then downgrade the migration. Downgrade preserves requisitions but

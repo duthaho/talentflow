@@ -4870,6 +4870,24 @@
               ],
               "title": "X-Actor-Id"
             }
+          },
+          {
+            "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -4904,7 +4922,8 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Set Requisition Publication"
+        "summary": "Set Requisition Publication",
+        "x-idempotency-key": true
       }
     },
     "/v1/retention-policy": {

@@ -10,7 +10,7 @@ def test_existing_requisitions_default_unpublished_and_downgrade_preserves_rows(
     monkeypatch.setenv("DATABASE_URL", url)
     config = Config()
     config.set_main_option("script_location", "migrations")
-    command.upgrade(config, "2d110f23a001")
+    command.upgrade(config, "d59a001")
     engine = create_engine(url)
     with engine.begin() as connection:
         connection.execute(
@@ -35,7 +35,8 @@ def test_existing_requisitions_default_unpublished_and_downgrade_preserves_rows(
             text("SELECT sql FROM sqlite_master WHERE name='ix_requisitions_public'")
         )
         assert "published_at DESC" in index_sql and "WHERE published" in index_sql
-    command.downgrade(config, "2d110f23a001")
+    command.downgrade(config, "d59a001")
+    assert inspect(engine).has_table("idempotency_records")
     assert "published" not in {
         column["name"] for column in inspect(engine).get_columns("requisitions")
     }

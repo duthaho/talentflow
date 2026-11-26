@@ -30,10 +30,16 @@ rebuilds dependency graphs. Domain/application code remains unaware of it.
 | `/v1/calendar-subscriptions` | Ignored: response contains a bearer secret |
 | `/v1/candidate-cases/{candidate_case_id}/attachments` | Ignored: multipart upload |
 
-PATCH, PUT, GET and public careers application routes are outside this contract.
+PATCH, PUT, GET and public careers application routes are outside the default contract.
 Excluded POST operations describe the exclusion in OpenAPI. Requests without a
 key retain their existing behavior. Replays always reauthenticate and pass the
 route's current permission dependencies; revoked roles or membership return 403.
+
+DUTH-126 amendment: a command route may explicitly opt in with
+`openapi_extra={"x-idempotency-key": True}`. The requisition publication PATCH uses
+this metadata to share the same reservation, authorization, completion and replay
+handling. Other non-POST routes retain their existing behavior. The generated
+OpenAPI includes the optional key header for the opted-in route.
 
 Keys contain 1–255 visible ASCII characters (0x21–0x7E); malformed keys return 400
 RFC 9457 Problem Details. The unique scope is `(tenant_id, actor_id, key)`, so the

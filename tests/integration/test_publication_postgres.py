@@ -29,7 +29,7 @@ def test_postgres_migration_and_concurrent_publication(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", url)
     config = Config()
     config.set_main_option("script_location", "migrations")
-    command.upgrade(config, "2d110f23a001")
+    command.upgrade(config, "d59a001")
     engine = create_engine(url)
     with engine.begin() as connection:
         connection.execute(
@@ -85,7 +85,8 @@ def test_postgres_migration_and_concurrent_publication(monkeypatch):
             )
             == 1
         )
-    command.downgrade(config, "2d110f23a001")
+    command.downgrade(config, "d59a001")
+    assert inspect(engine).has_table("idempotency_records")
     assert "published" not in {
         column["name"] for column in inspect(engine).get_columns("requisitions")
     }

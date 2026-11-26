@@ -2285,6 +2285,8 @@ export interface operations {
                 authorization?: string | null;
                 "X-Tenant-Id"?: string | null;
                 "X-Actor-Id"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
             };
             path: {
                 id: string;

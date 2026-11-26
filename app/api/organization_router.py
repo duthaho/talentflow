@@ -98,7 +98,11 @@ def create_requisition(
     )
 
 
-@router.patch("/v1/requisitions/{id}/publication", response_model=RequisitionResponse)
+@router.patch(
+    "/v1/requisitions/{id}/publication",
+    response_model=RequisitionResponse,
+    openapi_extra={"x-idempotency-key": True},
+)
 def set_requisition_publication(
     id: str,
     payload: SetRequisitionPublicationRequest,
