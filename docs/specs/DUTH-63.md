@@ -83,16 +83,17 @@ Public routes live under `/v1/public/...`. They have no auth dependency and neve
 
 Processing order (later steps run only when the earlier ones pass):
 
-1. **Request cap.** If `Content-Length` is missing or larger than `attachment_max_bytes + 64 KiB`, return `413` (`payload-too-large`, new type) before the body is parsed.
-2. **Rate limit.** At most `CAREERS_APPLY_LIMIT_PER_HOUR` (default 5) per client IP per hour, keyed separately from the global limiter, and at most `CAREERS_APPLY_LIMIT_PER_EMAIL_PER_DAY` (default 3) per tenant + normalized email per day. Return `429` (`rate-limited`) with `Retry-After`. The email-keyed limit returns the same `429` body as the IP limit.
-3. **Honeypot.** If `website` is non-empty, return the normal `202` response, store nothing, scan nothing, and increment `careers_applications_total{outcome="honeypot"}`.
+1. **Request cap.** Before the body is parsed: if `Content-Length` is missing, return `411` (`length-required`, new type). If it is larger than `attachment_max_bytes + 64 KiB`, return `413` (`payload-too-large`, new type). The web handler buffers the form and always sends `Content-Length` (see Web), so real applications never hit `411`.
+2. **IP rate limit.** Also before parsing: at most `CAREERS_APPLY_LIMIT_PER_HOUR` (default 5) per client IP per hour, keyed separately from the global limiter. Every request that reaches this step counts, whatever its later outcome. Return `429` (`rate-limited`) with `Retry-After`.
+3. **Honeypot.** After the multipart body is parsed: if `website` is non-empty, return the normal `202` response, store nothing, scan nothing, and increment `careers_applications_total{outcome="honeypot"}`.
 4. **Tenant and requisition.** An unknown slug, an unknown requisition, another tenant's requisition or an unpublished requisition all return the same `404` (`not-found`).
 5. **Fields and consent.** A validation failure, a missing consent or a stale `consent_version` return `422` (`validation-error`). A stale version tells the page to reload the text.
-6. **File.** The existing `_validate` rules apply: name, size, allow-list and signature (`422`). Then the ClamAV scan runs: an infected file returns `422` (`validation-error`, "file was rejected"), and an unavailable scanner returns `503` (fail closed). Both stores nothing.
-7. **Existing case.** If the tenant already has a case whose email matches (case-insensitive), no case or attachment is created. The response is the normal `202`, and one audit event `candidate.reapplied` is written on the existing case with the requisition id. The CV is discarded, so nobody can attach files to another person's case by knowing their email.
-8. **Create.** In one transaction: the candidate case (`stage = applied`, `source = careers`, `created_by = system:careers`), the CV attachment (`document_type = resume`), the consent record, and the audit events `candidate.created` and `attachment.uploaded` with `actor_id = system:careers`. A unique-constraint race on `(tenant_id, email)` is handled as step 7.
+6. **Email rate limit.** After the fields are valid and before the file is checked: at most `CAREERS_APPLY_LIMIT_PER_EMAIL_PER_DAY` (default 3) per tenant + normalized email per day. Requests rejected at steps 3–5 do not count; every request that reaches this step counts, including ones later rejected at step 7. It returns the same `429` body as the IP limit.
+7. **File.** The existing `_validate` rules apply: name, size, allow-list and signature (`422`). Then the ClamAV scan runs: an infected file returns `422` (`validation-error`, "file was rejected"), and an unavailable scanner returns `503` (fail closed). Both store nothing.
+8. **Existing case.** If the tenant already has a case whose email matches (case-insensitive), no case or attachment is created. The response is the normal `202`, and one audit event `candidate_case.reapplied` is written on the existing case with the requisition id. The CV is discarded, so nobody can attach files to another person's case by knowing their email.
+9. **Create.** In one transaction: the candidate case (`stage = applied`, `source = careers`, `created_by = system:careers`), the CV attachment (`document_type = resume`), the consent record, and the existing audit actions `candidate_case.created` and `candidate_attachment.uploaded` with `actor_id = system:careers`. A unique-constraint race on `(tenant_id, email)` is handled as step 8.
 
-Response for steps 3, 7 and 8:
+Response for steps 3, 8 and 9:
 
 ```json
 { "status": "received" }
@@ -122,7 +123,7 @@ OpenAPI is regenerated into `web/openapi.json` and `web/src/lib/api/schema.ts` i
 ## Web
 
 - A new route group `web/src/app/(public)/careers/[tenantSlug]/` outside `(app)`, so no session is required. It has a list page and an apply page per requisition. The pages render server-side from the public API.
-- The apply form posts to a Next route handler (`/api/public/careers/...`). The handler forwards the multipart body to the API with the visitor's IP in `X-Forwarded-For`. Compose sets `RATE_LIMIT_TRUSTED_PROXY_CIDRS` to the web container's network so the API rate-limits the real client. The handler never attaches the BFF session cookie or token.
+- The apply form posts to a Next route handler (`/api/public/careers/...`). The handler rejects bodies over the same cap, buffers the form in memory, and forwards it with an explicit `Content-Length` (never chunked). It forwards the multipart body to the API with the visitor's IP in `X-Forwarded-For`. Compose sets `RATE_LIMIT_TRUSTED_PROXY_CIDRS` to the web container's network so the API rate-limits the real client. The handler never attaches the BFF session cookie or token.
 - The honeypot field is visually hidden (not `display:none` only), has `tabindex="-1"` and `autocomplete="off"`, and its label tells screen-reader users to leave it empty.
 - The form pre-checks size and type using `upload_policy` from the public listing (`GET /v1/attachment-policy` needs a session, so it cannot be used here). The server remains authoritative.
 - After a `202` the page shows "Application received". `413`, `422`, `429` and `503` show specific, non-technical messages.
@@ -131,15 +132,15 @@ OpenAPI is regenerated into `web/openapi.json` and `web/src/lib/api/schema.ts` i
 
 ## Acceptance criteria
 
-- AC1: Given a tenant with a published requisition, when an anonymous user submits the form with valid fields, consent and a clean PDF CV, then the API returns `202`, a case exists in `applied` with `source = careers`, its attachment is stored and was scanned, and audit events `candidate.created` and `attachment.uploaded` with actor `system:careers` exist. *(Issue AC1)*
+- AC1: Given a tenant with a published requisition, when an anonymous user submits the form with valid fields, consent and a clean PDF CV, then the API returns `202`, a case exists in `applied` with `source = careers`, its attachment is stored and was scanned, and audit events `candidate_case.created` and `candidate_attachment.uploaded` with actor `system:careers` exist. *(Issue AC1)*
 - AC2: Given an unpublished requisition, a requisition of another tenant or an unknown slug, when anyone lists or applies, then the requisition is not listed and applying returns `404`.
-- AC3: Given a file that fails the size, type or signature checks, or that ClamAV flags (EICAR test file), when it is submitted, then the API returns `413` or `422` and no case, attachment or object is stored. When the scanner is down it returns `503` and stores nothing. *(Issue AC2)*
+- AC3: Given a file that fails the size, type or signature checks, or that ClamAV flags (EICAR test file), when it is submitted, then the API returns `411`, `413` or `422` and no case, attachment or object is stored. When the scanner is down it returns `503` and stores nothing. *(Issue AC2)*
 - AC4: Given a non-empty honeypot field, when the form is submitted, then the response equals the success response and nothing is stored. *(Issue AC2)*
 - AC5: Given more than the per-IP or per-email limit within the window, when another application arrives, then it returns `429` with `Retry-After`, and the IP limit uses `X-Forwarded-For` only from trusted proxies. *(Issue AC2)*
-- AC6: Given an email that already has a case in the tenant (in any letter case), when it applies again, then the response equals the success response, no case or attachment is created, and `candidate.reapplied` is audited on the existing case.
+- AC6: Given an email that already has a case in the tenant (in any letter case), when it applies again, then the response equals the success response, no case or attachment is created, and `candidate_case.reapplied` is audited on the existing case.
 - AC7: Given a careers case, when staff open its detail page, then the source and the consent version, accepted time and exact text shown at apply time are displayed. Staff-created cases show no consent panel. *(Issue AC3)*
 - AC8: Given a user with `requisition:create`, when they toggle published in Settings → Requisitions or call the publication API, then the careers page reflects it and an audit event is written. Roles without the permission get `403` and see no switch.
-- AC9: Given a careers case past the tenant's retention period, when the retention job runs, then the case is anonymized and its consent text is cleared, while the version and timestamp remain.
+- AC9: Given a terminal (`rejected` or `withdrawn`) careers case whose `terminal_at` plus the tenant's `retention_days` is in the past and which has no legal hold, when the retention job runs, then the case is anonymized and its consent text is cleared, while the version and timestamp remain.
 - AC10: `ruff format --check`, `ruff check`, `python -m pytest` (coverage ≥ 85%), the architecture tests, web lint, typecheck, unit tests and build all pass. A Playwright test covers publish → apply → see the case and its consent.
 
 ## Constraints
@@ -148,20 +149,24 @@ OpenAPI is regenerated into `web/openapi.json` and `web/src/lib/api/schema.ts` i
 - Schema changes are additive only (expand). No existing column changes type or nullability.
 - No real PII in fixtures or seed. The seed publishes two demo requisitions and prints the careers URL.
 - New settings are listed by name in the README: `CAREERS_APPLY_LIMIT_PER_HOUR` and `CAREERS_APPLY_LIMIT_PER_EMAIL_PER_DAY`, plus `RATE_LIMIT_TRUSTED_PROXY_CIDRS` set for the web container in compose.
-- A short ADR or doc section explains the untrusted-input pipeline (cap → limit → honeypot → validate → scan → dedupe) and the anti-enumeration response. This repo is a teaching artifact.
+- A short ADR or doc section explains the untrusted-input pipeline (cap → IP limit → honeypot → validate → email limit → scan → dedupe) and the anti-enumeration response. This repo is a teaching artifact.
 
 ## Risks
 
 - **Distributed abuse beats per-IP limits.** A botnet or IPv6 rotation can stay under 5/hour/IP. Mitigations: the per-email limit, a scanner-bound cost per request, and the metric `careers_applications_total{outcome}` to watch. CAPTCHA stays a documented follow-up.
 - **ClamAV cost per request.** Each application streams up to 5 MiB to `clamd`. The request cap and the IP limit run before the scan to bound this. A scanner outage blocks applications (`503`) by design.
 - **Wrong trusted-proxy config.** If `RATE_LIMIT_TRUSTED_PROXY_CIDRS` is too wide, clients can spoof `X-Forwarded-For`. If it is too narrow, all applicants share the web container's IP and hit the limit together. Tests cover both, and the compose value is documented.
-- **Timing side channel on existing emails.** Step 7 skips the storage write, so a known email can answer slightly faster. This is accepted for a showcase and noted in the ADR. The scan runs for both paths, which keeps most of the difference small.
+- **Timing side channel on existing emails.** Step 8 skips the storage write, so a known email can answer slightly faster. This is accepted for a showcase and noted in the ADR. The scan runs for both paths, which keeps most of the difference small.
 - **DOCX is a ZIP.** The signature check proves only that the file is a ZIP. ClamAV scans archive contents. Files are never rendered or parsed server-side in this issue (resume parsing is DUTH-72).
 - **Seeing the consent text is PII-adjacent.** The text contains no applicant data, only tenant wording, so showing it to `tenant:read` roles is safe.
 
 ## Open questions
 
 None. The four product questions were answered on the issue on 2026-11-26 (see Decisions).
+
+## Security review
+
+This issue adds the first anonymous write endpoint and an untrusted file upload. The plan therefore includes a design review by Hoàng-Security of the untrusted-input pipeline before implementation starts: request cap, IP and email rate limits, trusted-proxy CIDRs, honeypot, upload checks and scan, and the anti-enumeration response. The implementation PR then goes through the normal `security_review` step.
 
 ## Rollout and rollback
 
