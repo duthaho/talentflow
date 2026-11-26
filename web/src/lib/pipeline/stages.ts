@@ -38,10 +38,32 @@ export const ALLOWED_TRANSITIONS: Record<Stage, readonly Stage[]> = {
   withdrawn: [],
 };
 
+export const OFFER_STAGES = ["offer_pending_approval", "offer_approved", "offer_rejected"] as const;
+
+// Offer stages are rendered as columns, but only offer endpoints may target them.
+// This table governs moves submitted to the generic candidate stage endpoint.
+function genericTargets(stage: Stage): readonly Stage[] {
+  return ALLOWED_TRANSITIONS[stage].filter(
+    (target) => !OFFER_STAGES.some((offerStage) => offerStage === target),
+  );
+}
+
+export const GENERIC_STAGE_TRANSITIONS = {
+  applied: genericTargets("applied"),
+  screening: genericTargets("screening"),
+  interviewing: genericTargets("interviewing"),
+  offer_pending_approval: genericTargets("offer_pending_approval"),
+  offer_approved: genericTargets("offer_approved"),
+  offer_rejected: genericTargets("offer_rejected"),
+  hired: genericTargets("hired"),
+  rejected: genericTargets("rejected"),
+  withdrawn: genericTargets("withdrawn"),
+} satisfies Record<Stage, readonly Stage[]>;
+
 export function isStage(value: string): value is Stage {
   return (STAGES as readonly string[]).includes(value);
 }
 
 export function canMove(from: string, to: Stage): boolean {
-  return isStage(from) && ALLOWED_TRANSITIONS[from].includes(to);
+  return isStage(from) && GENERIC_STAGE_TRANSITIONS[from].includes(to);
 }

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.modules.candidates.application.ports import AuditRecorder, CandidateRepository, UnitOfWork
+from app.modules.candidates.application.ports import (
+    ApprovedOfferRepository,
+    AuditRecorder,
+    CandidateRepository,
+    UnitOfWork,
+)
 from app.modules.candidates.domain.candidate_case import CandidateCase
 from app.modules.workflow.domain.candidate_state_machine import CandidateStage
 
@@ -12,6 +17,14 @@ class CandidateNotFoundError(LookupError):
 
 
 class ConcurrencyConflictError(RuntimeError):
+    pass
+
+
+class OfferStageManagedByOfferFlowError(ValueError):
+    pass
+
+
+class ApprovedOfferRequiredError(ValueError):
     pass
 
 
@@ -30,10 +43,12 @@ class TransitionCandidateHandler:
         self,
         *,
         repository: CandidateRepository,
+        approved_offers: ApprovedOfferRepository,
         audit: AuditRecorder,
         unit_of_work: UnitOfWork,
     ):
         self._repository = repository
+        self._approved_offers = approved_offers
         self._audit = audit
         self._unit_of_work = unit_of_work
 
@@ -45,7 +60,26 @@ class TransitionCandidateHandler:
             raise CandidateNotFoundError(command.candidate_id)
         if candidate.version != command.expected_version:
             raise ConcurrencyConflictError(command.candidate_id)
-        transitioned = candidate.transition(CandidateStage(command.target_stage))
+        target_stage = CandidateStage(command.target_stage)
+        if target_stage in {
+            CandidateStage.OFFER_PENDING_APPROVAL,
+            CandidateStage.OFFER_APPROVED,
+            CandidateStage.OFFER_REJECTED,
+        }:
+            raise OfferStageManagedByOfferFlowError(
+                "Offer stages can only be changed through the offers flow"
+            )
+        if (
+            candidate.stage is CandidateStage.OFFER_APPROVED
+            and target_stage is CandidateStage.HIRED
+            and not self._approved_offers.has_approved_offer(
+                candidate_id=candidate.id, tenant_id=command.tenant_id
+            )
+        ):
+            raise ApprovedOfferRequiredError(
+                "An approved offer is required before hiring a candidate"
+            )
+        transitioned = candidate.transition(target_stage)
         if not self._repository.transition(
             candidate=transitioned, expected_version=command.expected_version
         ):

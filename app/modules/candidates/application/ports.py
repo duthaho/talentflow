@@ -56,6 +56,12 @@ class RequisitionRepository(Protocol):
     def exists(self, *, requisition_id: str, tenant_id: str) -> bool: ...
 
 
+class ApprovedOfferRepository(Protocol):
+    """Read model used to protect the final candidate lifecycle transition."""
+
+    def has_approved_offer(self, *, candidate_id: str, tenant_id: str) -> bool: ...
+
+
 class AuditRecorder(Protocol):
     def candidate_created(
         self, *, candidate: CandidateCase, actor_id: str, correlation_id: str
