@@ -30,6 +30,7 @@ from app.shared.settings import Settings
 correlation_id_context: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 _CALENDAR_FEED_PATH_PATTERN = re.compile(r"/v1/calendar-feeds/[^/?]+\.ics")
+_SEARCH_QUERY_PATTERN = re.compile(r"(^|[?&])((?:q|%71)=)[^&#]*")
 _telemetry_handler: LoggingHandler | None = None
 _telemetry_configured = False
 
@@ -126,7 +127,25 @@ def _otlp_insecure(runtime_settings: Settings) -> bool:
     return urlsplit(runtime_settings.otel_exporter_otlp_endpoint).scheme != "https"
 
 
+class SearchQueryRedactionFilter(logging.Filter):
+    """Uvicorn stores the request target in argument 2 of its access record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple) and len(record.args) == 5:
+            client, method, target, version, status = record.args
+            if isinstance(target, str):
+                record.args = (client, method, _redact_search_query(target), version, status)
+        return True
+
+
+def _redact_search_query(value: str) -> str:
+    return _SEARCH_QUERY_PATTERN.sub(r"\g<1>\g<2>REDACTED", value)
+
+
 def configure_logging() -> None:
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(item, SearchQueryRedactionFilter) for item in access_logger.filters):
+        access_logger.addFilter(SearchQueryRedactionFilter())
     root = logging.getLogger()
     if any(isinstance(handler.formatter, JsonFormatter) for handler in root.handlers):
         return
@@ -194,9 +213,16 @@ def prometheus_response() -> Response:
 
 def _redact_calendar_feed_span(span: Span, scope: dict[str, object]) -> None:
     path = scope.get("path")
-    if not isinstance(path, str) or not _CALENDAR_FEED_PATH_PATTERN.fullmatch(path):
-        return
+    if isinstance(path, str) and _CALENDAR_FEED_PATH_PATTERN.fullmatch(path):
+        sanitized_path = "/v1/calendar-feeds/{token}.ics"
+        for attribute in ("url.path", "http.target", "http.url", "url.full"):
+            span.set_attribute(attribute, sanitized_path)
 
-    sanitized_path = "/v1/calendar-feeds/{token}.ics"
-    for attribute in ("url.path", "http.target", "http.url", "url.full"):
-        span.set_attribute(attribute, sanitized_path)
+    # The hook runs after ASGI has populated the URL attributes, before export.
+    attributes = getattr(span, "attributes", None) or {}
+    for attribute in ("url.query", "http.target", "http.url", "url.full"):
+        value = attributes.get(attribute)
+        if isinstance(value, str):
+            redacted = _redact_search_query(value)
+            if redacted != value:
+                span.set_attribute(attribute, redacted)
