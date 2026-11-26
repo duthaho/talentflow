@@ -1,4 +1,4 @@
-# ADR 005: Integration event contract — envelope, catalog and RabbitMQ topology
+# ADR 006: Integration event contract — envelope, catalog and RabbitMQ topology
 
 - **Status:** Accepted
 - **Date:** 2026-11-26

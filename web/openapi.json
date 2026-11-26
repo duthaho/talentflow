@@ -1835,6 +1835,7 @@
         ]
       },
       "post": {
+        "description": "Idempotency-Key is ignored: this response contains a bearer secret.",
         "operationId": "create_calendar_subscription_v1_calendar_subscriptions_post",
         "parameters": [
           {
@@ -2230,6 +2231,24 @@
               ],
               "title": "X-Actor-Id"
             }
+          },
+          {
+            "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -2448,6 +2467,7 @@
         ]
       },
       "post": {
+        "description": "Idempotency-Key is ignored for multipart uploads.",
         "operationId": "upload_attachment_v1_candidate_cases__candidate_case_id__attachments_post",
         "parameters": [
           {
@@ -2821,6 +2841,24 @@
               ],
               "title": "X-Actor-Id"
             }
+          },
+          {
+            "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -3114,6 +3152,24 @@
                 }
               ],
               "title": "X-Actor-Id"
+            }
+          },
+          {
+            "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -3524,6 +3580,24 @@
                 }
               ],
               "title": "X-Actor-Id"
+            }
+          },
+          {
+            "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -3949,6 +4023,24 @@
               ],
               "title": "X-Actor-Id"
             }
+          },
+          {
+            "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -4237,6 +4329,24 @@
                 }
               ],
               "title": "X-Actor-Id"
+            }
+          },
+          {
+            "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -4528,6 +4638,24 @@
               ],
               "title": "X-Actor-Id"
             }
+          },
+          {
+            "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "responses": {
@@ -4560,6 +4688,7 @@
     },
     "/v1/tenants": {
       "post": {
+        "description": "Bootstrap: Idempotency-Key is ignored (no authenticated tenant/actor).",
         "operationId": "create_tenant_v1_tenants_post",
         "requestBody": {
           "content": {

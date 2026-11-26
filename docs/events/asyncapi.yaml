@@ -4,8 +4,8 @@ info:
   version: 1.0.0
   description: |
     Integration events that TalentFlow publishes from its transactional outbox to RabbitMQ.
-    The rationale for every rule here is in ADR 005
-    (`docs/adr/005-integration-event-contract.md`).
+    The rationale for every rule here is in ADR 006
+    (`docs/adr/006-integration-event-contract.md`).
 
     Rules for readers and producers:
 

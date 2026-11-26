@@ -18,9 +18,10 @@ Start with the [project README](../README.md) for what TalentFlow is, the quick 
 | [002](adr/002-transactional-outbox.md) | Transactional outbox and at-least-once delivery | Accepted |
 | [003](adr/003-local-open-source-runtime-stack.md) | Local open-source runtime stack | Accepted |
 | [004](adr/004-web-bff-session-and-typed-client.md) | Web app as a BFF with a server-side session and a generated API client | Accepted |
-| [005](adr/005-integration-event-contract.md) | Integration event contract: CloudEvents envelope, catalog, RabbitMQ topology, evolution and PII rules | Accepted |
+| [005](adr/005-idempotency-keys.md) | PostgreSQL reservations and safe POST retries | Accepted |
+| [006](adr/006-integration-event-contract.md) | Integration event contract: CloudEvents envelope, catalog, RabbitMQ topology, evolution and PII rules | Accepted |
 
-New ADRs use the next number (006), the same header fields (status, date, issue) and sections (context, decision, consequences, rejected alternatives, revisit when). An ADR that is replaced gets the status `Superseded by ADR NNN` and is otherwise left unchanged.
+New ADRs use the next number (007), the same header fields (status, date, issue) and sections (context, decision, consequences, rejected alternatives, revisit when). An ADR that is replaced gets the status `Superseded by ADR NNN` and is otherwise left unchanged.
 
 ## Runbooks
 

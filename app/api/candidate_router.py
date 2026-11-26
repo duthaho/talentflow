@@ -5,6 +5,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BeforeValidator
 
+from app.api.idempotency import CommandRoute
 from app.api.schemas import (
     CandidateCaseDetailResponse,
     CandidateCaseResponse,
@@ -54,7 +55,7 @@ def _normalize_search_term(value: str | None) -> str | None:
     return value.strip()
 
 
-router = APIRouter()
+router = APIRouter(route_class=CommandRoute)
 
 
 @router.get("/v1/candidate-cases", response_model=CandidateListResponse)

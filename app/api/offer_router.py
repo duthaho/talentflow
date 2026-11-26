@@ -2,6 +2,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
+from app.api.idempotency import CommandRoute
 from app.api.schemas import (
     ApproveOfferRequest,
     CreateOfferRequest,
@@ -43,7 +44,7 @@ from app.modules.workflow.domain.candidate_state_machine import CandidateStage
 from app.shared.database import SessionDep
 from app.shared.observability import command_conflicts
 
-router = APIRouter()
+router = APIRouter(route_class=CommandRoute)
 
 
 def _summary(*, view: OfferView, actor_role: str, policy: ApprovalPolicy) -> OfferSummaryResponse:

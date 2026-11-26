@@ -73,7 +73,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Validate the AsyncAPI event contract (ADR 005)
+      - name: Validate the AsyncAPI event contract (ADR 006)
         env:
           ASYNCAPI_TELEMETRY: 'false'
         run: npx --yes @asyncapi/cli@6.3.1 validate docs/events/asyncapi.yaml

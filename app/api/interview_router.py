@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
+from app.api.idempotency import CommandRoute
 from app.api.schemas import (
     CreateInterviewRequest,
     FeedbackResponse,
@@ -44,7 +45,7 @@ from app.modules.interviews.infrastructure.sqlalchemy_repository import (
 )
 from app.shared.database import SessionDep, forbidden
 
-router = APIRouter()
+router = APIRouter(route_class=CommandRoute)
 
 
 @router.get("/v1/interviews", response_model=InterviewListResponse)
