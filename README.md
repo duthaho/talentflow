@@ -69,6 +69,9 @@ call so they use the same ports. The imported Keycloak realm JSON starts with th
 default web URL; `make seed` updates its redirect, web-origin, and logout URLs to
 match `WEB_PORT`, so seeding is required after changing ports.
 
+For browser QA on a runner with Snap Chromium, see the
+[headless browser recovery runbook](docs/runbooks/agent-browser.md).
+
 ## Pattern catalog
 
 Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `implemented` in the PR that delivers it. Paths are relative to the repository root.
@@ -94,7 +97,7 @@ Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `imple
 | Safe file upload (signature check, malware-scan port, private storage) | Uploaded CVs are untrusted input | [`app/modules/attachments/application/attachment_service.py`](app/modules/attachments/application/attachment_service.py), [`app/modules/attachments/infrastructure/filesystem_storage.py`](app/modules/attachments/infrastructure/filesystem_storage.py) | [`tests/integration/test_candidate_attachments.py`](tests/integration/test_candidate_attachments.py), [`tests/unit/modules/attachments/test_filesystem_storage.py`](tests/unit/modules/attachments/test_filesystem_storage.py) | — | implemented |
 | Capability URL (revocable iCalendar feed, hashed token) | Calendar clients cannot send auth headers; the URL is the credential | [`app/modules/calendar/application/calendar_subscription.py`](app/modules/calendar/application/calendar_subscription.py) | [`tests/integration/test_calendar_subscriptions.py`](tests/integration/test_calendar_subscriptions.py) | — | implemented |
 | Retention policy, legal hold, PII purge | Data minimization with a legal override, audited | [`app/modules/retention/application/retention.py`](app/modules/retention/application/retention.py) | [`tests/integration/test_candidate_retention.py`](tests/integration/test_candidate_retention.py) | — | implemented |
-| PII-free reporting read model | Analytics without exposing candidate data | [`app/modules/reporting/application/pipeline_report.py`](app/modules/reporting/application/pipeline_report.py) | [`tests/integration/test_pipeline_report.py`](tests/integration/test_pipeline_report.py) | — | implemented |
+| PII-free reporting read model | Analytics without exposing candidate data | [`app/modules/reporting/application/pipeline_report.py`](app/modules/reporting/application/pipeline_report.py), [`web/src/components/reports/`](web/src/components/reports) (DUTH-56) | [`tests/integration/test_pipeline_report.py`](tests/integration/test_pipeline_report.py), [`web/src/components/reports/pipeline-report-view.test.tsx`](web/src/components/reports/pipeline-report-view.test.tsx) | — | implemented |
 | Versioned schema migrations | Reviewable, repeatable schema changes; no `create_all` in production | [`migrations/versions/`](migrations/versions) | CI migration job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | — | implemented |
 | CI quality and security gates | Lint, tests, coverage, image smoke, CodeQL, Trivy on every PR | [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`.github/workflows/security.yml`](.github/workflows/security.yml) | the workflows themselves | — | implemented |
 

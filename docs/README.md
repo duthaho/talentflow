@@ -25,6 +25,7 @@ New ADRs use the next number (005), the same header fields (status, date, issue)
 | Runbook | Purpose |
 | --- | --- |
 | [runbooks/backup-restore.md](runbooks/backup-restore.md) | Back up and restore PostgreSQL and attachments in the Compose stack |
+| [runbooks/agent-browser.md](runbooks/agent-browser.md) | Recover headless browser automation with Snap Chromium on the QA runner |
 
 ## Planned documents
 
