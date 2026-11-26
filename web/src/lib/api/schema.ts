@@ -1380,7 +1380,7 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
-                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1729,7 +1729,7 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
-                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -1760,7 +1760,7 @@ export interface operations {
             /** @description Precondition failed; refetch before retrying */
             412: {
                 headers: {
-                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2011,7 +2011,7 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
-                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2056,7 +2056,7 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
-                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
                     ETag?: string;
                     [name: string]: unknown;
                 };
@@ -2087,7 +2087,7 @@ export interface operations {
             /** @description Precondition failed; refetch before retrying */
             412: {
                 headers: {
-                    /** @description Strong aggregate version validator, e.g. "3". See ADR-006. */
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
                     ETag?: string;
                     [name: string]: unknown;
                 };

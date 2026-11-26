@@ -1,4 +1,4 @@
-# ADR-006: Aggregate version preconditions over HTTP
+# ADR-007: Aggregate version preconditions over HTTP
 
 Status: Accepted (DUTH-61, Phương-CTO's approved issue contract).
 Date: 2026-11-26.

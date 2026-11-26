@@ -24,7 +24,7 @@ IfMatch = Annotated[
 ]
 
 ETAG_HEADER = {
-    "description": 'Strong aggregate version validator, e.g. "3". See ADR-006.',
+    "description": 'Strong aggregate version validator, e.g. "3". See ADR-007.',
     "schema": {"type": "string"},
 }
 ETAG_RESPONSE = {200: {"headers": {"ETag": ETAG_HEADER}}}

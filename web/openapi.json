@@ -2374,7 +2374,7 @@
             "description": "Successful Response",
             "headers": {
               "ETag": {
-                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-006.",
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
                 "schema": {
                   "type": "string"
                 }
@@ -3366,7 +3366,7 @@
             "description": "Successful Response",
             "headers": {
               "ETag": {
-                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-006.",
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
                 "schema": {
                   "type": "string"
                 }
@@ -3460,7 +3460,7 @@
             "description": "Precondition failed; refetch before retrying",
             "headers": {
               "ETag": {
-                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-006.",
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
                 "schema": {
                   "type": "string"
                 }
@@ -4153,7 +4153,7 @@
             "description": "Successful Response",
             "headers": {
               "ETag": {
-                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-006.",
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
                 "schema": {
                   "type": "string"
                 }
@@ -4294,7 +4294,7 @@
             "description": "Successful Response",
             "headers": {
               "ETag": {
-                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-006.",
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
                 "schema": {
                   "type": "string"
                 }
@@ -4388,7 +4388,7 @@
             "description": "Precondition failed; refetch before retrying",
             "headers": {
               "ETag": {
-                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-006.",
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
                 "schema": {
                   "type": "string"
                 }
