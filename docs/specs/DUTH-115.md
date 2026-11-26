@@ -112,7 +112,7 @@ Shared offer fields plus:
 {"decision": "rejected", "expected_version": 2, "reason": "Above band for level"}
 ```
 
-- `reason`: optional string. Leading and trailing whitespace is stripped; then it must be 1–500 characters, or absent/`null`.
+- `reason`: optional string. Leading and trailing whitespace is stripped first; the 1–500 character limit applies to the stripped value. Absent or `null` means no reason.
 - `decision = rejected` with `reason` absent, `null` or blank after stripping → `422` (`validation-error`). Checked in the request model, before any lookup or version check.
 - `decision = approved` with a reason stores it; without one stores `null`.
 - The reason is stored on the new `ApprovalDecision.reason` column in the same transaction as the decision.
@@ -181,8 +181,63 @@ None. Decisions beyond the issue text, recorded here for review:
 
 - Additive: two new `GET` routes, one optional request field, two nullable columns, regenerated client types. No existing response or permission changes.
 - Ship in one PR. After merge, DUTH-55 replaces its mocks with the generated types.
-- Rollback: revert the PR and run the migration's `downgrade`. Dropping the columns loses reasons and timestamps recorded since the deploy; the decisions themselves stay.
+- Rollback, in this order: deploy the reverted code first, then run the migration's `downgrade`. The old code never reads or writes the new columns, so it runs safely on the expanded schema; downgrading first would break the new code still serving. Dropping the columns loses reasons and timestamps recorded since the deploy; the decisions themselves stay.
 
 ## Plan
 
-(added at the `plan` step)
+### Design summary
+
+Two read routes and one optional request field on the existing offers context, plus two nullable columns. No new module, permission or cross-context dependency. The contract above is the design; this table says where each piece lives.
+
+| Layer | File | Change |
+|---|---|---|
+| Domain | `app/modules/offers/domain/approval_policy.py` | `steps_for_role(role) -> frozenset[int]` and `awaiting_role(offer) -> str \| None` (role for `approval_step` while `pending_approval`, else `None`). |
+| Domain | `app/modules/offers/domain/offer.py` | `can_be_decided_by(role, policy) -> bool`, used by both `decide()` and the read model, so the read flag and the write check cannot drift. `decide()` takes `reason: str \| None` and raises `InvalidOfferApprovalError` when a rejection has no reason after stripping, or the reason is longer than 500 characters; `OfferDecision` carries the reason. |
+| Application | `app/modules/offers/application/list_offers.py` (new) | `ListOffersQuery(tenant_id, actor_role, awaiting_me, candidate_case_id, status, cursor, limit)` and handler. With `awaiting_me` it asks the policy for the role's steps; an empty set returns an empty page without a query. Returns `OfferPage(items, next_cursor, total)` of `OfferView`. |
+| Application | `app/modules/offers/application/get_offer.py` (new) | `GetOfferQuery(tenant_id, offer_id, actor_role)` returns `OfferDetailView` with `decisions: list[DecisionView]` or raises `OfferNotFoundError`. `awaiting_role`/`can_decide` are computed here from the policy. |
+| Application | `decide_offer.py`, `ports.py` | `DecideOfferCommand.reason`; `record_decision(..., reason)`. `record_outbox_event` signature and payload are unchanged. Port gains `list(...)`, `get_detail(...)` and `list_decisions(offer_id, tenant_id)`. |
+| Infrastructure | `app/modules/offers/infrastructure/models.py`, `sqlalchemy_repository.py` | `ApprovalDecision.reason` (`String(500)`, nullable) and `decided_at` (`DateTime(timezone=True)`, nullable, `default=now_utc`). List query: `WHERE tenant_id = :t` plus optional `status`, `candidate_case_id`, `approval_step IN (:steps) AND status = 'pending_approval'`, `id > :cursor`, `ORDER BY id LIMIT limit+1`, and a `COUNT` with the same filters minus the cursor (as the candidate list does). Decisions: `WHERE offer_id = :o AND tenant_id = :t ORDER BY step`. |
+| Migration | `migrations/versions/<rev>_add_approval_decision_reason.py` (new) | `add_column` × 2, both nullable, no server default and no backfill; `downgrade` drops both. `down_revision` is the current `alembic heads`. |
+| API | `app/api/offer_router.py`, `app/api/schemas.py` | `GET /v1/offers` (registered before `GET /v1/offers/{offer_id}`) and `GET /v1/offers/{offer_id}`, both `require("tenant:read")` and `ApprovalPolicy.standard()`. `awaiting: Literal["me"] \| None`, `status: Literal[...] \| None`, `limit: int = Query(25, ge=1, le=100)`. `ApproveOfferRequest.reason` with a `model_validator` (strip, then length and reject-requires-reason). Responses set `Cache-Control: private, no-store` as `calendar_router` does. New models: `OfferSummaryResponse`, `OfferPageResponse`, `OfferDecisionResponse`, `OfferDetailResponse`. `OfferResponse` unchanged. |
+| Client | `web/openapi.json`, `web/src/lib/api/schema.ts` | `make api-client`. |
+| Docs | `docs/architecture.md` (offers context), README pattern catalog | One line: approval policy drives both the write check and the read `can_decide` flag. |
+
+The reason rule sits in the request model (fast `422` before any lookup) and in `Offer.decide` (no non-HTTP caller can skip it). A domain `InvalidOfferApprovalError` caused by the reason maps to `422`, not the `403` used for a wrong role: the handler raises a distinct `InvalidOfferReasonError` subclass so the router can tell them apart.
+
+### Test plan
+
+| AC | Test | Level |
+|---|---|---|
+| AC1 | seed tenant A with offers at step 1, step 2, approved, rejected, and one tenant-B offer at step 1; `awaiting=me` as each of the four `tenant:read` roles; assert exact id sets and `total` | integration `tests/integration/test_offer_read.py` |
+| AC2 | 5 matching offers, `limit=2` walk: no duplicates or gaps, `total=5` on every page, a `status` filter still applied on page 3 | integration |
+| AC3 | `candidate_case_id` for a case with an offer, a case without one, an unknown id and a tenant-B case id | integration |
+| AC4 | approve step 1 without a reason, reject step 2 with one; detail has shared fields, `awaiting_role: null`, `can_decide: false`, two decisions in step order, `decided_at` with a UTC offset | integration |
+| AC5 | unknown id vs tenant-B id: both `404` `not-found`, bodies equal except `instance`/`correlation_id` | integration |
+| AC6 | for each role × offer state, `can_decide` from GET equals whether the following POST succeeds (`200`) or fails (`403`) | integration, parametrized; unit on `can_be_decided_by` and `steps_for_role` |
+| AC7 | reject with reason absent / `null` / `""` / `"   "` / 501 chars after stripping → `422`; offer `version`/`status`, decision count and outbox count unchanged; a 500-char reason with surrounding spaces is accepted | integration + unit on `Offer.decide` |
+| AC8 | stored `reason` is the stripped text, `decided_at` set; outbox `payload_json` keys equal exactly `{"offer_id", "decision", "actor_id"}` | integration (extend `test_approval_outbox.py`) |
+| AC9 | existing `test_offer_approval.py` and `test_approval_outbox.py` untouched and green | existing |
+| AC10 | `interviewer` on both routes with a real and an unknown id → `403` `forbidden` | integration |
+| AC11 | `awaiting=you`, `status=draft`, `limit=0`/`101` → `422` problem+json | integration |
+| AC12 | header asserted on both routes | integration |
+| AC13 | insert a decision without the new columns (raw SQL), read it through the detail route → `reason`/`decided_at` `null`; `alembic upgrade head` then `downgrade -1` against the compose Postgres, output in the PR | integration + manual |
+| AC14 | `npm run api:check` in `web/` (CI `web` job and locally) | CI |
+| AC15 | gates below | local + CI |
+| — | architecture rule green with no new entries | existing |
+
+Gates before hand-off: `ruff format --check`, `ruff check`, `uv run python -m pytest` (coverage ≥ 85%), `npm run api:check` and `npm run build` in `web/`.
+
+### Threat model
+
+Requested from Hoàng-Security on DUTH-115. It is added here when it arrives.
+
+### Sub-issues by stage
+
+None. The two routes and the reason field are one API slice for one page, with one PR to review and verify, so the work ships as one PR on DUTH-115 itself.
+
+| Stage | Work | Handler | ACs | Depends on |
+|---|---|---|---|---|
+| 1 | Implement the routes, reason field, migration, tests, regenerated client and docs. PR titled `DUTH-115: Add offer read APIs and decision reasons`, linking this spec | Quốc-BE | AC1–AC15 | spec PR #19 approved (done); requester approves this plan |
+| review | `code_review` → `security_review` (required: salary exposure, free-text reason, cross-tenant reads) → `qa` → `in_review` | Trung-PM, Hoàng-Security, Diễm-QA | — | stage 1 PR |
+
+Downstream: when this issue moves to `in_progress`, DUTH-55 starts in the same step (`in_progress`, Hiếu-FE) against typed mocks of this contract, as the issue notes ask. It switches to the generated types once the stage 1 PR merges.
