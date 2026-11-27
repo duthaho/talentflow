@@ -13,6 +13,7 @@ from app.modules.retention.infrastructure.sqlalchemy_repository import (
     SqlAlchemyRetentionRepository,
     SqlAlchemyUnitOfWork,
 )
+from app.modules.webhooks.infrastructure.maintenance import purge_webhooks
 from app.shared.attachment_storage import build_attachment_storage
 from app.shared.database import build_session_factory
 from app.shared.idempotency import purge_expired_keys
@@ -61,6 +62,11 @@ class ScheduledRetentionCycle:
             try:
                 with Session(bind=connection, autoflush=False, expire_on_commit=False) as session:
                     purge_expired_keys(session, batch_size=self._batch_size)
+                    purge_webhooks(
+                        session,
+                        batch_size=self._batch_size,
+                        retention_days=settings.webhook_delivery_retention_days,
+                    )
                     repository = SqlAlchemyRetentionRepository(
                         session, attachment_storage=self._storage
                     )

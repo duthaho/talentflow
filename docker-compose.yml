@@ -178,6 +178,11 @@ services:
       ATTACHMENT_CLAMAV_HOST: clamav
       ATTACHMENT_CLAMAV_PORT: 3310
       CALENDAR_PUBLIC_BASE_URL: http://localhost:${API_PORT:-8000}
+      WEBHOOK_SECRET_KEYS: ${WEBHOOK_SECRET_KEYS:-dev:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=}
+      WEBHOOK_SECRET_ACTIVE_KEY_ID: ${WEBHOOK_SECRET_ACTIVE_KEY_ID:-dev}
+      WEBHOOK_ALLOW_HTTP: "true"
+      WEBHOOK_PRIVATE_NETWORK_ALLOWLIST: ${WEBHOOK_DEMO_SUBNET:-172.29.62.0/24}
+      WEBHOOK_DELIVERY_RETENTION_DAYS: 30
       RABBITMQ_URL: amqp://talentflow:talentflow@rabbitmq:5672/%2Ftalentflow
       NOTIFICATION_EMAIL_ADAPTER: smtp
       NOTIFICATION_FROM_EMAIL: notifications@talentflow.local
@@ -206,6 +211,7 @@ services:
     restart: "no"
 
   api:
+    networks: [default, webhook-demo]
     build: .
     environment: *runtime_environment
     depends_on:
@@ -280,6 +286,36 @@ services:
       timeout: 5s
       retries: 6
 
+  webhook-worker:
+    build: .
+    command: ["python", "-m", "app.workers.webhooks"]
+    environment:
+      <<: *runtime_environment
+      OTEL_SERVICE_NAME: talentflow-webhook-worker
+    networks: [default, webhook-demo]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health/ready')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  webhook-demo:
+    build: .
+    command: ["python", "-m", "app.workers.webhook_demo_receiver"]
+    networks: [webhook-demo]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8080), 3).close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
   retention-worker:
     build: .
     command: ["python", "-m", "app.workers.retention"]
@@ -321,3 +357,9 @@ volumes:
   rabbitmq_data:
   postgres_data:
   seaweedfs_data:
+
+networks:
+  webhook-demo:
+    ipam:
+      config:
+        - subnet: ${WEBHOOK_DEMO_SUBNET:-172.29.62.0/24}

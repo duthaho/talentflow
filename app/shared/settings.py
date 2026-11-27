@@ -5,7 +5,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", hide_input_in_errors=True
+    )
 
     app_env: Literal["development", "test", "production"] = "development"
     auth_mode: Literal["development_headers", "oidc_jwt"] = "development_headers"
@@ -20,6 +22,11 @@ class Settings(BaseSettings):
     notification_from_email: str = "notifications@talentflow.local"
     notification_smtp_host: str = "mailpit"
     notification_smtp_port: int = 1025
+    webhook_secret_keys: SecretStr = SecretStr("dev:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
+    webhook_secret_active_key_id: str = "dev"
+    webhook_allow_http: bool = False
+    webhook_private_network_allowlist: str = ""
+    webhook_delivery_retention_days: int = Field(default=30, ge=1)
     rabbitmq_url: SecretStr = SecretStr("amqp://talentflow:talentflow@rabbitmq:5672/%2Ftalentflow")
     outbox_batch_size: int = Field(default=100, gt=0, le=1000)
     worker_lease_seconds: int = 60
@@ -143,6 +150,19 @@ class Settings(BaseSettings):
                 )
             if not 1 <= self.notification_smtp_port <= 65535:
                 raise ValueError("NOTIFICATION_SMTP_PORT must be between 1 and 65535")
+        from app.modules.webhooks.infrastructure.cipher import parse_keyring
+        from app.modules.webhooks.infrastructure.egress import parse_allowlist
+
+        parse_keyring(
+            self.webhook_secret_keys.get_secret_value(),
+            self.webhook_secret_active_key_id,
+            production=self.app_env == "production",
+        )
+        parse_allowlist(self.webhook_private_network_allowlist)
+        if self.app_env == "production" and (
+            self.webhook_allow_http or self.webhook_private_network_allowlist
+        ):
+            raise ValueError("Production forbids private webhook egress and HTTP")
         return self
 
 

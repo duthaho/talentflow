@@ -512,8 +512,183 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/webhook-deliveries/{delivery_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                delivery_id: components["parameters"]["DeliveryId"];
+            };
+            cookie?: never;
+        };
+        /** One delivery with its attempts */
+        get: operations["getWebhookDelivery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhook-deliveries/{delivery_id}/redeliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                delivery_id: components["parameters"]["DeliveryId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeliver an event to the same endpoint
+         * @description Creates a new delivery of the same event, sent with the same `webhook-id`, the current secrets and a fresh attempt counter. The original delivery is never changed. Allowed only when the original is terminal and the endpoint is enabled. Idempotency-Key is supported.
+         */
+        post: operations["redeliverWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhook-endpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List webhook endpoints */
+        get: operations["listWebhookEndpoints"];
+        put?: never;
+        /**
+         * Register an endpoint and its subscriptions
+         * @description Idempotency-Key is ignored: this response contains the signing secret. The secret is shown only in this response.
+         */
+        post: operations["createWebhookEndpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhook-endpoints/{endpoint_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpoint_id: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        /** Get an endpoint */
+        get: operations["getWebhookEndpoint"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an endpoint
+         * @description Requires If-Match. Leaves a tombstone, destroys every secret's ciphertext and cancels pending deliveries. The delivery log stays readable through `GET /v1/webhook-deliveries/{id}` until retention purges it.
+         */
+        delete: operations["deleteWebhookEndpoint"];
+        options?: never;
+        head?: never;
+        /**
+         * Update URL, description, subscriptions or enabled state
+         * @description Requires If-Match. Idempotency-Key is supported, and the raw If-Match header is part of its fingerprint (ADR-007). `enabled: false` cancels pending deliveries. `enabled: true` clears `disabled_reason` and the failure streak.
+         */
+        patch: operations["updateWebhookEndpoint"];
+        trace?: never;
+    };
+    "/v1/webhook-endpoints/{endpoint_id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpoint_id: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        /** Delivery log for one endpoint */
+        get: operations["listWebhookDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhook-endpoints/{endpoint_id}/secret-rotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpoint_id: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate the signing secret
+         * @description Requires If-Match with a concrete version. A lone `*` returns 400 `invalid-precondition`, because a wildcard would let a retried request rotate twice. Idempotency-Key is ignored because the response contains the new secret, so If-Match is what stops a double rotation. The current secret becomes `previous` until `grace_period_seconds` passes, and both sign meanwhile. An older `previous` expires at once.
+         */
+        post: operations["rotateWebhookSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhook-event-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List subscribable event types
+         * @description Catalog types whose AsyncAPI entry has `x-talentflow.webhook = true`.
+         */
+        get: operations["listWebhookEventTypes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
-export type webhooks = Record<string, never>;
+export interface webhooks {
+    talentflowEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Outbound event request sent to a registered endpoint
+         * @description One request per attempt. Signed content is `"{webhook-id}.{webhook-timestamp}." + raw body`,
+         *     HMAC-SHA256 with the decoded `whsec_` key, base64 encoded (Standard Webhooks `v1`).
+         *     Receivers verify the raw bytes, reject timestamps more than 300 s away from their own
+         *     clock, and deduplicate on `webhook-id`. A 2xx counts as success. Redirects are not followed.
+         *     410 Gone disables the endpoint. Any other result is retried (ADR-008 §5).
+         */
+        post: operations["receiveTalentflowEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+}
 export interface components {
     schemas: {
         /** ApproveOfferRequest */
@@ -555,6 +730,8 @@ export interface components {
             /** Size Bytes */
             size_bytes: number;
         };
+        /** @enum {string} */
+        AttemptErrorCode: "http_status" | "redirect" | "timeout" | "dns_error" | "connect_error" | "tls_error" | "blocked_address" | "invalid_url" | "response_too_large";
         /** AuditEventResponse */
         AuditEventResponse: {
             /** Action */
@@ -698,6 +875,26 @@ export interface components {
             /** Next Cursor */
             next_cursor: string | null;
         };
+        /** @description The ADR 006 envelope. `data` is defined per type in `docs/events/asyncapi.yaml`. */
+        CloudEvent: {
+            actorid?: string;
+            causationid: string;
+            correlationid: string;
+            data: Record<string, never>;
+            /** @constant */
+            datacontenttype: "application/json";
+            /** Format: uuid */
+            id: string;
+            source: string;
+            /** @constant */
+            specversion: "1.0";
+            subject: string;
+            tenantid: string;
+            /** Format: date-time */
+            time: string;
+            traceparent?: string;
+            type: components["schemas"]["EventType"];
+        };
         /** CreateCalendarSubscriptionRequest */
         CreateCalendarSubscriptionRequest: {
             /** Interviewer Id */
@@ -713,6 +910,20 @@ export interface components {
             last_name: string;
             /** Requisition Id */
             requisition_id: string;
+        };
+        /** CreateEndpoint */
+        CreateEndpoint: {
+            /** Description */
+            description?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Event Types */
+            event_types: ("candidate_case.created.v1" | "candidate_case.stage_changed.v1" | "candidate_case.erased.v1" | "interview.scheduled.v1" | "offer.created.v1")[];
+            /** Url */
+            url: string;
         };
         /** CreateInterviewRequest */
         CreateInterviewRequest: {
@@ -749,6 +960,13 @@ export interface components {
             /** Slug */
             slug: string;
         };
+        CreateWebhookEndpointRequest: {
+            description?: components["schemas"]["Description"];
+            /** @default true */
+            enabled: boolean;
+            event_types: components["schemas"]["EventTypeList"];
+            url: components["schemas"]["WebhookUrl"];
+        };
         /** CurrentActorResponse */
         CurrentActorResponse: {
             /** Display Name */
@@ -769,6 +987,20 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** @enum {string} */
+        DeliveryStatus: "pending" | "succeeded" | "dead_lettered" | "cancelled";
+        /** @description No control characters. */
+        Description: string | null;
+        /** @enum {string} */
+        DisabledReason: "manual" | "failing" | "gone";
+        /** @enum {string} */
+        EndpointStatus: "enabled" | "disabled";
+        /**
+         * @description A catalog type with `x-talentflow.webhook = true` in `docs/events/asyncapi.yaml`.
+         * @enum {string}
+         */
+        EventType: "candidate_case.created.v1" | "candidate_case.stage_changed.v1" | "candidate_case.erased.v1" | "interview.scheduled.v1" | "offer.created.v1";
+        EventTypeList: components["schemas"]["EventType"][];
         /** FeedbackResponse */
         FeedbackResponse: {
             /** Comments */
@@ -976,6 +1208,30 @@ export interface components {
             interviews: components["schemas"]["PipelineInterviewSummary"];
             offers: components["schemas"]["PipelineOfferSummary"];
         };
+        PlaintextSecret: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Shown only once. Store it in the receiver's secret store.
+             * @example whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+             */
+            value: string;
+        };
+        /** @description RFC 9457 Problem Details, as described in `docs/api-errors.md`. */
+        Problem: {
+            correlation_id: string;
+            current_version?: number;
+            detail: string;
+            errors?: {
+                detail: string;
+                pointer: string;
+            }[];
+            instance: string;
+            status: number;
+            title: string;
+            /** Format: uri */
+            type: string;
+        };
         /** RequisitionListResponse */
         RequisitionListResponse: {
             /** Items */
@@ -1023,6 +1279,43 @@ export interface components {
             /** Purged Count */
             purged_count: number;
         };
+        /** RotateSecret */
+        RotateSecret: {
+            /**
+             * Grace Period Seconds
+             * @default 86400
+             */
+            grace_period_seconds: number;
+        };
+        RotateSecretRequest: {
+            /**
+             * @description How long the old secret keeps signing. 0 expires it immediately (use this after a leak).
+             * @default 86400
+             */
+            grace_period_seconds: number;
+        };
+        SecretMetadata: {
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Set only on `previous`.
+             */
+            expires_at: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "current" | "previous";
+        };
+        SecretRotationResponse: {
+            endpoint: components["schemas"]["WebhookEndpoint"];
+            /**
+             * Format: date-time
+             * @description When the replaced secret stops signing. Equals the request time when the grace period is 0.
+             */
+            previous_secret_expires_at: string;
+            secret: components["schemas"]["PlaintextSecret"];
+        };
         /** SetRequisitionPublicationRequest */
         SetRequisitionPublicationRequest: {
             /** Published */
@@ -1056,6 +1349,24 @@ export interface components {
             /** Target Stage */
             target_stage: string;
         };
+        /** UpdateEndpoint */
+        UpdateEndpoint: {
+            /** Description */
+            description?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Event Types */
+            event_types?: ("candidate_case.created.v1" | "candidate_case.stage_changed.v1" | "candidate_case.erased.v1" | "interview.scheduled.v1" | "offer.created.v1")[] | null;
+            /** Url */
+            url?: string | null;
+        };
+        /** @description Partial update. `event_types` replaces the whole set. A new `url` applies to the next attempt of every pending delivery, retries included (ADR-008 §5). */
+        UpdateWebhookEndpointRequest: {
+            description?: components["schemas"]["Description"];
+            enabled?: boolean;
+            event_types?: components["schemas"]["EventTypeList"];
+            url?: components["schemas"]["WebhookUrl"];
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1069,11 +1380,199 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        WebhookDelivery: {
+            attempt_count: number;
+            /** Format: date-time */
+            completed_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            endpoint_id: string;
+            /**
+             * Format: uuid
+             * @description The CloudEvents id, sent as `webhook-id`.
+             */
+            event_id: string;
+            event_type: components["schemas"]["EventType"];
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Set on creation and never changes. `redelivery` rows were created by an admin redelivery.
+             * @enum {string}
+             */
+            kind: "fanout" | "redelivery";
+            /** Format: date-time */
+            last_attempt_at: string | null;
+            last_error_code: components["schemas"]["AttemptErrorCode"] | null;
+            last_status_code: number | null;
+            /** @constant */
+            max_attempts: 8;
+            /** Format: date-time */
+            next_attempt_at: string | null;
+            /**
+             * Format: uuid
+             * @description Lineage of a `redelivery` row. It becomes null once retention purges the original; `kind` still identifies the row.
+             */
+            redelivery_of_id: string | null;
+            /** @description Actor id for a manual redelivery. */
+            requested_by: string | null;
+            status: components["schemas"]["DeliveryStatus"];
+        };
+        /** @description Receiver response bodies and headers are never stored. */
+        WebhookDeliveryAttempt: {
+            attempt_number: number;
+            duration_ms: number;
+            error_code: components["schemas"]["AttemptErrorCode"] | null;
+            /** Format: date-time */
+            started_at: string;
+            status_code: number | null;
+        };
+        WebhookDeliveryDetail: components["schemas"]["WebhookDelivery"] & {
+            attempts: components["schemas"]["WebhookDeliveryAttempt"][];
+        };
+        WebhookEndpoint: {
+            consecutive_failures: number;
+            /** Format: date-time */
+            created_at: string;
+            description: components["schemas"]["Description"];
+            disabled_reason: components["schemas"]["DisabledReason"] | null;
+            event_types: components["schemas"]["EventType"][];
+            /** Format: date-time */
+            failure_streak_started_at: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description Metadata only. The secret value is never returned here. */
+            secrets: components["schemas"]["SecretMetadata"][];
+            status: components["schemas"]["EndpointStatus"];
+            /** Format: date-time */
+            updated_at: string;
+            url: components["schemas"]["WebhookUrl"];
+            version: number;
+        };
+        WebhookEndpointWithSecret: components["schemas"]["WebhookEndpoint"] & {
+            secret: components["schemas"]["PlaintextSecret"];
+        };
+        WebhookEventType: {
+            description: string;
+            /**
+             * @description Catalog status. `reserved` types can be subscribed to; they start flowing when their publisher ships.
+             * @enum {string}
+             */
+            status: "active" | "planned" | "reserved" | "deprecated";
+            type: components["schemas"]["EventType"];
+        };
+        /**
+         * Format: uri
+         * @description Absolute `https` URL (`http` only when `WEBHOOK_ALLOW_HTTP` is set, which is never in production). No userinfo or fragment. Ports 443/8443 (https) or 80/8080 (http). Every resolved address must be public (ADR-008 §4).
+         * @example https://hooks.example.com/talentflow?token=abc
+         */
+        WebhookUrl: string;
     };
-    responses: never;
-    parameters: never;
+    responses: {
+        /** @description `forbidden`: the caller lacks `webhook:manage`. */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `invalid-precondition`: malformed or weak If-Match, or a malformed Idempotency-Key (`validation-error`). */
+        InvalidPrecondition: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `not-found`: the resource is missing, deleted, or belongs to another tenant. */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `precondition-failed`. The response carries the current ETag and `current_version`. */
+        PreconditionFailed: {
+            headers: {
+                ETag: components["headers"]["ETag"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `precondition-required`: If-Match is missing. */
+        PreconditionRequired: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `unauthorized` */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `webhook-url-not-allowed` (pointer `/url`; the detail names the broken rule, never the resolved address), `validation-error` (for example pointer `/event_types/0` for an unknown type), or an Idempotency-Key reused with a different request. */
+        UnprocessableUrlOrBody: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `validation-error` for a malformed query parameter or cursor. */
+        ValidationError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+    };
+    parameters: {
+        /** @description Opaque cursor taken from `next_cursor`. */
+        Cursor: string;
+        DeliveryId: string;
+        EndpointId: string;
+        /** @description 1–255 visible ASCII characters (ADR-005). */
+        IdempotencyKey: string;
+        /**
+         * @description Strong quoted version from the endpoint's ETag, a comma-separated list of tags, or `*` (ADR-007).
+         * @example "3"
+         */
+        IfMatch: string;
+        /**
+         * @description Strong quoted version from the endpoint's ETag, or a comma-separated list of tags. A lone `*` is rejected with 400 `invalid-precondition`.
+         * @example "3"
+         */
+        IfMatchNoWildcard: string;
+        Limit: number;
+    };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /**
+         * @description Strong ETag, the quoted endpoint version.
+         * @example "1"
+         */
+        ETag: string;
+        Location: string;
+        NoStore: "private, no-store";
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -2456,6 +2955,431 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    getWebhookDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                delivery_id: components["parameters"]["DeliveryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The delivery. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    redeliverWebhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 1–255 visible ASCII characters (ADR-005). */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                delivery_id: components["parameters"]["DeliveryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new delivery, queued for an immediate first attempt. */
+            202: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDelivery"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `delivery-not-redeliverable` (the original is not terminal, the endpoint is not enabled, or this event already has a pending delivery to this endpoint), or `conflict` while an Idempotency-Key reservation is in progress. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The Idempotency-Key was reused with a different request. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listWebhookEndpoints: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["EndpointStatus"];
+                /** @description Opaque cursor taken from `next_cursor`. */
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of endpoints, newest first. Deleted endpoints are never listed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["WebhookEndpoint"][];
+                        next_cursor: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWebhookEndpointRequest"];
+            };
+        };
+        responses: {
+            /** @description Endpoint created. */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    ETag: components["headers"]["ETag"];
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpointWithSecret"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `conflict` (URL already registered) or `webhook-endpoint-limit-reached` (10 per tenant). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: components["responses"]["UnprocessableUrlOrBody"];
+        };
+    };
+    getWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpoint_id: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The endpoint. The ETag is its quoted version. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong quoted version from the endpoint's ETag, a comma-separated list of tags, or `*` (ADR-007).
+                 * @example "3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                endpoint_id: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidPrecondition"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    updateWebhookEndpoint: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong quoted version from the endpoint's ETag, a comma-separated list of tags, or `*` (ADR-007).
+                 * @example "3"
+                 */
+                "If-Match": components["parameters"]["IfMatch"];
+                /** @description 1–255 visible ASCII characters (ADR-005). */
+                "Idempotency-Key"?: components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                endpoint_id: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWebhookEndpointRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated endpoint. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            400: components["responses"]["InvalidPrecondition"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `conflict`: another endpoint already uses this URL, or an Idempotency-Key reservation is in progress. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            412: components["responses"]["PreconditionFailed"];
+            422: components["responses"]["UnprocessableUrlOrBody"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    listWebhookDeliveries: {
+        parameters: {
+            query?: {
+                /** @description Repeatable. Without it, all statuses are returned. */
+                status?: components["schemas"]["DeliveryStatus"][];
+                event_type?: components["schemas"]["EventType"];
+                event_id?: string;
+                /** @description Inclusive lower bound. */
+                created_from?: string;
+                /** @description Exclusive upper bound. */
+                created_to?: string;
+                /** @description Opaque cursor taken from `next_cursor`. */
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                endpoint_id: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of deliveries, ordered `created_at DESC, id DESC`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["WebhookDelivery"][];
+                        next_cursor: string | null;
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rotateWebhookSecret: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description Strong quoted version from the endpoint's ETag, or a comma-separated list of tags. A lone `*` is rejected with 400 `invalid-precondition`.
+                 * @example "3"
+                 */
+                "If-Match": components["parameters"]["IfMatchNoWildcard"];
+            };
+            path: {
+                endpoint_id: components["parameters"]["EndpointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RotateSecretRequest"];
+            };
+        };
+        responses: {
+            /** @description New secret created. */
+            201: {
+                headers: {
+                    "Cache-Control": components["headers"]["NoStore"];
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretRotationResponse"];
+                };
+            };
+            400: components["responses"]["InvalidPrecondition"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            422: components["responses"]["UnprocessableUrlOrBody"];
+            428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    listWebhookEventTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event types. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["WebhookEventType"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    receiveTalentflowEvent: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CloudEvents `id`. The same value on every retry and redelivery of the event. */
+                "webhook-id": string;
+                /** @description Unix seconds when this attempt was signed. */
+                "webhook-timestamp": string;
+                /**
+                 * @description Space-separated `v1,<base64>` entries, one per active secret: current first, then previous during a rotation grace period.
+                 * @example v1,tf0j4MFE0WB8v3pV96njh8f00nDy2gSfd7KprE+McKU=
+                 */
+                "webhook-signature": string;
+                "User-Agent": "TalentFlow-Webhooks/1";
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "causationid": "req-1",
+                 *       "correlationid": "req-1",
+                 *       "data": {
+                 *         "candidate_case_id": "c-123",
+                 *         "from_stage": "screening",
+                 *         "to_stage": "interviewing",
+                 *         "version": 3
+                 *       },
+                 *       "datacontenttype": "application/json",
+                 *       "id": "0b7e1c9a-4f3d-4c55-9a52-3f1f6f3c2d10",
+                 *       "source": "urn:talentflow:candidates",
+                 *       "specversion": "1.0",
+                 *       "subject": "c-123",
+                 *       "tenantid": "t-1",
+                 *       "time": "2026-11-27T09:00:00Z",
+                 *       "type": "candidate_case.stage_changed.v1"
+                 *     }
+                 */
+                "application/cloudevents+json": components["schemas"]["CloudEvent"];
+            };
+        };
+        responses: {
+            /** @description Gone. The delivery is dead-lettered and the endpoint is auto-disabled (`gone`). */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Accepted by the receiver. The body is discarded after at most 64 KiB. */
+            "2XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Failure. Retried on the ADR-008 schedule, up to 8 attempts. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

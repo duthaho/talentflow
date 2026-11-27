@@ -11,6 +11,7 @@ from app.shared.database import forbidden
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "tenant_admin": frozenset(
         {
+            "webhook:manage",
             "requisition:create",
             "candidate:create",
             "candidate:transition",

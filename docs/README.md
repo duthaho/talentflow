@@ -39,3 +39,5 @@ Browser test setup and acceptance scenarios: [Hiring E2E tests](testing-e2e.md).
 ## Planned documents
 
 Added by the issues that introduce them: `docs/api-errors.md` (DUTH-46), `docs/performance/` (DUTH-76), `docs/security/threat-model.md` (DUTH-78).
+
+- [Webhook operations](webhooks/operations.md): local receiver, verification, keys, retries and redelivery.

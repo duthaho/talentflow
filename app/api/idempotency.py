@@ -142,7 +142,7 @@ def _complete(session: Session, record_id: str, response: Response) -> None:
             headers={
                 name: value
                 for name, value in response.headers.items()
-                if name.lower() in {"content-type", "location", "etag"}
+                if name.lower() in {"content-type", "location", "etag", "cache-control"}
             },
         )
     )
