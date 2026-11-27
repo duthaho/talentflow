@@ -55,6 +55,25 @@ The caller is authenticated but is not authorized for the requested operation.
 
 The request conflicts with the current resource state.
 
+## webhook-url-not-allowed
+
+422: a webhook endpoint URL breaks the outbound policy in ADR-008 §4: the scheme,
+port, userinfo, fragment or length, a blocked host name, or a resolved address
+that is not public. `errors[0].pointer` is `/url`. The detail names the rule and
+never echoes the resolved address. Registered by DUTH-62.
+
+## webhook-endpoint-limit-reached
+
+409: the tenant already has 10 webhook endpoints that are not deleted. Delete
+one before registering another. Registered by DUTH-62.
+
+## delivery-not-redeliverable
+
+409: a redelivery was requested while the original delivery is still pending,
+the endpoint is not enabled, or the same event already has a pending delivery to
+that endpoint. Wait for the delivery to finish, or re-enable the endpoint.
+Registered by DUTH-62.
+
 ## internal-error
 
 An unexpected server failure occurred. Its detail never exposes exception data.

@@ -9,6 +9,7 @@ Start with the [project README](../README.md) for what TalentFlow is, the quick 
 | [architecture.md](architecture.md) | Current and target architecture: C4 context and container views, bounded contexts, workflow, event flow, identity flow |
 | [events/operations.md](events/operations.md) | Relay, inbox, retry/DLQ operations, replay and verification |
 | [events/asyncapi.yaml](events/asyncapi.yaml) | Integration event catalog (AsyncAPI 3.1): envelope, event types, RabbitMQ topology |
+| [webhooks/openapi.yaml](webhooks/openapi.yaml) | Outbound webhook contract (OpenAPI 3.1): tenant-admin API and the signed outbound request |
 | [roadmap.md](roadmap.md) | The nine DUTH-43 stages: outcome, issues and the patterns each one teaches |
 
 ## Architecture decision records
@@ -22,8 +23,9 @@ Start with the [project README](../README.md) for what TalentFlow is, the quick 
 | [005](adr/005-idempotency-keys.md) | PostgreSQL reservations and safe POST retries | Accepted |
 | [006](adr/006-integration-event-contract.md) | Integration event contract: CloudEvents envelope, catalog, RabbitMQ topology, evolution and PII rules | Accepted |
 | [007](adr/007-conditional-requests.md) | Aggregate version preconditions over HTTP (ETag / If-Match) | Accepted |
+| [008](adr/008-outbound-webhooks.md) | Outbound webhooks: admin API, Standard Webhooks signing, encrypted secrets, SSRF-safe egress, delivery lifecycle | Accepted |
 
-New ADRs use the next number (008), the same header fields (status, date, issue) and sections (context, decision, consequences, rejected alternatives, revisit when). An ADR that is replaced gets the status `Superseded by ADR NNN` and is otherwise left unchanged.
+New ADRs use the next number (009), the same header fields (status, date, issue) and sections (context, decision, consequences, rejected alternatives, revisit when). An ADR that is replaced gets the status `Superseded by ADR NNN` and is otherwise left unchanged.
 
 ## Runbooks
 
