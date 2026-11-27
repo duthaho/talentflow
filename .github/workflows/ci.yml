@@ -123,6 +123,8 @@ jobs:
       - run: uv run ruff check .
       - run: uv run alembic upgrade head
       - run: uv run alembic current
+      - name: Generate OpenAPI for backend contract assertions
+        run: uv run --frozen python -m scripts.export_openapi web/openapi.json
       - run: uv run python -m pytest
 
   web:
