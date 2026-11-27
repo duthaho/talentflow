@@ -31,12 +31,12 @@ All routes require the new permission **`webhook:manage`**, which is granted to 
 | `GET /v1/webhook-endpoints/{endpoint_id}` | Endpoint detail, strong `ETag: "<version>"` | — | — |
 | `PATCH /v1/webhook-endpoints/{endpoint_id}` | Change `url`, `description`, `event_types`, `enabled` | Supported; raw `If-Match` is part of the fingerprint (ADR-007 rule) | **Required** |
 | `DELETE /v1/webhook-endpoints/{endpoint_id}` | Delete the endpoint (a tombstone), destroy its secrets, cancel pending deliveries | Not applicable (a retry gets 404) | **Required** |
-| `POST /v1/webhook-endpoints/{endpoint_id}/secret-rotations` | New secret with a grace period for the old one. **Returns the new secret once.** | **Ignored**: the response contains a secret. If-Match prevents a double rotation. | **Required** |
+| `POST /v1/webhook-endpoints/{endpoint_id}/secret-rotations` | New secret with a grace period for the old one. **Returns the new secret once.** | **Ignored**: the response contains a secret. If-Match prevents a double rotation. | **Required**, `*` rejected |
 | `GET /v1/webhook-endpoints/{endpoint_id}/deliveries` | Delivery log for one endpoint, filtered and cursor paged | — | — |
 | `GET /v1/webhook-deliveries/{delivery_id}` | One delivery with all of its attempts | — | — |
 | `POST /v1/webhook-deliveries/{delivery_id}/redeliveries` | Manual redelivery (§5) | Supported | — |
 
-`If-Match` behaves exactly as in ADR-007. One exception: there is no legacy body version, so a missing header is always 428 `precondition-required`. A stale header is 412 `precondition-failed` with the current `ETag`, and a malformed one is 400 `invalid-precondition`. Every write increments `webhook_endpoints.version`, and so does a worker auto-disable, so an admin form that is still open receives 412.
+`If-Match` behaves exactly as in ADR-007. One exception: there is no legacy body version, so a missing header is always 428 `precondition-required`. A stale header is 412 `precondition-failed` with the current `ETag`, and a malformed one is 400 `invalid-precondition`. `secret-rotations` also rejects a lone `*` with 400 `invalid-precondition`. A wildcard matches any version, so a retried rotation would rotate twice and the first new secret, already shown once, would be lost. PATCH and DELETE accept `*` as in ADR-007. Every write increments `webhook_endpoints.version`, and so does a worker auto-disable, so an admin form that is still open receives 412.
 
 Rules for the request body (the full schemas are in OpenAPI):
 
@@ -232,7 +232,7 @@ stateDiagram-v2
 
 1. inserts the inbox row;
 2. upserts `webhook_events (tenant_id, event_id)` with the full envelope;
-3. inserts one `webhook_deliveries` row per **enabled** endpoint of that tenant subscribed to the type, with `ON CONFLICT DO NOTHING` on the partial unique index `(endpoint_id, event_id) WHERE redelivery_of_id IS NULL`.
+3. inserts one `webhook_deliveries` row per **enabled** endpoint of that tenant subscribed to the type, with `kind = 'fanout'` and `ON CONFLICT DO NOTHING` on the partial unique index `(endpoint_id, event_id) WHERE kind = 'fanout'`.
 
 Then it commits and acks. The broker retry queues and DLQ from ADR 006 cover only this database step. The HTTP call never runs inside the consumer. An endpoint created after an event does not receive that event: there is no backfill.
 
@@ -263,7 +263,8 @@ A crash after sending but before recording repeats the send once the lease expir
 
 **Manual redelivery** creates a **new delivery** for the **same event**:
 
-- The new row gets `redelivery_of_id` set to the original's id, `requested_by` set to the actor, a fresh attempt counter and its own backoff schedule.
+- The new row gets `kind = 'redelivery'`, `redelivery_of_id` set to the original's id, `requested_by` set to the actor, a fresh attempt counter and its own backoff schedule.
+- `kind` is set on insert and never changes, and it alone decides whether the fan-out unique index applies. `redelivery_of_id` only records lineage. It becomes NULL when retention purges the original, and that does not turn a redelivery into a fan-out row.
 - It is signed with the current secrets and sent with the same `webhook-id`, the CloudEvents id, so a receiver that already processed the event deduplicates it.
 - The original row and its attempts are never modified, which keeps the log append-only.
 - Redelivery is allowed only from a terminal state (`succeeded`, `dead_lettered`, `cancelled`) and only while the endpoint is `enabled`. Otherwise the API returns 409 `delivery-not-redeliverable`.
@@ -271,6 +272,8 @@ A crash after sending but before recording repeats the send once the lease expir
 - Redelivery is possible as long as the delivery row exists (§5 retention). It does not depend on the RabbitMQ inbox or the outbox.
 
 **Disabling and deleting.** A manual disable, an auto-disable or a delete sets every `pending` delivery of the endpoint to `cancelled`, in the same transaction as the endpoint change. Re-enabling does not resurrect them; the admin redelivers the ones they need. Changing `event_types` does not affect deliveries that already exist.
+
+**Changing the URL.** The worker reads the endpoint URL when it makes each attempt, not when it enqueues the delivery. After a PATCH that changes `url`, every `pending` delivery, retries included, goes to the new URL on its next attempt, and the §4 checks run against the new URL. An attempt already in flight finishes against the old URL. The signing secrets stay the same. An admin who doesn't want pending deliveries to reach the new URL disables the endpoint first, which cancels them, and then changes the URL.
 
 **Auto-disable: yes.** The endpoint tracks `failure_streak_started_at`, the first failed attempt since the last 2xx, and `consecutive_failures`. The worker sets `status = disabled`, `disabled_reason = failing` and increments `version` when both conditions hold:
 
@@ -282,6 +285,7 @@ Both conditions are needed: the count alone would disable a busy endpoint after 
 **Retention.**
 
 - Delivery and attempt rows are deleted **30 days** after the delivery reached a terminal state (`WEBHOOK_DELIVERY_RETENTION_DAYS`, default 30, at least 1). This matches the inbox horizon in ADR 006.
+- Each delivery is purged on its own `completed_at`. An original and its redeliveries are not purged together. Purging an original sets `redelivery_of_id` to NULL on its redeliveries. Their `kind` stays `redelivery`, so the fan-out unique index is never violated.
 - A `webhook_events` row is deleted once no delivery references it.
 - The existing retention worker does the purge in batches of `RETENTION_WORKER_BATCH_SIZE` with `FOR UPDATE SKIP LOCKED`.
 - Deleted endpoints (tombstones) are purged once they have no deliveries left.
@@ -289,7 +293,7 @@ Both conditions are needed: the count alone would disable a busy endpoint after 
 
 ### 6. Schema outline (DUTH-62 Alembic revision, expand-only)
 
-Ids are `varchar(36)` UUIDs and times are `timestamptz`, as in the existing tables. Every table carries `tenant_id`. Child tables reference the endpoint through a composite foreign key on `(tenant_id, endpoint_id)`, so a row can never point into another tenant. Every query filters on `tenant_id` first.
+Ids are `varchar(36)` UUIDs and times are `timestamptz`, as in the existing tables. Every table carries `tenant_id`. Child tables reference their parent through a composite foreign key that includes `tenant_id`: `(tenant_id, endpoint_id)`, `(tenant_id, event_id)` or `(tenant_id, delivery_id)`. A row can never point into another tenant. Every query filters on `tenant_id` first.
 
 ```sql
 CREATE TABLE webhook_endpoints (
@@ -360,14 +364,18 @@ CREATE TABLE webhook_deliveries (
   last_attempt_at   timestamptz,
   last_status_code  integer,
   last_error_code   varchar(32),
-  redelivery_of_id  varchar(36)  REFERENCES webhook_deliveries (id) ON DELETE SET NULL,
+  kind              varchar(16)  NOT NULL CHECK (kind IN ('fanout','redelivery')),  -- immutable
+  redelivery_of_id  varchar(36)  REFERENCES webhook_deliveries (id) ON DELETE SET NULL,  -- lineage only
   requested_by      varchar(36),           -- actor for manual redelivery
   created_at        timestamptz  NOT NULL,
   completed_at      timestamptz,
+  UNIQUE (tenant_id, id),
   FOREIGN KEY (tenant_id, endpoint_id) REFERENCES webhook_endpoints (tenant_id, id),
-  FOREIGN KEY (tenant_id, event_id)    REFERENCES webhook_events (tenant_id, event_id)
+  FOREIGN KEY (tenant_id, event_id)    REFERENCES webhook_events (tenant_id, event_id),
+  CHECK (kind = 'redelivery' OR (redelivery_of_id IS NULL AND requested_by IS NULL)),
+  CHECK (kind = 'fanout' OR requested_by IS NOT NULL)
 );
-CREATE UNIQUE INDEX uq_webhook_deliveries_fanout  ON webhook_deliveries (endpoint_id, event_id) WHERE redelivery_of_id IS NULL;
+CREATE UNIQUE INDEX uq_webhook_deliveries_fanout  ON webhook_deliveries (endpoint_id, event_id) WHERE kind = 'fanout';
 CREATE UNIQUE INDEX uq_webhook_deliveries_pending ON webhook_deliveries (endpoint_id, event_id) WHERE status = 'pending';
 CREATE INDEX ix_webhook_deliveries_due  ON webhook_deliveries (next_attempt_at) WHERE status = 'pending';
 CREATE INDEX ix_webhook_deliveries_log  ON webhook_deliveries (tenant_id, endpoint_id, created_at DESC, id DESC);
@@ -376,18 +384,19 @@ CREATE INDEX ix_webhook_deliveries_purge ON webhook_deliveries (completed_at) WH
 CREATE TABLE webhook_delivery_attempts (
   id               varchar(36)  PRIMARY KEY,
   tenant_id        varchar(36)  NOT NULL,
-  delivery_id      varchar(36)  NOT NULL REFERENCES webhook_deliveries (id) ON DELETE CASCADE,
+  delivery_id      varchar(36)  NOT NULL,
   attempt_number   integer      NOT NULL,
   started_at       timestamptz  NOT NULL,
   duration_ms      integer      NOT NULL,
   status_code      integer,
   error_code       varchar(32),            -- enum below; NULL on 2xx
   signed_secret_ids varchar(80) NOT NULL,  -- "<current>[ <previous>]", for rotation debugging
-  UNIQUE (delivery_id, attempt_number)
+  UNIQUE (delivery_id, attempt_number),
+  FOREIGN KEY (tenant_id, delivery_id) REFERENCES webhook_deliveries (tenant_id, id) ON DELETE CASCADE
 );
 ```
 
-`error_code` is one of `http_status`, `redirect`, `timeout`, `dns_error`, `connect_error`, `tls_error`, `blocked_address`, `invalid_url`, `response_too_large`. On SQLite (unit tests) the partial indexes use SQLite's own partial-index syntax. `jsonb` becomes JSON.
+`error_code` is one of `http_status`, `redirect`, `timeout`, `dns_error`, `connect_error`, `tls_error`, `blocked_address`, `invalid_url`, `response_too_large`. DUTH-62 must include a migration test for the purge case: one original with two redeliveries, original purged first, and the purge succeeds. On SQLite (unit tests) the partial indexes use SQLite's own partial-index syntax. `jsonb` becomes JSON.
 
 ### Configuration (names only)
 

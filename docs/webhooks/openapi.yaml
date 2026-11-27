@@ -188,12 +188,13 @@ paths:
       operationId: rotateWebhookSecret
       summary: Rotate the signing secret
       description: >-
-        Requires If-Match. Idempotency-Key is ignored because the response contains the new secret;
-        If-Match stops a retried request from rotating twice. The current secret becomes
+        Requires If-Match with a concrete version. A lone `*` returns 400 `invalid-precondition`,
+        because a wildcard would let a retried request rotate twice. Idempotency-Key is ignored
+        because the response contains the new secret, so If-Match is what stops a double rotation. The current secret becomes
         `previous` until `grace_period_seconds` passes, and both sign meanwhile. An older
         `previous` expires at once.
       parameters:
-        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IfMatchNoWildcard'
       requestBody:
         required: false
         content:
@@ -424,6 +425,13 @@ components:
       description: Strong quoted version from the endpoint's ETag, a comma-separated list of tags, or `*` (ADR-007).
       schema: {type: string}
       example: '"3"'
+    IfMatchNoWildcard:
+      name: If-Match
+      in: header
+      required: true
+      description: Strong quoted version from the endpoint's ETag, or a comma-separated list of tags. A lone `*` is rejected with 400 `invalid-precondition`.
+      schema: {type: string, not: {const: '*'}}
+      example: '"3"'
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -577,7 +585,7 @@ components:
       type: object
       additionalProperties: false
       minProperties: 1
-      description: Partial update. `event_types` replaces the whole set.
+      description: Partial update. `event_types` replaces the whole set. A new `url` applies to the next attempt of every pending delivery, retries included (ADR-008 §5).
       properties:
         url: {$ref: '#/components/schemas/WebhookUrl'}
         description: {$ref: '#/components/schemas/Description'}
@@ -699,6 +707,7 @@ components:
         - endpoint_id
         - event_id
         - event_type
+        - kind
         - status
         - attempt_count
         - max_attempts
@@ -718,6 +727,10 @@ components:
           format: uuid
           description: The CloudEvents id, sent as `webhook-id`.
         event_type: {$ref: '#/components/schemas/EventType'}
+        kind:
+          type: string
+          enum: [fanout, redelivery]
+          description: Set on creation and never changes. `redelivery` rows were created by an admin redelivery.
         status: {$ref: '#/components/schemas/DeliveryStatus'}
         attempt_count: {type: integer, minimum: 0, maximum: 8}
         max_attempts: {type: integer, const: 8}
@@ -731,7 +744,9 @@ components:
         redelivery_of_id:
           type: [string, 'null']
           format: uuid
-          description: Set when an admin created this delivery by redelivering another one.
+          description: >-
+            Lineage of a `redelivery` row. It becomes null once retention purges the original;
+            `kind` still identifies the row.
         requested_by:
           type: [string, 'null']
           description: Actor id for a manual redelivery.
