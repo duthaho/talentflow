@@ -23,8 +23,9 @@ The v2 plan (DUTH-43) makes TalentFlow fully runnable on a laptop: `docker compo
 Requirements: Python 3.13 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync --all-groups
-uv run python -m pytest                       # 63 tests, coverage gate 85%
+uv sync --python 3.13 --all-groups --frozen
+uv run --frozen python -m scripts.export_openapi web/openapi.json
+uv run python -m pytest                       # coverage gate 85%
 uv run uvicorn app.main:app --reload          # SQLite, development header auth
 curl http://127.0.0.1:8000/health/ready
 ```
@@ -36,8 +37,13 @@ Quality gates (same as CI):
 ```bash
 uv run ruff format --check .
 uv run ruff check .
+uv run --frozen python -m scripts.export_openapi web/openapi.json
 uv run python -m pytest
 ```
+
+Backend contract tests consume the exported OpenAPI JSON. This export needs only
+Python dependencies; `make api-client` also generates TypeScript and needs Node.
+CI exports the JSON before backend tests and the full client before web checks.
 
 Last local run, 2026-11-24: **63 passed, 87.94% coverage**.
 
