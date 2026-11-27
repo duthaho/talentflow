@@ -35,9 +35,10 @@ consent use a 60-second cache per visitor address; publication changes may take
 that long to appear, while API application eligibility is checked immediately.
 
 Compose assigns web 172.29.127.10 and trusts only its /32, excluding the bridge
-gateway. In a deployment, the API must be reachable only through web. The local
+gateway. Dynamic allocation uses 172.29.127.128/25, excluding the static web
+address so other containers cannot claim it during startup. In a deployment, the API must be reachable only through web. The local
 loopback API port is for development tools, not public ingress. Deploy multiple
-stacks on separate hosts or override the subnet and /32 together.
+stacks on separate hosts or override the subnet, dynamic pool and /32 together.
 
 The apply proxy never loads sessions. Its fixed request header allow-list is
 content-type, accurate content-length, canonical x-forwarded-for and optional

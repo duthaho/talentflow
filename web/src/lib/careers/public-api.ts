@@ -1,4 +1,5 @@
 import "server-only";
+import { notFound } from "next/navigation";
 import { config } from "@/lib/config";
 import { clientIp } from "./client-ip";
 
@@ -18,11 +19,7 @@ export async function publicFetch<T>(
       next: { revalidate: 60 },
     },
   );
-  if (!response.ok)
-    throw new Error(
-      response.status === 404
-        ? "Careers page not found"
-        : "Careers service temporarily unavailable",
-    );
+  if (response.status === 404) notFound();
+  if (!response.ok) throw new Error("Careers service temporarily unavailable");
   return response.json() as Promise<T>;
 }

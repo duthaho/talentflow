@@ -36,13 +36,11 @@ test("publish, apply anonymously with a scanned CV, and inspect immutable consen
     await applicant
       .getByLabel("Email", { exact: true })
       .fill(`careers-${suffix}@example.test`);
-    await applicant
-      .getByLabel(/CV \(PDF/)
-      .setInputFiles({
-        name: "resume.pdf",
-        mimeType: "application/pdf",
-        buffer: Buffer.from("%PDF-1.7\nClean careers CV\n%%EOF"),
-      });
+    await applicant.getByLabel(/CV \(PDF/).setInputFiles({
+      name: "resume.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.7\nClean careers CV\n%%EOF"),
+    });
     await applicant.getByRole("checkbox").check();
     const accepted = applicant.waitForResponse(
       (response) =>
@@ -74,4 +72,12 @@ test("publish, apply anonymously with a scanned CV, and inspect immutable consen
   } finally {
     await anonymous.close();
   }
+});
+
+test("unknown careers slug returns a 404 without requiring a session", async ({
+  page,
+}) => {
+  const response = await page.goto(`/careers/missing-${randomUUID()}`);
+  expect(response?.status()).toBe(404);
+  await expect(page.getByText("This page could not be found.")).toBeVisible();
 });

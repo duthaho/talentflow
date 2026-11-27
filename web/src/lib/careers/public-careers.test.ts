@@ -66,19 +66,17 @@ describe("public careers boundary", () => {
   });
 
   it("isolates sessions and forwards a fixed allow-list and accurate body length", async () => {
-    const upstream = vi
-      .fn()
-      .mockResolvedValue(
-        new Response('{"status":"received"}', {
-          status: 202,
-          headers: {
-            "content-type": "application/json",
-            "retry-after": "10",
-            "set-cookie": "bad",
-            location: "https://bad",
-          },
-        }),
-      );
+    const upstream = vi.fn().mockResolvedValue(
+      new Response('{"status":"received"}', {
+        status: 202,
+        headers: {
+          "content-type": "application/json",
+          "retry-after": "10",
+          "set-cookie": "bad",
+          location: "https://bad",
+        },
+      }),
+    );
     const response = await forwardApplication(
       request("body", {
         authorization: "Bearer secret",
@@ -194,4 +192,35 @@ it("keeps public route groups and helpers independent of session loading", async
     }
   }
   for (const root of roots) check(resolve(root));
+});
+
+it.each(["requisitions", "consent"] as const)(
+  "renders unknown tenant %s as a Next 404",
+  async (resource) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 404 })),
+    );
+    try {
+      await expect(
+        publicFetch("missing", resource, request().headers),
+      ).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+it("keeps upstream outages distinct from missing careers pages", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(null, { status: 503 })),
+  );
+  try {
+    await expect(
+      publicFetch("demo", "requisitions", request().headers),
+    ).rejects.toThrow("Careers service temporarily unavailable");
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
