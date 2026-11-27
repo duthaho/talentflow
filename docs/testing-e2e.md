@@ -9,7 +9,7 @@ From the repository root:
 ```sh
 export COMPOSE_PROJECT_NAME=talentflow-e2e
 export COMPOSE_FILE=docker-compose.yml:docker-compose.e2e.yml
-docker compose up --detach --build --wait api web outbox-relay notification-worker
+docker compose up --detach --build --wait api web outbox-relay notification-worker webhook-worker webhook-demo
 make seed
 cd web
 npm ci
@@ -48,6 +48,18 @@ The two acceptance scenarios are:
   One commits Screening; the other tries Rejected with the original version.
   The actual API returns 409 Problem Details, the conflict prompt appears, and
   Refresh board shows Screening. A subsequent move uses the refreshed version.
+
+`web/e2e/webhooks.spec.ts` covers the webhook admin screens (DUTH-141):
+
+- The tenant admin registers `http://webhook-demo:8080/events?run=<uuid>` for
+  `candidate_case.created.v1` and sees the signing secret once. The create
+  response must carry `Cache-Control: no-store` through the BFF. The admin then
+  creates a candidate. The delivery log shows the `webhook-worker` delivery as
+  Succeeded with HTTP 204, polled through Refresh for at most 60s. Redeliver shows
+  "Redelivery succeeded (HTTP 204)", and the log then holds the redelivery row.
+  The test deletes its endpoint so reruns stay under the 10-endpoint tenant limit.
+- A recruiter sees no Webhooks link and gets the forbidden page at
+  `/settings/webhooks`; the API returns 403 for `GET /v1/webhook-endpoints`.
 
 **AC2:** the `hiring-e2e` job in `.github/workflows/ci.yml` runs on every PR and
 push to `main`, with non-default host ports. Its explicit service list starts both

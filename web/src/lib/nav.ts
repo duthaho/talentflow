@@ -5,7 +5,7 @@ export type NavItem = {
   label: string;
   description: string;
   anyOf: Permission[];
-  icon: "home" | "users" | "calendar" | "file-signature" | "chart" | "scroll" | "archive";
+  icon: "home" | "users" | "calendar" | "file-signature" | "chart" | "scroll" | "archive" | "webhook";
 };
 
 export const NAV_ITEMS: NavItem[] = [
@@ -17,6 +17,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/audit", label: "Audit log", description: "Who did what, and when.", anyOf: ["audit:read"], icon: "scroll" },
   { href: "/settings/requisitions", label: "Requisitions", description: "Publish jobs to your careers page.", anyOf: ["tenant:read"], icon: "file-signature" },
   { href: "/settings/retention", label: "Retention", description: "Retention policy and legal holds.", anyOf: ["retention:manage"], icon: "archive" },
+  { href: "/settings/webhooks", label: "Webhooks", description: "Send hiring events to your own systems.", anyOf: ["webhook:manage"], icon: "webhook" },
 ];
 
 export function isAllowed(item: Pick<NavItem, "anyOf">, permissions: readonly Permission[]): boolean {

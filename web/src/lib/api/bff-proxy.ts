@@ -3,7 +3,7 @@ import { isSameOrigin } from "@/lib/http/same-origin";
 import { PROBLEM_TYPE_BASE, type ProblemDetails } from "./problem";
 
 const FORWARDED_REQUEST_HEADERS = ["accept", "content-type", "if-match", "if-none-match", "x-correlation-id", "idempotency-key"];
-const FORWARDED_RESPONSE_HEADERS = ["content-type", "content-disposition", "etag", "retry-after", "x-correlation-id", "location"];
+const FORWARDED_RESPONSE_HEADERS = ["cache-control", "content-type", "content-disposition", "etag", "retry-after", "x-correlation-id", "location"];
 
 export type ProxyDeps = {
   apiBaseUrl: string;

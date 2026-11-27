@@ -62,6 +62,19 @@ describe("BFF proxy", () => {
     expect(new TextDecoder().decode(init.body as ArrayBuffer)).toBe('{"stage":"screening"}');
   });
 
+  it("keeps Cache-Control so secret-bearing responses stay no-store", async () => {
+    const { forward } = proxy(
+      "t",
+      vi.fn(async () => Response.json({ secret: { id: "s", value: "whsec_x" } }, { status: 201, headers: { "cache-control": "no-store", etag: '"1"' } })),
+    );
+    const response = await forward(
+      new Request("http://web/api/tf/v1/webhook-endpoints", { method: "POST", headers: { origin: "http://web" }, body: "{}" }),
+      ["v1", "webhook-endpoints"],
+    );
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("etag")).toBe('"1"');
+  });
+
   it("passes API problems through unchanged", async () => {
     const body = { type: "x#forbidden", title: "Forbidden", status: 403, correlation_id: "c" };
     const { forward } = proxy(

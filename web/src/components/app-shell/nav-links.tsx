@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, CalendarDays, ChartColumn, FileSignature, House, ScrollText, Users } from "lucide-react";
+import { Archive, CalendarDays, ChartColumn, FileSignature, House, ScrollText, Users, Webhook } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -15,6 +15,7 @@ const ICONS: Record<NavItem["icon"], typeof House> = {
   chart: ChartColumn,
   scroll: ScrollText,
   archive: Archive,
+  webhook: Webhook,
 };
 
 export function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
