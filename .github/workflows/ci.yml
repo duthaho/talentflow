@@ -202,11 +202,19 @@ jobs:
       CALENDAR_PUBLIC_BASE_URL: https://api.example.test
     steps:
       - uses: actions/checkout@v4
+      - name: Generate ephemeral webhook encryption key
+        id: webhook-keyring
+        shell: bash
+        run: |
+          webhook_ci_key="$(openssl rand -base64 32)"
+          echo "::add-mask::$webhook_ci_key"
+          printf 'WEBHOOK_SECRET_KEYS=ci:%s\nWEBHOOK_SECRET_ACTIVE_KEY_ID=ci\n' "$webhook_ci_key" >> "$GITHUB_ENV"
       - name: Build immutable candidate image
         run: docker build --tag talentflow:${{ github.sha }} .
       - name: Apply migrations in the image
         run: >-
           docker run --rm --add-host host.docker.internal:host-gateway
+          --env WEBHOOK_SECRET_KEYS --env WEBHOOK_SECRET_ACTIVE_KEY_ID
           --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS
           --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL --env REDIS_URL
           --env ATTACHMENT_STORAGE_ROOT --env ATTACHMENT_SCAN_MODE --env CALENDAR_PUBLIC_BASE_URL
@@ -215,6 +223,7 @@ jobs:
         run: |
           docker run --detach --rm --name talentflow-api --add-host host.docker.internal:host-gateway \
             --publish 127.0.0.1:8000:8000 \
+            --env WEBHOOK_SECRET_KEYS --env WEBHOOK_SECRET_ACTIVE_KEY_ID \
             --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS \
             --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL --env REDIS_URL \
             --env ATTACHMENT_STORAGE_ROOT --env ATTACHMENT_SCAN_MODE --env CALENDAR_PUBLIC_BASE_URL \
@@ -226,6 +235,7 @@ jobs:
         run: >-
           docker run --rm --add-host host.docker.internal:host-gateway
           --env WORKER_RUN_ONCE=1
+          --env WEBHOOK_SECRET_KEYS --env WEBHOOK_SECRET_ACTIVE_KEY_ID
           --env APP_ENV --env AUTH_MODE --env DATABASE_URL --env CORS_ALLOWED_ORIGINS
           --env OIDC_ISSUER --env OIDC_AUDIENCE --env OIDC_JWKS_URL --env REDIS_URL
           --env ATTACHMENT_STORAGE_ROOT --env ATTACHMENT_SCAN_MODE --env CALENDAR_PUBLIC_BASE_URL

@@ -1,4 +1,4 @@
-# ADR-008: Anonymous application intake
+# ADR-009: Anonymous application intake
 
 The public careers API accepts hostile multipart input without an authenticated
 actor. Its order is a security boundary: explicit request framing and cap, IP

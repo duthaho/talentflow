@@ -14,9 +14,13 @@ CLEAN_ARCHITECTURE_MODULES = (
     "organization",
     "reporting",
     "retention",
+    "webhooks",
 )
 ALLOWED_CROSS_CONTEXT_PERSISTENCE_IMPORTS = {
     ("candidates", "retention"): "public consent reads the tenant retention period",
+    ("webhooks", "notifications"): "webhook fanout shares the broker inbox transaction",
+    ("webhooks", "audit"): "webhook lifecycle writes tenant-scoped audit in the transaction",
+    ("webhooks", "organization"): "tenant row serializes endpoint quota enforcement",
     ("audit", "candidates"): "case timeline checks that the case exists in the tenant (read only)",
     ("audit", "attachments"): "case timeline joins tenant-scoped attachment ids (read only)",
     ("attachments", "audit"): "attachment lifecycle writes an audit event in the same transaction",
@@ -118,6 +122,7 @@ def test_application_layer_depends_on_ports_not_frameworks() -> None:
 def test_public_routes_never_resolve_an_actor():
     from fastapi.routing import APIRoute
 
+    from app.api.webhook_router import webhook_actor
     from app.main import create_app
     from app.modules.identity.security import resolve_actor
 
@@ -131,6 +136,8 @@ def test_public_routes_never_resolve_an_actor():
             else:
                 yield route
 
+    # Webhooks wrap resolve_actor to preserve their distinct 401/403 contract.
+    authentication_guards = {resolve_actor, webhook_actor}
     checked = []
     for route in routes(create_app("sqlite://")):
         if not isinstance(route, APIRoute) or not route.path.startswith("/v1/"):
@@ -138,10 +145,10 @@ def test_public_routes_never_resolve_an_actor():
         checked.append(route.path)
         dependencies = calls(route.dependant)
         if route.path.startswith("/v1/public/"):
-            assert resolve_actor not in dependencies, route.path
+            assert authentication_guards.isdisjoint(dependencies), route.path
         # Existing bootstrap and bearer-capability feed are intentionally anonymous.
         elif route.path not in {"/v1/tenants", "/v1/calendar-feeds/{token}.ics"}:
-            assert resolve_actor in dependencies, route.path
+            assert authentication_guards.intersection(dependencies), route.path
 
     assert len(checked) > 30
     assert sum(path.startswith("/v1/public/") for path in checked) == 3

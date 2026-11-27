@@ -18,6 +18,9 @@ from app.api.organization_router import router as organization_router
 from app.api.public_careers_router import router as public_careers_router
 from app.api.reporting_router import router as reporting_router
 from app.api.retention_router import router as retention_router
+from app.api.webhook_contract import install_webhook_openapi
+from app.api.webhook_router import commands as webhook_commands
+from app.api.webhook_router import router as webhook_router
 from app.modules.identity.infrastructure.jwt_validator import HttpJwksProvider, JwtValidator
 from app.shared.database import Base, build_engine
 from app.shared.observability import configure_logging, configure_telemetry, instrument_app
@@ -59,7 +62,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
             CORSMiddleware,
             allow_origins=list(runtime_settings.cors_origins),
             allow_credentials=True,
-            allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+            allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=[
                 "Authorization",
                 "Content-Type",
@@ -106,8 +109,11 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
         organization_router,
         reporting_router,
         retention_router,
+        webhook_router,
+        webhook_commands,
     ):
         app.include_router(router)
+    install_webhook_openapi(app)
     return app
 
 

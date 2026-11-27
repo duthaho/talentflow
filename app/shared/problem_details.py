@@ -14,6 +14,9 @@ from app.shared.observability import correlation_id_context
 PROBLEM_TYPE_BASE = "https://github.com/duthaho/talentflow/blob/main/docs/api-errors.md#"
 PROBLEM_TYPES = frozenset(
     {
+        "webhook-url-not-allowed",
+        "webhook-endpoint-limit-reached",
+        "delivery-not-redeliverable",
         "validation-error",
         "length-required",
         "payload-too-large",
@@ -94,7 +97,12 @@ def install_problem_details_handlers(app: FastAPI) -> None:
         ]
         return problem_response(
             request,
-            status=422,
+            status=(
+                400
+                if request.url.path.startswith(("/v1/webhook-endpoints", "/v1/webhook-deliveries"))
+                and all(error["loc"][0] == "query" for error in exception.errors())
+                else 422
+            ),
             detail="Request validation failed",
             type_uri=problem_type("validation-error"),
             extensions={"errors": errors},

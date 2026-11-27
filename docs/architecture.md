@@ -136,7 +136,7 @@ flowchart LR
 | Reporting | PII-free pipeline read model | implemented | read model |
 | Retention | retention policy, legal hold, purge | implemented | bounded purge worker, anonymization |
 | Search | candidate full-text search and facets | **planned — stage 7** | event-fed OpenSearch projection, alias swap rebuild |
-| Webhooks | tenant subscriptions, signed delivery | **planned — stage 5** | HMAC signing, retry/DLQ, SSRF guard |
+| Webhooks | tenant-admin subscriptions, signed delivery, log/redelivery APIs | **implemented — DUTH-62**; admin UI DUTH-141 | [ADR-008](adr/008-outbound-webhooks.md), HMAC signing, encrypted keys, pinned egress, retry/dead-letter |
 | Onboarding saga | hire → employee record, account, day-1 tasks | **planned — stage 6** | process manager, compensation |
 | Feature flags | per-tenant/role targeting, kill switches | **planned — stage 6** | OpenFeature, flagd |
 | AI assistant | resume parsing, matching, feedback summary | **planned — stage 8** | LLM gateway port, guardrails, eval harness, pgvector |
@@ -249,6 +249,7 @@ Each consumer records `(consumer, event_id)` in an inbox table in the same trans
 | `tenant:read` | ✓ | ✓ | ✓ | ✓ |  |
 | `retention:manage` | ✓ | ✓ |  |  |  |
 | `retention:purge` | ✓ | ✓ |  |  |  |
+| `webhook:manage` | ✓ | | | | |
 <!-- permission-matrix:end -->
 
 `calendar:self` is scoped to the caller: it permits an interviewer to manage only links whose interviewer is their own authenticated identity, while `calendar:manage` remains the tenant-wide administrative permission.

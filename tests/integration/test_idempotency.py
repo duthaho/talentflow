@@ -226,13 +226,19 @@ def test_openapi_coverage_and_exclusions(context):
         "/v1/tenants",
         "/v1/calendar-subscriptions",
         "/v1/public/tenants/{slug}/requisitions/{requisition_id}/applications",
+        "/v1/webhook-endpoints",
+        "/v1/webhook-endpoints/{endpoint_id}/secret-rotations",
         "/v1/candidate-cases/{candidate_case_id}/attachments",
     }
     for path, operations in schema["paths"].items():
         if "post" not in operations:
             continue
         operation = operations["post"]
-        keys = [p for p in operation.get("parameters", []) if p["name"] == "Idempotency-Key"]
+        parameters = [
+            schema["components"]["parameters"][p["$ref"].rsplit("/", 1)[-1]] if "$ref" in p else p
+            for p in operation.get("parameters", [])
+        ]
+        keys = [p for p in parameters if p["name"] == "Idempotency-Key"]
         if path in excluded:
             assert not keys
             assert "Idempotency-Key is ignored" in operation["description"]

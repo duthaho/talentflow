@@ -120,7 +120,7 @@ Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `imple
 | Outbox relay to RabbitMQ, inbox dedup, DLQ (DUTH-59) | At-least-once delivery, exactly-once database effect | [`app/shared/rabbitmq.py`](app/shared/rabbitmq.py), [`event_consumer.py`](app/modules/notifications/application/event_consumer.py) | [`test_rabbitmq_outbox.py`](tests/integration/test_rabbitmq_outbox.py), [`test_event_producers.py`](tests/integration/test_event_producers.py) | [003](docs/adr/003-local-open-source-runtime-stack.md), [006](docs/adr/006-integration-event-contract.md) | implemented |
 | Idempotency keys (DUTH-60) | Safe client retries for POST commands | `app/api/idempotency.py`, `app/shared/idempotency.py` | `tests/integration/test_idempotency.py`, `tests/integration/test_idempotency_postgres.py` | [005](docs/adr/005-idempotency-keys.md) | implemented |
 | ETag / If-Match conditional requests (DUTH-61) | HTTP-native optimistic concurrency | `app/api/conditional_requests.py`, `app/shared/concurrency.py`, `web/src/lib/api/precondition.ts` | `tests/integration/test_conditional_requests.py`, `web/src/lib/api/precondition.test.ts` | [007](docs/adr/007-conditional-requests.md) | implemented |
-| Signed outbound webhooks with SSRF guard (DUTH-62) | Verifiable integrations that cannot reach internal hosts | — | — | — | planned — stage 5 |
+| Signed outbound webhooks with SSRF guard (DUTH-62) | Verifiable integrations that cannot reach internal hosts | — | — | [008](docs/adr/008-outbound-webhooks.md) | planned — stage 5 |
 | Public self-apply with abuse controls (DUTH-63) | Handling anonymous, untrusted input and consent | — | — | — | planned — stage 5 |
 | Saga / process manager with compensation (DUTH-64) | Multi-step workflows that undo cleanly on failure | — | — | planned with DUTH-64 | planned — stage 6 |
 | Feature flags via OpenFeature + flagd (DUTH-65) | Per-tenant rollout and kill switches without redeploy | — | — | [003](docs/adr/003-local-open-source-runtime-stack.md) | planned — stage 6 |
@@ -157,7 +157,7 @@ page follows in DUTH-127.
 
 ## Configuration notes
 
-- Settings are validated at startup (`app/shared/settings.py`). With `APP_ENV=production` the app requires `AUTH_MODE=oidc_jwt`, PostgreSQL, Redis, explicit HTTPS CORS origins, HTTPS OIDC and calendar URLs, an absolute attachment root and ClamAV scanning.
+- Settings are validated at startup (`app/shared/settings.py`). With `APP_ENV=production` the app requires `AUTH_MODE=oidc_jwt`, PostgreSQL, Redis, explicit HTTPS CORS origins, HTTPS OIDC and calendar URLs, an absolute attachment root and ClamAV scanning. Production also requires `WEBHOOK_SECRET_KEYS` (a keyring of `kid:base64-of-32-random-bytes`) and `WEBHOOK_SECRET_ACTIVE_KEY_ID` (an id in that ring); the public development key is rejected. Supply both to the API, migration and worker containers through the environment/secret manager. See [webhook key operations](docs/webhooks/operations.md#keys-and-rotation).
 - Variable names are listed in [`.env.example`](.env.example). Values there are local development defaults only. Never commit real credentials.
 - `NOTIFICATION_EMAIL_ADAPTER=smtp` is the local default and sends to Mailpit at `mailpit:1025`; set `NOTIFICATION_EMAIL_ADAPTER=sendgrid` with `SENDGRID_API_KEY` to use SendGrid instead. `NOTIFICATION_FROM_EMAIL` is always required.
 
@@ -180,7 +180,7 @@ RabbitMQ relay, retry/DLQ inspection and replay: [event operations](docs/events/
 Publish a requisition, then visit `/careers/<tenant-slug>` without signing in.
 Applicants consent to the displayed wording and submit a clean PDF or DOCX. Staff
 see the source and immutable consent record on candidate detail. No applicant
-confirmation email is sent. See [ADR-008](docs/adr/008-public-careers-intake.md).
+confirmation email is sent. See [ADR-009](docs/adr/009-public-careers-intake.md).
 
 - `CAREERS_APPLY_LIMIT_PER_HOUR`: per visitor IP, default 5.
 - `CAREERS_APPLY_LIMIT_PER_EMAIL_PER_DAY`: per tenant and normalized email, default 3.
@@ -198,3 +198,8 @@ Opt-in tests use disposable local services only: `CAREERS_CLAMD_PORT`,
 `CAREERS_TEST_DATABASE_URL`, `CAREERS_TEST_REDIS_URL`. Run
 `uv run python -m pytest tests/integration/test_careers_live.py` with those set
 for real scanner, PostgreSQL race, and Redis evidence.
+
+For the careers migration PostgreSQL round trip, set
+`CAREERS_MIGRATION_DATABASE_URL` to a fresh disposable database and run
+`uv run python -m pytest tests/integration/test_careers_migration.py`. It verifies
+upgrade/downgrade/upgrade while preserving the webhook schema and existing endpoint.
