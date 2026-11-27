@@ -79,5 +79,5 @@ test("unknown careers slug returns a 404 without requiring a session", async ({
 }) => {
   const response = await page.goto(`/careers/missing-${randomUUID()}`);
   expect(response?.status()).toBe(404);
-  await expect(page.getByText("This page could not be found.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Not found", exact: true })).toBeVisible();
 });
