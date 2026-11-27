@@ -53,7 +53,7 @@ The two acceptance scenarios are:
 
 - The tenant admin registers `http://webhook-demo:8080/events?run=<uuid>` for
   `candidate_case.created.v1` and sees the signing secret once. The create
-  response must carry `Cache-Control: no-store` through the BFF. The admin then
+  response must keep `no-store` in `Cache-Control` through the BFF. The admin then
   creates a candidate. The delivery log shows the `webhook-worker` delivery as
   Succeeded with HTTP 204, polled through Refresh for at most 60s. Redeliver shows
   "Redelivery succeeded (HTTP 204)", and the log then holds the redelivery row.

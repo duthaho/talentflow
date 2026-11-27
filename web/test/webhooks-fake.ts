@@ -211,6 +211,7 @@ export function fakeWebhooksBackend({
         requested_by: "user-admin",
       });
       log.set(id, pending);
+      bump(endpoint);
       return Response.json(pending, { status: 202, headers: { location: `/v1/webhook-deliveries/${id}` } });
     }
 

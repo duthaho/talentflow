@@ -47,9 +47,11 @@ export function DeliveryLog({
   endpoint,
   pollIntervalMs = 2000,
   pollTimeoutMs = 60000,
+  onRedelivered,
 }: {
   api: ApiClient;
   endpoint: WebhookEndpoint;
+  onRedelivered: () => void;
   pollIntervalMs?: number;
   pollTimeoutMs?: number;
 }) {
@@ -93,6 +95,7 @@ export function DeliveryLog({
       setResults((current) => ({ ...current, [original.id]: { tone: "error", message: describeProblem(queued.problem).description } }));
       return;
     }
+    onRedelivered();
     const show = (delivery: WebhookDelivery, suffix = "") =>
       setResults((current) => ({ ...current, [original.id]: { tone: toneOf(delivery), message: `${redeliveryOutcome(delivery)}${suffix}` } }));
     show(queued.data);

@@ -69,6 +69,12 @@ export function WebhooksWorkspace({
     });
   }
 
+  // A redelivery is an endpoint write (ADR-008), so the API bumps its version; refetch to keep If-Match current.
+  async function refreshEndpoint(id: string) {
+    const result = await settle(api.GET("/v1/webhook-endpoints/{endpoint_id}", { params: { path: { endpoint_id: id } } }));
+    if (result.ok) upsert(result.data);
+  }
+
   function onStale(problem: ProblemDetails) {
     setDialog(null);
     setRotating(null);
@@ -162,7 +168,16 @@ export function WebhooksWorkspace({
         )}
       </section>
 
-      {selected && <DeliveryLog key={selected.id} api={api} endpoint={selected} pollIntervalMs={pollIntervalMs} pollTimeoutMs={pollTimeoutMs} />}
+      {selected && (
+        <DeliveryLog
+          key={selected.id}
+          api={api}
+          endpoint={selected}
+          pollIntervalMs={pollIntervalMs}
+          pollTimeoutMs={pollTimeoutMs}
+          onRedelivered={() => void refreshEndpoint(selected.id)}
+        />
+      )}
 
       <EndpointDialog
         api={api}

@@ -15,7 +15,7 @@ test("tenant admin registers a webhook, sees the delivery and redelivers it", as
   await form.getByRole("button", { name: "Create endpoint", exact: true }).click();
   const response = await created;
   expect(response.status()).toBe(201);
-  expect(response.headers()["cache-control"]).toBe("no-store");
+  expect(response.headers()["cache-control"]).toContain("no-store");
   const { id: endpointId } = (await response.json()) as { id: string };
 
   const reveal = admin.getByRole("dialog", { name: "Endpoint created" });
@@ -43,11 +43,13 @@ test("tenant admin registers a webhook, sees the delivery and redelivers it", as
   await expect(log.getByRole("status").filter({ hasText: "Redelivery succeeded (HTTP 204)." })).toBeVisible({ timeout: 60_000 });
 
   await log.getByRole("button", { name: "Refresh" }).click();
-  await expect(log.locator("tbody tr[data-delivery-id]")).toHaveCount(2);
-  await expect(log.locator("tbody tr[data-delivery-id]").first()).toContainText("redelivery");
+  // Earlier tests' events can still be in the queue and fan out here too, so match the redelivery row, not a count.
+  await expect(log.locator("tbody tr[data-delivery-id]").filter({ hasText: "redelivery" })).toHaveCount(1);
 
   await endpoint.getByRole("button", { name: /^Delete/ }).click();
+  const deleted = admin.waitForResponse((res) => res.url().endsWith(`/api/tf/v1/webhook-endpoints/${endpointId}`) && res.request().method() === "DELETE");
   await admin.getByRole("dialog", { name: "Delete endpoint?" }).getByRole("button", { name: "Delete endpoint" }).click();
+  expect((await deleted).status()).toBe(204);
   await expect(endpoint).toBeHidden();
 });
 

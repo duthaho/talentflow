@@ -270,6 +270,10 @@ describe("WebhooksWorkspace delivery log (AC2)", () => {
     expect(new URL(post.url).pathname).toBe("/v1/webhook-deliveries/dead/redeliveries");
     expect(post.headers.get("idempotency-key")).toMatch(/^[0-9a-f-]{36}$/);
     expect(backend.requests.some((request) => request.url.endsWith("/v1/webhook-deliveries/re-1"))).toBe(true);
+
+    await userEvent.click(screen.getByRole("button", { name: "Disable crm.example.com" }));
+    await waitFor(() => expect(endpointRow("crm.example.com")).toHaveTextContent("Disabled by an admin"));
+    expect(writes(backend).at(-1)!.headers.get("if-match")).toBe('"2"');
   });
 
   it("reports a failed redelivery attempt", async () => {
