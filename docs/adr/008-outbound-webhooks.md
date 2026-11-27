@@ -103,9 +103,12 @@ class InvalidWebhook(Exception):
 
 
 def verify(secret: str, headers: Mapping[str, str], body: bytes, now: float | None = None) -> None:
-    msg_id = headers["webhook-id"]
-    timestamp = headers["webhook-timestamp"]
-    if not timestamp.isdigit():
+    msg_id = headers.get("webhook-id")
+    timestamp = headers.get("webhook-timestamp")
+    signatures = headers.get("webhook-signature")
+    if not msg_id or not timestamp or not signatures:
+        raise InvalidWebhook("missing webhook header")
+    if not (timestamp.isascii() and timestamp.isdigit()):
         raise InvalidWebhook("bad timestamp")
     current = time.time() if now is None else now
     if abs(current - int(timestamp)) > TOLERANCE_SECONDS:
@@ -113,12 +116,14 @@ def verify(secret: str, headers: Mapping[str, str], body: bytes, now: float | No
     key = base64.b64decode(secret.removeprefix("whsec_"))
     signed = f"{msg_id}.{timestamp}.".encode() + body
     expected = base64.b64encode(hmac.new(key, signed, hashlib.sha256).digest()).decode()
-    for entry in headers["webhook-signature"].split(" "):
+    for entry in signatures.split(" "):
         version, _, signature = entry.partition(",")
         if version == "v1" and hmac.compare_digest(signature, expected):
             return
     raise InvalidWebhook("no matching signature")
 ```
+
+The verifier raises only `InvalidWebhook`, never `KeyError` or `ValueError`. Headers are read with `.get()`, and the timestamp must be ASCII digits: `str.isdigit()` alone accepts characters such as `²`, which `int()` then rejects.
 
 **Known-answer test vector.** DUTH-62 must assert this in a unit test, and receivers can use it to check their implementation:
 
@@ -139,7 +144,7 @@ def verify(secret: str, headers: Mapping[str, str], body: bytes, now: float | No
 - **Keyring:**
   - `WEBHOOK_SECRET_KEYS` is a comma-separated list of `<kid>:<base64 of 32 bytes>`.
   - `WEBHOOK_SECRET_ACTIVE_KEY_ID` names the kid used for new encryptions. The other kids are decrypt-only.
-  - Settings validation rejects a malformed or wrong-length key and an active kid that is missing from the ring. With `APP_ENV=production` it also rejects the Compose development key (kid `dev`).
+  - Settings validation rejects a malformed or wrong-length key and an active kid that is missing from the ring. With `APP_ENV=production` it also rejects the Compose development key, both by kid `dev` and by its key bytes under any kid name.
   - KEK rotation: add a new kid, make it active, run the rewrap command DUTH-62 ships (`python -m app.workers.webhook_secret_rewrap`, batched, `FOR UPDATE SKIP LOCKED`), then remove the old kid.
 - Compose gets a public development key with kid `dev`, in the same `${VAR:-dev-…}` style as the other local credentials. No real key is ever committed. Unit tests build their own keyring, so **nothing in local dev or tests needs OpenBao**.
 - `cryptography` (AESGCM) is already in `uv.lock` as a transitive dependency. DUTH-62 declares it as a direct dependency.
@@ -165,6 +170,7 @@ The worker needs the plaintext key in memory to sign anyway. The threat both opt
 - `grace_period_seconds` defaults to 86400 (24 h) and may be 0 to 604800 (7 days). 0 expires the old secret immediately, which is the response to a leaked secret.
 - Rotating while an older `previous` is still in its grace period expires that older one immediately. At most two secrets sign at once.
 - While `previous` has not expired, the worker signs with both and sends two `v1,` entries. The current signature goes first.
+- The worker reads the set of signing secrets from the database on **every attempt**: `status = 'current' OR (status = 'previous' AND expires_at > now())`. The in-memory key cache (§ Consequences) maps only `secret_id → key` and never decides which secrets are active. A secret therefore stops signing the moment its `expires_at` passes, even before the batch job clears its ciphertext. This matters after a grace-0 rotation for a leaked secret.
 - When a `previous` expires, the worker overwrites its `ciphertext` with NULL in batches and sets `status = expired`. The row stays for audit metadata. Deleting an endpoint expires all of its secrets the same way.
 
 **Pending deliveries are not touched by rotation.** Signing happens when an attempt is made, never when the delivery is enqueued. Every attempt after the rotation uses the secrets active at that moment: the new one, plus the old one during the grace period. No delivery is re-queued or re-signed, and nothing signed with a destroyed secret is ever sent.
@@ -182,6 +188,7 @@ All checks live in an infrastructure `EgressGuard`. Unit tests drive it with a f
 
 - The URL must be absolute, with no userinfo and no fragment, and at most 2048 characters.
 - An IDN host is converted to punycode.
+- **IP-literal hosts** (`https://203.0.113.7/`, `https://[2001:db8::1]/`) are parsed with `ipaddress`, skip DNS and go through the same address rules. Only the canonical forms are accepted: dotted-quad IPv4 with four decimal octets, and bracketed IPv6. Non-canonical numeric hosts such as `0x7f.1`, `2130706433`, `127.1` or `0177.0.0.1` are rejected with `webhook-url-not-allowed`, and so is any host made only of digits and dots that isn't a valid dotted-quad.
 - Hosts named `localhost`, `*.localhost`, `*.local`, `*.internal` or `*.home.arpa` are rejected by name. This adds to the address check below; it doesn't replace it.
 - Scheme `https` is always allowed. `http` is allowed only when `WEBHOOK_ALLOW_HTTP=true`, which settings validation forbids with `APP_ENV=production`.
 - Ports: 443 and 8443 for `https`; 80 and 8080 for `http`. Any port is accepted for an address on the allowlist below.
@@ -195,9 +202,13 @@ All checks live in an infrastructure `EgressGuard`. Unit tests drive it with a f
   - link-local `169.254.0.0/16` and `fe80::/10`, which includes cloud metadata at `169.254.169.254` and `fd00:ec2::254`
   - CGNAT `100.64.0.0/10`, `0.0.0.0/8` and `::`
   - documentation, benchmarking and reserved ranges, and multicast
+- An explicit deny list applies on top of `is_global`, because Python reports some deprecated IPv6 ranges as global:
+  - IPv4-compatible `::/96` (for example `::a9fe:a9fe`, `::7f00:1`) is **rejected outright**, whatever IPv4 address it embeds. The format is deprecated (RFC 4291), and legacy auto-tunnelling can route it to the embedded IPv4.
+  - Site-local `fec0::/10` is **rejected**. It is deprecated (RFC 3879) but still reported as global.
 - An address with an embedded IPv4 (`::ffff:0:0/96` mapped, `64:ff9b::/96` NAT64, `2002::/16` 6to4) is judged by the embedded address as well.
+- DUTH-62's `EgressGuard` fake-resolver tests include at least `::a9fe:a9fe`, `::7f00:1`, `fec0::1`, `::ffff:169.254.169.254`, `64:ff9b::a9fe:a9fe`, `169.254.169.254`, `fd00:ec2::254`, `127.0.0.1`, `::1`, multicast, and a mixed A/AAAA set with one blocked address.
 - **DNS rebinding.** The guard connects to the IP it has just validated. The URL is not resolved a second time. The `Host` header and TLS SNI carry the original hostname, and the certificate is verified against that hostname. With httpx, that means a custom transport that dials the pinned IP. Proxy environment variables are ignored (`trust_env=False`).
-- **Local demo receivers.** `WEBHOOK_PRIVATE_NETWORK_ALLOWLIST` (CIDRs, empty by default) lets the Compose demo receiver through. Settings validation rejects any CIDR that overlaps link-local or metadata ranges, and requires the list to be empty with `APP_ENV=production`.
+- **Local demo receivers.** `WEBHOOK_PRIVATE_NETWORK_ALLOWLIST` (CIDRs, empty by default) lets the Compose demo receiver through. Settings validation rejects any CIDR that overlaps loopback (`127.0.0.0/8`, `::1`), `0.0.0.0/8`, `::/128`, or link-local and metadata ranges (`169.254.0.0/16`, `fe80::/10`, `fd00:ec2::254`), and requires the list to be empty with `APP_ENV=production`. The demo receiver lives on a Compose bridge network, never on loopback.
 
 **Transport limits.**
 
@@ -205,7 +216,7 @@ All checks live in an infrastructure `EgressGuard`. Unit tests drive it with a f
 | --- | --- |
 | DNS resolution | 2 s |
 | TCP connect + TLS handshake | 3 s |
-| Total per attempt (connect to last byte read) | 10 s |
+| Total per attempt (DNS to last byte read) | 10 s **wall-clock**, enforced by one deadline around the whole attempt (for example `anyio.fail_after(10)`). httpx timeouts apply per operation, so on their own they let a receiver that drips its response outlive the 60 s lease and cause a duplicate send. |
 | Request body | ≤ 256 KiB (events are ids-only, typically < 1 KiB) |
 | Response body | Read up to 64 KiB and discard, then close; the outcome is decided by the status code |
 | TLS | Verification on, TLS ≥ 1.2, system CA bundle |
@@ -213,6 +224,8 @@ All checks live in an infrastructure `EgressGuard`. Unit tests drive it with a f
 | In flight per endpoint | At most 4 concurrent attempts |
 
 Neither the response body nor the response headers are stored or logged. They are controlled by the receiver and may hold anything. An attempt records its status code, duration and an `error_code` enum only. Logs and metrics carry the endpoint id and the URL host, never the path or the query.
+
+`webhook_endpoints.url` is stored in **plaintext**, and receivers often put a token in its query string. Logs and audit never hold more than the host, but a database dump or backup exposes the full URL, unlike the encrypted signing secrets. Receivers must treat the signature, not the URL token, as their authentication. Encrypting the URL is a candidate for the DUTH-68 envelope-encryption work.
 
 ### 5. Delivery lifecycle
 
@@ -402,10 +415,10 @@ CREATE TABLE webhook_delivery_attempts (
 
 | Variable | Default | Rule |
 | --- | --- | --- |
-| `WEBHOOK_SECRET_KEYS` | Compose: public `dev` key | Required. Each key is 32 bytes. The `dev` kid is rejected in production. |
+| `WEBHOOK_SECRET_KEYS` | Compose: public `dev` key | Required. Each key is 32 bytes. In production, the `dev` kid and the dev key bytes under any kid are rejected. |
 | `WEBHOOK_SECRET_ACTIVE_KEY_ID` | `dev` | Must be in the keyring |
 | `WEBHOOK_ALLOW_HTTP` | `false` (Compose: `true`) | Must be `false` in production |
-| `WEBHOOK_PRIVATE_NETWORK_ALLOWLIST` | empty (Compose: demo receiver network) | No link-local or metadata overlap. Must be empty in production. |
+| `WEBHOOK_PRIVATE_NETWORK_ALLOWLIST` | empty (Compose: demo receiver network) | No overlap with loopback, `0.0.0.0/8`, `::`, link-local or metadata ranges. Must be empty in production. |
 | `WEBHOOK_DELIVERY_RETENTION_DAYS` | `30` | ≥ 1 |
 
 Timeouts, size limits, the backoff schedule and the auto-disable thresholds are constants in the contract, not settings.
@@ -413,7 +426,7 @@ Timeouts, size limits, the backoff schedule and the auto-disable thresholds are 
 ## Consequences
 
 - DUTH-62 builds against fixed shapes. DUTH-141 builds its UI against the same OpenAPI file before the routes exist. The generated `web/openapi.json` must match `docs/webhooks/openapi.yaml` once DUTH-62 lands, and DUTH-62 adds a test that compares the paths and schemas.
-- Signing at attempt time keeps rotation simple. The cost is one AES-GCM decrypt per attempt, negligible at this volume. The worker may cache plaintext keys in memory for up to 60 s, keyed by secret id.
+- Signing at attempt time keeps rotation simple. The cost is one AES-GCM decrypt per attempt, negligible at this volume. The worker may cache plaintext keys in memory for up to 60 s, keyed by secret id. That cache never decides which secrets are active (§3).
 - The dispatcher has its own retry state in PostgreSQL, separate from the broker retry queues. That gives two retry layers to explain. In exchange, delays measured in hours do not sit in RabbitMQ, and the delivery log, the redeliveries and the auto-disable are all queryable.
 - Tenants get no ordering guarantee, the same as ADR 006. Payloads carry `version` for that.
 - Receivers on private networks cannot be reached in production, by design.
