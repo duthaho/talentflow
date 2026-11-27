@@ -1,0 +1,58 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "RabbitMQ backlog, dead letters and unrouted events",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "talentflow_broker_queue_depth",
+          "legendFormat": "{{queue}}"
+        }
+      ],
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "title": "Consumer retries and poison messages",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(talentflow_consumer_messages_total[5m]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ],
+      "id": 2,
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 9
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": [
+    "talentflow",
+    "rabbitmq"
+  ],
+  "title": "TalentFlow messaging",
+  "uid": "talentflow-messaging",
+  "version": 1
+}

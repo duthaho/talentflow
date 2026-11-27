@@ -1,7 +1,7 @@
 # Hiring E2E tests
 
 `web/e2e/hiring.spec.ts` runs Chromium against the production Compose web app,
-Keycloak, API, PostgreSQL and notification worker. It uses actual OIDC logins and
+Keycloak, API, PostgreSQL, RabbitMQ, outbox relay and notification worker. It uses actual OIDC logins and
 browser forms; it does not mock API responses or inject session cookies.
 
 From the repository root:
@@ -9,7 +9,7 @@ From the repository root:
 ```sh
 export COMPOSE_PROJECT_NAME=talentflow-e2e
 export COMPOSE_FILE=docker-compose.yml:docker-compose.e2e.yml
-docker compose up --detach --build --wait api web notification-worker
+docker compose up --detach --build --wait api web outbox-relay notification-worker
 make seed
 cd web
 npm ci
@@ -21,8 +21,8 @@ Run this against an isolated local demo stack. The tests create synthetic
 requisitions/candidates with unique names and leave their records for inspection.
 They never purge Mailpit. To remove a disposable stack, run
 `docker compose --profile workers down --volumes` from the root with the same
-project name and ports. Include the workers profile during cleanup so the
-explicitly started notification worker is removed too.
+project name and ports. The workers profile also includes the optional retention
+service if it was started.
 
 For shared runners, export `COMPOSE_PROJECT_NAME` and all nine host-port variables
 before starting Compose: `POSTGRES_PORT`, `MAILPIT_PORT`, `KEYCLOAK_PORT`,
@@ -50,8 +50,9 @@ The two acceptance scenarios are:
   Refresh board shows Screening. A subsequent move uses the refreshed version.
 
 **AC2:** the `hiring-e2e` job in `.github/workflows/ci.yml` runs on every PR and
-push to `main`, with non-default host ports. It starts the notification worker
-explicitly (the normal stack excludes the workers profile). No retries are used;
+push to `main`, with non-default host ports. Its explicit service list starts both
+the outbox relay and notification worker; both also run in the default stack
+without a profile. No retries are used;
 web assertions wait for observable state and email polling is bounded at 30s.
 
 Playwright records all actor contexts. On failure, it retains a combined trace

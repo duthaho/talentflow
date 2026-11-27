@@ -13,6 +13,7 @@ from app.modules.candidates.domain.candidate_case import CandidateCase
 from app.modules.candidates.persistence import CandidateCase as CandidateCaseRecord
 from app.modules.organization.persistence import Requisition
 from app.modules.workflow.domain.candidate_state_machine import CandidateStage
+from app.shared.events import record_event
 
 
 class SqlAlchemyCandidateRepository:
@@ -80,7 +81,23 @@ class SqlAlchemyCandidateRepository:
             )
         )
 
+        record_event(
+            self._session,
+            topic="candidate_case.created.v1",
+            tenant_id=candidate.tenant_id,
+            subject=candidate.id,
+            actor_id=created_by,
+            data={
+                "candidate_case_id": candidate.id,
+                "requisition_id": candidate.requisition_id,
+                "stage": candidate.stage.value,
+                "channel": "recruiter",
+                "version": candidate.version,
+            },
+        )
+
     def transition(self, *, candidate: CandidateCase, expected_version: int) -> bool:
+        prior = self.get(candidate_id=candidate.id, tenant_id=candidate.tenant_id)
         result = self._session.execute(
             update(CandidateCaseRecord)
             .where(
@@ -96,6 +113,19 @@ class SqlAlchemyCandidateRepository:
                 else None,
             )
         )
+        if result.rowcount == 1:
+            record_event(
+                self._session,
+                topic="candidate_case.stage_changed.v1",
+                tenant_id=candidate.tenant_id,
+                subject=candidate.id,
+                data={
+                    "candidate_case_id": candidate.id,
+                    "from_stage": prior.stage.value,
+                    "to_stage": candidate.stage.value,
+                    "version": candidate.version,
+                },
+            )
         return result.rowcount == 1
 
     def list_page(

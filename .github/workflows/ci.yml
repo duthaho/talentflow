@@ -39,9 +39,9 @@ jobs:
         working-directory: web
       - run: npx playwright install --with-deps chromium
         working-directory: web
-      - name: Start the real hiring stack, including the email worker
+      - name: Start the real hiring stack, including the relay and email worker
         run: |
-          docker compose up --detach --build --wait api web notification-worker
+          docker compose up --detach --build --wait api web outbox-relay notification-worker
           make seed
       - name: Run hiring and stale-version browser scenarios
         run: npm run test:e2e
@@ -81,6 +81,19 @@ jobs:
   quality-and-migrations:
     runs-on: ubuntu-24.04
     services:
+      rabbitmq:
+        image: rabbitmq:4.1.8-management
+        env:
+          RABBITMQ_DEFAULT_USER: talentflow
+          RABBITMQ_DEFAULT_PASS: talentflow
+          RABBITMQ_DEFAULT_VHOST: /talentflow
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
       postgres:
         image: postgres:17.12-alpine
         env:
@@ -104,6 +117,8 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     env:
+      DUTH59_TEST_POSTGRES_URL: postgresql+psycopg://talentflow:ci-password@localhost:5432/talentflow
+      DUTH59_TEST_RABBITMQ_URL: amqp://talentflow:talentflow@localhost:5672/%2Ftalentflow
       DATABASE_URL: postgresql+psycopg://talentflow:ci-password@localhost:5432/talentflow
     steps:
       - uses: actions/checkout@v4

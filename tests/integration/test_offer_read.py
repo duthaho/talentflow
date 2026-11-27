@@ -278,6 +278,8 @@ def test_rejection_validation_is_atomic_and_interviewer_cannot_read() -> None:
         tenant = _create_tenant(client, slug="validation", admin_id="admin")
         _add_roles(app, tenant["id"])
         offer = _create_offer(client, tenant["id"], "admin", 1)
+        with app.state.session_factory() as session:
+            initial_event_ids = set(session.query(OutboxEvent.id).all())
         for reason in (None, "", "   ", "x" * 501):
             payload = {"decision": "rejected", "expected_version": 1}
             payload["reason"] = reason
@@ -296,7 +298,11 @@ def test_rejection_validation_is_atomic_and_interviewer_cannot_read() -> None:
         denied_list = client.get("/v1/offers", headers=_headers(tenant["id"], "interviewer"))
         with app.state.session_factory() as session:
             assert session.query(ApprovalDecision).count() == 0
-            assert session.query(OutboxEvent).count() == 0
+            assert set(session.query(OutboxEvent.id).all()) == initial_event_ids
+            assert (
+                session.query(OutboxEvent).filter_by(topic="offer.approval_recorded.v1").count()
+                == 0
+            )
         accepted = client.post(
             f"/v1/offers/{offer['id']}/approvals",
             headers=_headers(tenant["id"], "manager"),

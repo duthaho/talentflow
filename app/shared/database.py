@@ -27,6 +27,7 @@ def build_session_factory(database_url: str) -> sessionmaker[Session]:
 def get_session(request: Request) -> Generator[Session]:
     session_factory: sessionmaker[Session] = request.app.state.session_factory
     with session_factory() as session:
+        session.info["event_request"] = request
         yield session
 
 

@@ -135,8 +135,11 @@ def test_parallel_commands_execute_once_across_api_instances(monkeypatch, comman
                 1 if command == "approval" else 0
             )
             assert session.query(OutboxEvent).filter_by(tenant_id=tenant_id).count() == (
-                1 if command == "approval" else 0
+                6 if command == "approval" else 1
             )
+            assert session.query(OutboxEvent).filter_by(
+                tenant_id=tenant_id, topic="offer.approval_recorded.v1"
+            ).count() == (1 if command == "approval" else 0)
             record = session.scalar(
                 select(IdempotencyRecord).where(IdempotencyRecord.tenant_id == tenant_id)
             )

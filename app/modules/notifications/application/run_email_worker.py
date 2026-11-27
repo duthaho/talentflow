@@ -4,11 +4,12 @@ from sqlalchemy import text
 
 from app.modules.notifications.application.delivery_worker import DeliveryWorker
 from app.modules.notifications.application.email_delivery import EmailAdapter, EmailDeliverySender
-from app.modules.notifications.application.outbox_publisher import OutboxPublisher
+from app.modules.notifications.application.event_consumer import NotificationConsumer
 from app.modules.notifications.infrastructure.sendgrid_email import SendGridEmailAdapter
 from app.modules.notifications.infrastructure.smtp_email import SmtpEmailAdapter
 from app.shared.database import build_session_factory
 from app.shared.observability import configure_logging, configure_telemetry
+from app.shared.rabbitmq import RabbitBroker
 from app.shared.settings import Settings, settings
 from app.shared.worker_runtime import WorkerLoop
 
@@ -35,7 +36,8 @@ def main() -> None:
     configure_logging()
     adapter = build_email_adapter(settings)
     sessions = build_session_factory(settings.database_url)
-    publisher = OutboxPublisher(sessions)
+    broker = RabbitBroker(settings.rabbitmq_url.get_secret_value())
+    consumer = NotificationConsumer(sessions, broker)
     worker = DeliveryWorker(
         sessions,
         sender=EmailDeliverySender(sessions, adapter),
@@ -45,20 +47,20 @@ def main() -> None:
     loop: WorkerLoop
 
     def cycle() -> int:
-        published = publisher.publish_pending()
+        pending_events = consumer.drain(should_stop=loop.stopping)
         delivered = worker.deliver_pending(should_stop=loop.stopping)
-        backlog = publisher.pending_count() + worker.pending_count()
+        backlog = pending_events + worker.pending_count()
         logger.info(
             "notification_worker_completed",
             extra={
                 "event": "notification_worker_completed",
-                "published": published,
                 "delivered": delivered,
             },
         )
         return backlog
 
     def ready() -> None:
+        broker.connect()
         with sessions() as session:
             session.execute(text("SELECT 1"))
 
@@ -75,6 +77,7 @@ def main() -> None:
         )
         loop.run()
     finally:
+        broker.close()
         sessions.kw["bind"].dispose()
 
 

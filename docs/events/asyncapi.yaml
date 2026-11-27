@@ -329,7 +329,7 @@ components:
       summary: A candidate case was opened against a requisition, in stage `applied`.
       x-talentflow:
         context: candidates
-        status: planned
+        status: active
         first_publisher: DUTH-59
         webhook: true
       traits:
@@ -355,7 +355,7 @@ components:
         from the offer flow.
       x-talentflow:
         context: candidates
-        status: planned
+        status: active
         first_publisher: DUTH-59
         webhook: true
       traits:
@@ -404,7 +404,7 @@ components:
       title: Interview scheduled
       x-talentflow:
         context: interviews
-        status: planned
+        status: active
         first_publisher: DUTH-59
         webhook: true
       traits:
@@ -430,7 +430,7 @@ components:
         are read from the API.
       x-talentflow:
         context: interviews
-        status: planned
+        status: active
         first_publisher: DUTH-59
         webhook: false
       traits:
@@ -454,7 +454,7 @@ components:
       summary: An offer was drafted and is waiting for its first approval step.
       x-talentflow:
         context: offers
-        status: planned
+        status: active
         first_publisher: DUTH-59
         webhook: true
       traits:
