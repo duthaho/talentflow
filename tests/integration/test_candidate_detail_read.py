@@ -51,6 +51,8 @@ def test_candidate_detail_reads_are_tenant_scoped_and_private() -> None:
         "stage",
         "version",
         "created_at",
+        "source",
+        "consent",
     }
     assert detail.headers["cache-control"] == "private, no-store"
     assert foreign_detail.status_code == unknown.status_code == 404

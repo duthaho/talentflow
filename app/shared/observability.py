@@ -230,3 +230,8 @@ def _redact_calendar_feed_span(span: Span, scope: dict[str, object]) -> None:
             redacted = _redact_search_query(value)
             if redacted != value:
                 span.set_attribute(attribute, redacted)
+
+
+careers_applications = Counter(
+    "careers_applications_total", "Anonymous application outcomes", ["outcome"]
+)

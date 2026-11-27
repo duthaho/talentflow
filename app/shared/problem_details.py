@@ -15,6 +15,8 @@ PROBLEM_TYPE_BASE = "https://github.com/duthaho/talentflow/blob/main/docs/api-er
 PROBLEM_TYPES = frozenset(
     {
         "validation-error",
+        "length-required",
+        "payload-too-large",
         "invalid-precondition",
         "precondition-failed",
         "precondition-required",
@@ -30,6 +32,8 @@ PROBLEM_TYPES = frozenset(
 )
 
 _STATUS_TITLES = {
+    411: "Length Required",
+    413: "Payload Too Large",
     400: "Bad Request",
     401: "Unauthorized",
     403: "Forbidden",
@@ -44,6 +48,8 @@ _STATUS_TITLES = {
     503: "Service Unavailable",
 }
 _STATUS_TYPES = {
+    411: "length-required",
+    413: "payload-too-large",
     401: "unauthorized",
     403: "forbidden",
     404: "not-found",

@@ -260,3 +260,11 @@ describe("CandidateDetail", () => {
     });
   });
 });
+
+it("shows exact server consent as plain text and hides the panel for staff cases", async () => {
+  const text = '<script>alert("test")</script> Demo retention wording';
+  await renderAs("hiring_manager", { candidate: { ...CASE, source: "careers", consent: { version: "careers-v1", text, accepted_at: "2026-11-20T09:00:00Z" } } });
+  expect(screen.getByText("Source: careers page")).toBeInTheDocument();
+  expect(panel("consent")).toHaveTextContent(text);
+  expect(panel("consent").querySelector("script")).toBeNull();
+});

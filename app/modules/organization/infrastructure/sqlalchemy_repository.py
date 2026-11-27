@@ -134,3 +134,22 @@ class SqlAlchemyUnitOfWork:
 
     def commit(self) -> None:
         self._session.commit()
+
+
+class SqlAlchemyPublicRequisitionRepository:
+    def __init__(self, session: Session):
+        self.session = session
+
+    def list_public(self, tenant_id: str, *, limit: int):
+        from app.modules.organization.application.list_public_requisitions import PublicRequisition
+
+        records = self.session.scalars(
+            select(Requisition)
+            .where(Requisition.tenant_id == tenant_id, Requisition.published.is_(True))
+            .order_by(Requisition.published_at.desc(), Requisition.id)
+            .limit(limit)
+        ).all()
+        return [
+            PublicRequisition(record.id, record.title, record.department, record.published_at)
+            for record in records
+        ]

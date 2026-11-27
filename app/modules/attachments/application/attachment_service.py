@@ -56,6 +56,15 @@ class UploadAttachmentCommand:
     correlation_id: str
 
 
+@dataclass(frozen=True)
+class InspectedFile:
+    filename: str
+    content_type: str
+    document_type: str
+    content: bytes
+    sha256: str
+
+
 class AttachmentService:
     def __init__(
         self,
@@ -79,40 +88,76 @@ class AttachmentService:
             candidate_case_id=command.candidate_case_id, tenant_id=command.tenant_id
         ):
             raise CandidateNotFoundError(command.candidate_case_id)
-        filename = _validate(command, max_bytes=self._max_bytes)
-        self._scanner.scan(command.content)
-        attachment = Attachment(
-            id=str(uuid4()),
+        file = self.inspect(command)
+        attachment = self.attach(
+            file,
             tenant_id=command.tenant_id,
             candidate_case_id=command.candidate_case_id,
-            document_type=command.document_type,
-            filename=filename,
-            content_type=command.content_type,
-            size_bytes=len(command.content),
-            sha256=sha256(command.content).hexdigest(),
+            actor_id=command.actor_id,
+            correlation_id=command.correlation_id,
+        )
+        try:
+            self._unit_of_work.commit()
+        except Exception:
+            self._unit_of_work.rollback()
+            self.discard(storage_key=attachment.storage_key)
+            raise
+        return attachment
+
+    def inspect(self, command: UploadAttachmentCommand) -> InspectedFile:
+        filename = _validate(command, max_bytes=self._max_bytes)
+        self._scanner.scan(command.content)
+        return InspectedFile(
+            filename,
+            command.content_type,
+            command.document_type,
+            command.content,
+            sha256(command.content).hexdigest(),
+        )
+
+    def discard(self, *, storage_key: str) -> None:
+        self._storage.delete(storage_key=storage_key)
+
+    def attach(
+        self,
+        file: InspectedFile,
+        *,
+        tenant_id: str,
+        candidate_case_id: str,
+        actor_id: str,
+        correlation_id: str,
+    ) -> Attachment:
+        attachment = Attachment(
+            id=str(uuid4()),
+            tenant_id=tenant_id,
+            candidate_case_id=candidate_case_id,
+            document_type=file.document_type,
+            filename=file.filename,
+            content_type=file.content_type,
+            size_bytes=len(file.content),
+            sha256=file.sha256,
             storage_key=uuid4().hex,
-            created_by=command.actor_id,
+            created_by=actor_id,
             created_at=datetime.now(UTC),
         )
-        self._storage.save(storage_key=attachment.storage_key, content=command.content)
+        self._storage.save(storage_key=attachment.storage_key, content=file.content)
         try:
             self._repository.add(attachment)
             self._audit.record(
-                tenant_id=command.tenant_id,
-                actor_id=command.actor_id,
+                tenant_id=tenant_id,
+                actor_id=actor_id,
                 action="candidate_attachment.uploaded",
                 aggregate_type="candidate_attachment",
                 aggregate_id=attachment.id,
-                correlation_id=command.correlation_id,
+                correlation_id=correlation_id,
                 metadata={
-                    "candidate_case_id": command.candidate_case_id,
+                    "candidate_case_id": candidate_case_id,
                     "document_type": attachment.document_type,
                     "content_type": attachment.content_type,
                     "size_bytes": attachment.size_bytes,
                     "sha256": attachment.sha256,
                 },
             )
-            self._unit_of_work.commit()
         except Exception:
             self._unit_of_work.rollback()
             self._storage.delete(storage_key=attachment.storage_key)

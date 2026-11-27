@@ -76,8 +76,16 @@ class CandidateCaseResponse(BaseModel):
     version: int
 
 
+class CandidateConsentResponse(BaseModel):
+    version: str
+    text: str | None
+    accepted_at: datetime
+
+
 class CandidateCaseDetailResponse(CandidateCaseResponse):
     created_at: datetime
+    source: Literal["staff", "careers"] = "staff"
+    consent: CandidateConsentResponse | None = None
 
 
 class CandidateListItem(BaseModel):

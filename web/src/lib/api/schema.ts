@@ -405,6 +405,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/tenants/{slug}/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Consent */
+        get: operations["consent_v1_public_tenants__slug__consent_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/tenants/{slug}/requisitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listing */
+        get: operations["listing_v1_public_tenants__slug__requisitions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/tenants/{slug}/requisitions/{requisition_id}/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply
+         * @description Idempotency-Key is ignored for anonymous multipart intake; deduplication uses tenant/email.
+         */
+        post: operations["apply_v1_public_tenants__slug__requisitions__requisition_id__applications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reports/pipeline": {
         parameters: {
             query?: never;
@@ -606,6 +660,7 @@ export interface components {
         };
         /** CandidateCaseDetailResponse */
         CandidateCaseDetailResponse: {
+            consent?: components["schemas"]["CandidateConsentResponse"] | null;
             /**
              * Created At
              * Format: date-time
@@ -621,6 +676,12 @@ export interface components {
             last_name: string;
             /** Requisition Id */
             requisition_id: string;
+            /**
+             * Source
+             * @default staff
+             * @enum {string}
+             */
+            source: "staff" | "careers";
             /** Stage */
             stage: string;
             /** Version */
@@ -642,6 +703,18 @@ export interface components {
             stage: string;
             /** Version */
             version: number;
+        };
+        /** CandidateConsentResponse */
+        CandidateConsentResponse: {
+            /**
+             * Accepted At
+             * Format: date-time
+             */
+            accepted_at: string;
+            /** Text */
+            text: string | null;
+            /** Version */
+            version: string;
         };
         /** CandidateListItem */
         CandidateListItem: {
@@ -975,6 +1048,56 @@ export interface components {
             candidates: components["schemas"]["PipelineCandidateSummary"];
             interviews: components["schemas"]["PipelineInterviewSummary"];
             offers: components["schemas"]["PipelineOfferSummary"];
+        };
+        /** PublicConsent */
+        PublicConsent: {
+            /** Text */
+            text: string;
+            /** Version */
+            version: string;
+        };
+        /** PublicListing */
+        PublicListing: {
+            /** Requisitions */
+            requisitions: components["schemas"]["PublicRequisition"][];
+            tenant: components["schemas"]["PublicTenantResponse"];
+            upload_policy: components["schemas"]["PublicUploadPolicy"];
+        };
+        /** PublicRequisition */
+        PublicRequisition: {
+            /** Department */
+            department: string;
+            /** Id */
+            id: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
+            /** Title */
+            title: string;
+        };
+        /** PublicTenantResponse */
+        PublicTenantResponse: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** PublicUploadPolicy */
+        PublicUploadPolicy: {
+            /** Content Types */
+            content_types: string[];
+            /** Max Bytes */
+            max_bytes: number;
+        };
+        /** Received */
+        Received: {
+            /**
+             * Status
+             * @default received
+             */
+            status: string;
         };
         /** RequisitionListResponse */
         RequisitionListResponse: {
@@ -2164,6 +2287,113 @@ export interface operations {
                     } & {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    consent_v1_public_tenants__slug__consent_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicConsent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listing_v1_public_tenants__slug__requisitions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicListing"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_v1_public_tenants__slug__requisitions__requisition_id__applications_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+                requisition_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    consent_accepted: string;
+                    consent_version: string;
+                    /** Format: binary */
+                    cv: string;
+                    email: string;
+                    first_name: string;
+                    last_name: string;
+                    website?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Received"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

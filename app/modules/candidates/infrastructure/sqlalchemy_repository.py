@@ -11,6 +11,7 @@ from app.modules.candidates.application.ports import (
 )
 from app.modules.candidates.domain.candidate_case import CandidateCase
 from app.modules.candidates.persistence import CandidateCase as CandidateCaseRecord
+from app.modules.candidates.persistence import CandidateConsent
 from app.modules.organization.persistence import Requisition
 from app.modules.workflow.domain.candidate_state_machine import CandidateStage
 from app.shared.events import record_event
@@ -28,8 +29,17 @@ class SqlAlchemyCandidateRepository:
         )
         if record is None:
             return None
+        consent = self._session.get(CandidateConsent, record.id)
         created_at = record.created_at
         return CandidateDetail(
+            source=record.source,
+            consent={
+                "version": consent.version,
+                "text": consent.text,
+                "accepted_at": consent.accepted_at,
+            }
+            if consent
+            else None,
             id=record.id,
             requisition_id=record.requisition_id,
             first_name=record.first_name,

@@ -16,6 +16,7 @@ CLEAN_ARCHITECTURE_MODULES = (
     "retention",
 )
 ALLOWED_CROSS_CONTEXT_PERSISTENCE_IMPORTS = {
+    ("candidates", "retention"): "public consent reads the tenant retention period",
     ("audit", "candidates"): "case timeline checks that the case exists in the tenant (read only)",
     ("audit", "attachments"): "case timeline joins tenant-scoped attachment ids (read only)",
     ("attachments", "audit"): "attachment lifecycle writes an audit event in the same transaction",
@@ -112,3 +113,35 @@ def test_application_layer_depends_on_ports_not_frameworks() -> None:
                 if f"import {dependency}" in source or f"from {dependency}" in source:
                     violations.append(f"{path}: {dependency}")
     assert not violations, "Application dependency violations: " + ", ".join(violations)
+
+
+def test_public_routes_never_resolve_an_actor():
+    from fastapi.routing import APIRoute
+
+    from app.main import create_app
+    from app.modules.identity.security import resolve_actor
+
+    def calls(dependency):
+        return {dependency.call} | set().union(*(calls(d) for d in dependency.dependencies))
+
+    def routes(router):
+        for route in router.routes:
+            if hasattr(route, "original_router"):
+                yield from routes(route.original_router)
+            else:
+                yield route
+
+    checked = []
+    for route in routes(create_app("sqlite://")):
+        if not isinstance(route, APIRoute) or not route.path.startswith("/v1/"):
+            continue
+        checked.append(route.path)
+        dependencies = calls(route.dependant)
+        if route.path.startswith("/v1/public/"):
+            assert resolve_actor not in dependencies, route.path
+        # Existing bootstrap and bearer-capability feed are intentionally anonymous.
+        elif route.path not in {"/v1/tenants", "/v1/calendar-feeds/{token}.ics"}:
+            assert resolve_actor in dependencies, route.path
+
+    assert len(checked) > 30
+    assert sum(path.startswith("/v1/public/") for path in checked) == 3

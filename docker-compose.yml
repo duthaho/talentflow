@@ -117,6 +117,8 @@ services:
 
   clamav:
     image: clamav/clamav-debian:1.4.4
+    volumes:
+      - ./clamd-intake.conf:/etc/clamav/clamd.conf:ro
     healthcheck:
       test: ["CMD", "clamdcheck.sh"]
       interval: 10s
@@ -164,6 +166,7 @@ services:
       OIDC_JWKS_URL: http://keycloak:8080/realms/talentflow/protocol/openid-connect/certs
       REDIS_URL: redis://redis:6379/0
       RATE_LIMIT_REQUESTS_PER_MINUTE: 120
+      RATE_LIMIT_TRUSTED_PROXY_CIDRS: 172.29.127.10/32
       ATTACHMENT_STORAGE_ROOT: /app/data/attachments
       ATTACHMENT_STORAGE_BACKEND: s3
       ATTACHMENT_S3_ENDPOINT_URL: http://seaweedfs:8333
@@ -221,6 +224,9 @@ services:
 
   web:
     build: ./web
+    networks:
+      default:
+        ipv4_address: 172.29.127.10
     environment:
       APP_BASE_URL: http://localhost:${WEB_PORT:-3000}
       API_BASE_URL: http://api:8000
@@ -321,3 +327,9 @@ volumes:
   rabbitmq_data:
   postgres_data:
   seaweedfs_data:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.29.127.0/24

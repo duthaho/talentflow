@@ -66,6 +66,8 @@ def resolve_actor(
         except AuthenticationError as error:
             raise forbidden(str(error)) from error
         tenant_id, actor_id = principal.tenant_id, principal.subject
+    if actor_id and actor_id.startswith("system:"):
+        raise forbidden("System principals cannot authenticate")
     if not tenant_id or not actor_id:
         raise forbidden("X-Tenant-Id and X-Actor-Id headers are required")
     with request.app.state.session_factory() as session:
