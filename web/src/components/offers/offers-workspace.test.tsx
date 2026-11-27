@@ -50,6 +50,12 @@ function posts(backend: ReturnType<typeof fakeOffersBackend>) {
   return backend.requests.filter((request) => request.method === "POST");
 }
 
+// Form fixtures exercise validation and payloads without a timer per keystroke.
+async function pasteInto(field: HTMLElement, text: string) {
+  await userEvent.click(field);
+  await userEvent.paste(text);
+}
+
 beforeEach(() => {
   vi.mocked(toast.error).mockClear();
   vi.mocked(toast.success).mockClear();
@@ -97,13 +103,13 @@ describe("OffersWorkspace", () => {
     await openOffer("Engineer o2", section("offers-inbox"));
 
     const reject = within(sheet()).getByRole("button", { name: "Reject" });
-    await userEvent.type(within(sheet()).getByLabelText(/Reason/), "   ");
+    await pasteInto(within(sheet()).getByLabelText(/Reason/), "   ");
     await userEvent.click(reject);
     expect(within(sheet()).getByRole("alert")).toHaveTextContent("Give a reason for the rejection.");
     expect(within(sheet()).getByLabelText(/Reason/)).toHaveFocus();
     expect(posts(backend)).toHaveLength(0);
 
-    await userEvent.type(within(sheet()).getByLabelText(/Reason/), "Above band for level  ");
+    await pasteInto(within(sheet()).getByLabelText(/Reason/), "Above band for level  ");
     await userEvent.click(reject);
     await waitFor(() => expect(within(sheet()).getByText("Step 2: Rejected")).toBeInTheDocument());
     expect(await posts(backend)[0].json()).toEqual({ decision: "rejected", expected_version: 2, reason: "Above band for level" });
@@ -219,10 +225,10 @@ describe("OffersWorkspace", () => {
     await userEvent.click(within(ready).getByRole("button", { name: "Create offer for Ada c1" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/For Ada c1/)).toBeInTheDocument();
-    await userEvent.type(within(dialog).getByLabelText("Job title"), "Staff Engineer");
-    await userEvent.type(within(dialog).getByLabelText("Annual salary"), "130000");
+    await pasteInto(within(dialog).getByLabelText("Job title"), "Staff Engineer");
+    await pasteInto(within(dialog).getByLabelText("Annual salary"), "130000");
     await userEvent.clear(within(dialog).getByLabelText("Currency"));
-    await userEvent.type(within(dialog).getByLabelText("Currency"), "usd");
+    await pasteInto(within(dialog).getByLabelText("Currency"), "usd");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create offer" }));
 
     await waitFor(() => expect(within(sheet()).getByRole("heading", { name: "Staff Engineer" })).toBeInTheDocument());
@@ -249,8 +255,8 @@ describe("OffersWorkspace", () => {
 
     await userEvent.click(within(section("offers-ready")).getByRole("button", { name: "Create offer for Ada c1" }));
     const dialog = screen.getByRole("dialog");
-    await userEvent.type(within(dialog).getByLabelText("Job title"), "Staff Engineer");
-    await userEvent.type(within(dialog).getByLabelText("Annual salary"), "130000");
+    await pasteInto(within(dialog).getByLabelText("Job title"), "Staff Engineer");
+    await pasteInto(within(dialog).getByLabelText("Annual salary"), "130000");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create offer" }));
 
     expect(await within(dialog).findByText("Offer already exists")).toBeInTheDocument();

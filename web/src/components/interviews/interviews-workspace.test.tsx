@@ -108,7 +108,10 @@ describe("InterviewsWorkspace for an interviewer", () => {
 
     await userEvent.click(within(dialog).getByRole("radio", { name: "4 – Good" }));
     await userEvent.click(within(dialog).getByRole("radio", { name: "Hire" }));
-    await userEvent.type(within(dialog).getByLabelText("Comments"), "  Clear trade-offs in the design round.  ");
+    // The fixture tests validation and submission; per-character keyboard events
+    // needlessly consume the wall-clock budget on shared runners.
+    await userEvent.click(within(dialog).getByLabelText("Comments"));
+    await userEvent.paste("  Clear trade-offs in the design round.  ");
     expect(within(dialog).getByText("41/5000")).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Submit feedback" }));
 
@@ -133,7 +136,8 @@ describe("InterviewsWorkspace for an interviewer", () => {
     const dialog = screen.getByRole("dialog");
     await userEvent.click(within(dialog).getByRole("radio", { name: "2 – Weak" }));
     await userEvent.click(within(dialog).getByRole("radio", { name: "No hire" }));
-    await userEvent.type(within(dialog).getByLabelText("Comments"), "Struggled with basics.");
+    await userEvent.click(within(dialog).getByLabelText("Comments"));
+    await userEvent.paste("Struggled with basics.");
     await userEvent.click(within(dialog).getByRole("button", { name: "Submit feedback" }));
 
     expect(await within(dialog).findByRole("status")).toHaveTextContent("Feedback for this interview was already submitted.");
@@ -156,7 +160,8 @@ describe("InterviewsWorkspace for an interviewer", () => {
     const dialog = screen.getByRole("dialog");
     await userEvent.click(within(dialog).getByRole("radio", { name: "5 – Excellent" }));
     await userEvent.click(within(dialog).getByRole("radio", { name: "Strong hire" }));
-    await userEvent.type(within(dialog).getByLabelText("Comments"), "Great.");
+    await userEvent.click(within(dialog).getByLabelText("Comments"));
+    await userEvent.paste("Great.");
     await userEvent.click(within(dialog).getByRole("button", { name: "Submit feedback" }));
 
     expect(await within(dialog).findByRole("alert")).toBeInTheDocument();

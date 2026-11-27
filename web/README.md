@@ -41,6 +41,9 @@ make api-client       # from the repo root: regenerate openapi.json and src/lib/
 
 CI fails when `openapi.json` or `src/lib/api/schema.ts` differ from a fresh generation.
 
+For shared-runner timeouts, see the [component test load guide](../docs/testing-web.md)
+for the scheduling policy, reproduction command and DUTH-125 measurements.
+
 ## Layout
 
 - `src/lib/auth/`: OIDC flow (`auth-service.ts`), Keycloak endpoints (`identity-provider.ts`), Redis session store
