@@ -15,6 +15,7 @@ from app.modules.identity.security import ActorContext, require
 from app.modules.organization.application.commands import (
     CreateRequisitionCommand,
     CreateTenantCommand,
+    InvalidTenantAdminError,
     OrganizationService,
     TenantSlugAlreadyExistsError,
 )
@@ -49,6 +50,8 @@ def create_tenant(payload: CreateTenantRequest, session: SessionDep) -> TenantRe
         ).create_tenant(
             CreateTenantCommand(name=payload.name, slug=payload.slug, admin_id=payload.admin_id)
         )
+    except InvalidTenantAdminError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     except TenantSlugAlreadyExistsError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     return TenantResponse(id=tenant.id, name=tenant.name, slug=tenant.slug)

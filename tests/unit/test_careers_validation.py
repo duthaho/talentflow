@@ -24,3 +24,21 @@ def test_careers_email_accepts_valid_addresses(email):
 )
 def test_careers_email_rejects_invalid_addresses(email):
     assert not valid_email(email)
+
+
+def test_reserved_system_admin_rejected_before_any_repository_io():
+    from unittest.mock import Mock
+
+    from app.modules.organization.application.commands import (
+        CreateTenantCommand,
+        InvalidTenantAdminError,
+        OrganizationService,
+    )
+
+    repository, unit_of_work = Mock(), Mock()
+    with pytest.raises(InvalidTenantAdminError):
+        OrganizationService(repository=repository, unit_of_work=unit_of_work).create_tenant(
+            CreateTenantCommand("Demo", "demo", "system:careers")
+        )
+    assert repository.mock_calls == []
+    assert unit_of_work.mock_calls == []

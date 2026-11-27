@@ -12,7 +12,8 @@ use a CvIntake port on the same database session. The unique tenant/email insert
 flushes before storage; a lost PostgreSQL race rolls back and audits reapplication.
 Later persistence failures delete the object. Reapplication never changes the
 existing case or consent and discards the scanned CV. The system actor has no
-membership and identity rejects every `system:` subject even if misconfigured.
+membership: tenant bootstrap rejects every reserved `system:` admin id before
+any repository write. Identity rejects every `system:` subject even if misconfigured.
 
 New applications, reapplications and honeypot submissions all return the identical
 202 body. The requester accepted the residual timing channel: new applications

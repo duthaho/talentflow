@@ -442,3 +442,24 @@ def test_system_subject_token_rejected(careers):
         ).status_code
         == 403
     )
+
+
+@pytest.mark.parametrize("admin_id", ["system:careers", "system:future-worker"])
+def test_bootstrap_cannot_assign_system_membership(careers, admin_id):
+    from app.modules.organization.persistence import Tenant
+
+    app, client, *_ = careers
+    result = client.post(
+        "/v1/tenants",
+        json={
+            "name": "Invalid Bootstrap",
+            "slug": "invalid-system-bootstrap",
+            "admin_id": admin_id,
+        },
+    )
+    assert result.status_code == 422
+    with app.state.session_factory() as session:
+        assert (
+            session.scalar(select(Tenant).where(Tenant.slug == "invalid-system-bootstrap")) is None
+        )
+        assert session.scalar(select(Membership).where(Membership.user_id == admin_id)) is None
