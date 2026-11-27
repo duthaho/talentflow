@@ -17,6 +17,7 @@ from app.modules.attachments.persistence import Attachment
 from app.modules.audit.persistence import AuditEvent
 from app.modules.candidates.infrastructure.public_application import SqlAlchemyApplicationRepository
 from app.modules.candidates.persistence import CandidateCase, CandidateConsent
+from app.modules.notifications.persistence import OutboxEvent
 from app.shared.rate_limit import RedisFixedWindowRateLimiter
 from app.shared.settings import Settings
 from tests.integration.test_public_careers import apply
@@ -154,6 +155,18 @@ def test_postgres_synchronized_apply_race_one_case_no_orphan(tmp_path):
                 )
                 == 1
             )
+        with app.state.session_factory() as session:
+            events = session.scalars(
+                select(OutboxEvent).where(OutboxEvent.tenant_id == tenant["id"])
+            ).all()
+            assert len(events) == 1
+            assert events[0].topic == "candidate_case.created.v1"
+            assert events[0].actor_id == "system:careers"
+            assert events[0].payload_json["channel"] == "careers_site"
+            winner = session.scalar(
+                select(CandidateCase).where(CandidateCase.tenant_id == tenant["id"])
+            )
+            assert events[0].subject == events[0].payload_json["candidate_case_id"] == winner.id
         assert len(list(tmp_path.iterdir())) == 1
 
 

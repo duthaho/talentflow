@@ -16,6 +16,7 @@ from app.modules.candidates.persistence import CandidateCase as Record
 from app.modules.candidates.persistence import CandidateConsent
 from app.modules.organization.persistence import Requisition, Tenant
 from app.modules.retention.persistence import RetentionPolicy
+from app.shared.events import record_event
 
 
 class SqlAlchemyApplicationRepository:
@@ -75,6 +76,22 @@ class SqlAlchemyApplicationRepository:
             ):
                 raise DuplicateApplication() from error
             raise
+
+        record_event(
+            self.session,
+            topic="candidate_case.created.v1",
+            tenant_id=candidate.tenant_id,
+            subject=candidate.id,
+            actor_id=SYSTEM_ACTOR,
+            correlation_id=self.session.info.get("careers_correlation_id"),
+            data={
+                "candidate_case_id": candidate.id,
+                "requisition_id": candidate.requisition_id,
+                "stage": candidate.stage.value,
+                "channel": "careers_site",
+                "version": candidate.version,
+            },
+        )
 
     def add_consent(self, candidate, text, accepted_at):
         self.session.add(

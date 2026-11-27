@@ -70,7 +70,7 @@ Full catalog. *Status:* `active` = in the outbox today; `planned` = DUTH-59 star
 
 | Type | Context | `data` | Status, first publisher | Webhook |
 | --- | --- | --- | --- | --- |
-| `candidate_case.created.v1` | candidates | `candidate_case_id`, `requisition_id`, `stage`, `channel` (`recruiter` \| `careers_site`), `version` | planned, DUTH-59 (`careers_site` from DUTH-63) | yes |
+| `candidate_case.created.v1` | candidates | `candidate_case_id`, `requisition_id`, `stage`, `channel` (`recruiter` \| `careers_site`), `version` | **active**; staff creation (DUTH-59) and `careers_site` self-apply (DUTH-63) | yes |
 | `candidate_case.stage_changed.v1` | candidates | `candidate_case_id`, `from_stage`, `to_stage`, `version`, `offer_id?` | planned, DUTH-59 | yes |
 | `candidate_case.erased.v1` | candidates | `candidate_case_id`, `reason` (`retention_expired` \| `data_subject_request`) | reserved, DUTH-66 (must exist before the projection holds data) | yes |
 | `interview.scheduled.v1` | interviews | `interview_id`, `candidate_case_id`, `interviewer_id`, `scheduled_at` | planned, DUTH-59 | yes |

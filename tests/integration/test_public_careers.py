@@ -14,10 +14,13 @@ from app.modules.attachments.persistence import Attachment
 from app.modules.audit.persistence import AuditEvent
 from app.modules.candidates.infrastructure.public_application import SqlAlchemyApplicationRepository
 from app.modules.candidates.persistence import CandidateCase, CandidateConsent
+from app.modules.notifications.persistence import OutboxEvent
 from app.modules.organization.persistence import Membership
 from app.modules.retention.infrastructure.sqlalchemy_repository import SqlAlchemyRetentionRepository
 from app.modules.retention.persistence import RetentionPolicy
+from app.shared.events import envelope
 from app.shared.settings import Settings
+from tests.integration.test_event_producers import validate
 from tests.integration.test_tenant_rbac import bootstrap_tenant
 
 
@@ -75,6 +78,48 @@ def counts(careers):
         ] + [len(list(root.iterdir()))]
 
 
+def _outbox_events(careers):
+    app, _, tenant, *_ = careers
+    with app.state.session_factory() as session:
+        return list(
+            session.scalars(select(OutboxEvent).where(OutboxEvent.tenant_id == tenant["id"]))
+        )
+
+
+@pytest.mark.parametrize("correlation", ["careers.trace_123", "forged <script>"])
+def test_application_emits_one_catalog_valid_creation_event(careers, correlation):
+    app, _, tenant, _, job, _ = careers
+    response = apply(careers, headers={"X-Correlation-Id": correlation})
+    assert response.status_code == 202
+    events = _outbox_events(careers)
+    assert len(events) == 1
+    event = events[0]
+    with app.state.session_factory() as session:
+        candidate = session.scalar(
+            select(CandidateCase).where(CandidateCase.tenant_id == tenant["id"])
+        )
+        candidate_id = candidate.id
+    assert event.topic == "candidate_case.created.v1"
+    assert event.status == "pending"
+    assert event.subject == candidate_id
+    assert event.actor_id == "system:careers"
+    assert event.correlation_id == response.headers["x-correlation-id"]
+    assert event.payload_json == {
+        "candidate_case_id": candidate_id,
+        "requisition_id": job["id"],
+        "stage": "applied",
+        "channel": "careers_site",
+        "version": 1,
+    }
+    message = envelope(event)
+    validate(message)
+    assert message["actorid"] == "system:careers"
+    assert message["tenantid"] == tenant["id"]
+    assert (
+        message["correlationid"] == message["causationid"] == response.headers["x-correlation-id"]
+    )
+
+
 def test_apply_scan_create_consent_exact_and_reapply_immutable(careers):
     app, client, tenant, headers, job, _ = careers
     with app.state.session_factory() as session:
@@ -93,10 +138,15 @@ def test_apply_scan_create_consent_exact_and_reapply_immutable(careers):
         assert detail["source"] == "careers"
         assert detail["consent"]["text"] == consent["text"]
         assert "365 days" in consent["text"]
+        original_events = _outbox_events(careers)
+        assert len(original_events) == 1
         assert apply(
             careers, {"email": "  AVERY@EXAMPLE.TEST ", "first_name": "Changed"}
         ).json() == {"status": "received"}
         assert scanner.call_count == 2
+        assert [event.id for event in _outbox_events(careers)] == [
+            event.id for event in original_events
+        ]
         assert client.get(f"/v1/candidate-cases/{candidate_id}", headers=headers).json() == detail
     assert counts(careers) == [1, 1, 1, 1]
     with app.state.session_factory() as session:
@@ -128,6 +178,7 @@ def test_honeypot_identical_success_no_scan_or_writes(careers):
         assert result.status_code == 202 and result.json() == {"status": "received"}
         scanner.assert_not_called()
     assert counts(careers) == [0, 0, 0, 0]
+    assert _outbox_events(careers) == []
 
 
 @pytest.mark.parametrize(
@@ -156,6 +207,7 @@ def test_fields_rejected_before_email_limit_and_scan(careers, fields):
         throttle.assert_not_called()
         scanner.assert_not_called()
     assert counts(careers) == [0, 0, 0, 0]
+    assert _outbox_events(careers) == []
 
 
 @pytest.mark.parametrize(
@@ -179,6 +231,7 @@ def test_invalid_files_no_scan_or_persistence(careers, file):
         assert apply(careers, file=file).status_code == 422
         scanner.assert_not_called()
     assert counts(careers) == [0, 0, 0, 0]
+    assert _outbox_events(careers) == []
 
 
 @pytest.mark.parametrize(
@@ -194,6 +247,7 @@ def test_scanner_failure_closed(careers, error, status):
         if status == 422:
             assert response.json()["detail"] == "file was rejected"
     assert counts(careers) == [0, 0, 0, 0]
+    assert _outbox_events(careers) == []
 
 
 def test_catalog_is_public_scoped_and_publication_reflected(careers):
@@ -229,6 +283,7 @@ def test_catalog_is_public_scoped_and_publication_reflected(careers):
     assert client.get("/v1/public/tenants/missing/requisitions").status_code == 404
     assert client.get("/v1/public/tenants/missing/consent").status_code == 404
     assert counts(careers) == [0, 0, 0, 0]
+    assert _outbox_events(careers) == []
 
 
 @pytest.mark.parametrize(
@@ -270,6 +325,7 @@ def test_redis_outage_returns_503(careers, which):
     with patch.object(limiter, "consume", side_effect=consume):
         assert apply(careers).status_code == 503
     assert counts(careers) == [0, 0, 0, 0]
+    assert _outbox_events(careers) == []
 
 
 def test_email_keys_hashed_and_quotas_order(careers):
@@ -314,6 +370,7 @@ def test_persistence_failure_compensates_object(careers):
     ):
         apply(careers)
     assert counts(careers) == [0, 0, 0, 0]
+    assert _outbox_events(careers) == []
 
 
 def test_system_principals_cannot_authenticate_even_with_membership(careers):

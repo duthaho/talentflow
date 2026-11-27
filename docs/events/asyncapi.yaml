@@ -573,7 +573,7 @@ components:
             API commands, the consumed event's `id` for events emitted by a consumer.
         actorid:
           $ref: '#/components/schemas/ActorId'
-          description: Authenticated user that caused the event; absent for system jobs such as retention.
+          description: User or service principal that caused the event, including system:careers for anonymous self-apply; absent for retention jobs.
         traceparent:
           type: string
           pattern: '^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$'
@@ -594,7 +594,7 @@ components:
         channel:
           type: string
           enum: [recruiter, careers_site]
-          description: '`careers_site` is used once DUTH-63 ships self-apply.'
+          description: 'Both channels are live: `recruiter` for staff creation and `careers_site` for anonymous self-apply (DUTH-63).'
         version:
           $ref: '#/components/schemas/AggregateVersion'
 

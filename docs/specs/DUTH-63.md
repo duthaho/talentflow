@@ -37,7 +37,7 @@ State of `main` at `1bf5766`:
 - Several candidate cases per person in one tenant. The existing unique constraint stays.
 - Per-tenant editable consent text, or consent withdrawal flows (DSAR is DUTH-69).
 - Job description content beyond today's `title` and `department` fields.
-- Domain events for applications on RabbitMQ. DUTH-58/59 define and publish events; this issue writes audit events only.
+- New integration-event types. Self-apply uses the existing `candidate_case.created.v1` transactional outbox contract from DUTH-58/59, with `channel = careers_site`.
 - Custom domains or a careers host per tenant. The URL is path-based: `/careers/<tenant-slug>`.
 
 ## Users and use cases
@@ -91,7 +91,7 @@ Processing order (later steps run only when the earlier ones pass):
 6. **Email rate limit.** After the fields are valid and before the file is checked: at most `CAREERS_APPLY_LIMIT_PER_EMAIL_PER_DAY` (default 3) per tenant + normalized email per day. Requests rejected at steps 3–5 do not count; every request that reaches this step counts, including ones later rejected at step 7. It returns the same `429` body as the IP limit.
 7. **File.** The existing `_validate` rules apply: name, size, allow-list and signature (`422`). Then the ClamAV scan runs: an infected file returns `422` (`validation-error`, "file was rejected"), and an unavailable scanner returns `503` (fail closed). Both store nothing.
 8. **Existing case.** If the tenant already has a case whose email matches (case-insensitive), no case or attachment is created. The response is the normal `202`, and one audit event `candidate_case.reapplied` is written on the existing case with the requisition id. The CV is discarded, so nobody can attach files to another person's case by knowing their email.
-9. **Create.** In one transaction: the candidate case (`stage = applied`, `source = careers`, `created_by = system:careers`), the CV attachment (`document_type = resume`), the consent record, and the existing audit actions `candidate_case.created` and `candidate_attachment.uploaded` with `actor_id = system:careers`. A unique-constraint race on `(tenant_id, email)` is handled as step 8.
+9. **Create.** In one transaction: the candidate case (`stage = applied`, `source = careers`, `created_by = system:careers`), the CV attachment (`document_type = resume`), the consent record, and the existing audit actions `candidate_case.created` and `candidate_attachment.uploaded` with `actor_id = system:careers`. The same transaction writes `candidate_case.created.v1` to the outbox with `channel = careers_site`, actor `system:careers` and the validated request correlation id. Reapply, honeypot, rejection and race-loser paths write no outbox event. A unique-constraint race on `(tenant_id, email)` is handled as step 8.
 
 Response for steps 3, 8 and 9:
 
