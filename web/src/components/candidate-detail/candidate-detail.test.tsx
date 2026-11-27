@@ -100,6 +100,8 @@ describe("CandidateDetail", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Ada Lovelace" })).toBeInTheDocument();
     expect(screen.getByLabelText("Stage: Screening")).toBeInTheDocument();
     expect(screen.getByText("ada@example.test")).toBeInTheDocument();
+    expect(panel("consent")).toBeNull();
+    expect(screen.queryByText("Source: careers page")).not.toBeInTheDocument();
 
     const download = within(panel("attachments")).getByRole("link", { name: /Download ada-cv.pdf/ });
     expect(download).toHaveAttribute("href", "/api/tf/v1/candidate-cases/case-1/attachments/att-1/download");
@@ -261,7 +263,7 @@ describe("CandidateDetail", () => {
   });
 });
 
-it("shows exact server consent as plain text and hides the panel for staff cases", async () => {
+it("shows exact server consent as plain text for careers cases", async () => {
   const text = '<script>alert("test")</script> Demo retention wording';
   await renderAs("hiring_manager", { candidate: { ...CASE, source: "careers", consent: { version: "careers-v1", text, accepted_at: "2026-11-20T09:00:00Z" } } });
   expect(screen.getByText("Source: careers page")).toBeInTheDocument();
