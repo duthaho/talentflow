@@ -35,8 +35,15 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+          enable-cache: true
+      - run: uv sync --all-groups --frozen
       - run: npm ci
         working-directory: web
+      - name: Generate the host API client for Playwright
+        run: make api-client
       - run: npx playwright install --with-deps chromium
         working-directory: web
       - name: Start the real hiring stack, including the email worker
@@ -116,6 +123,8 @@ jobs:
       - run: uv run ruff check .
       - run: uv run alembic upgrade head
       - run: uv run alembic current
+      - name: Generate OpenAPI for backend contract assertions
+        run: uv run --frozen python -m scripts.export_openapi web/openapi.json
       - run: uv run python -m pytest
 
   web:
@@ -137,11 +146,15 @@ jobs:
       - run: uv sync --all-groups --frozen
         working-directory: .
       - run: npm ci
-      - name: Fail when the generated API client is stale
-        run: |
-          make -C .. api-client
-          git diff --exit-code -- openapi.json src/lib/api/schema.ts \
-            || { echo 'Run `make api-client` and commit the result.' >&2; exit 1; }
+      - name: Generate the API client from this checkout
+        run: make -C .. api-client
+      - name: Upload the API contract for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-${{ github.sha }}
+          path: web/openapi.json
+          if-no-files-found: error
+          retention-days: 14
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test:coverage
@@ -189,6 +202,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build immutable candidate image
         run: docker build --tag talentflow:${{ github.sha }} .
+      - name: Build the web image and its API client from source
+        run: docker build --file web/Dockerfile --tag talentflow-web:${{ github.sha }} .
       - name: Apply migrations in the image
         run: >-
           docker run --rm --add-host host.docker.internal:host-gateway

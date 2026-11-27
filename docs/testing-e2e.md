@@ -11,8 +11,10 @@ export COMPOSE_PROJECT_NAME=talentflow-e2e
 export COMPOSE_FILE=docker-compose.yml:docker-compose.e2e.yml
 docker compose up --detach --build --wait api web notification-worker
 make seed
+uv sync --python 3.13 --frozen
+npm --prefix web ci
+make api-client
 cd web
-npm ci
 npx playwright install --with-deps chromium
 npm run test:e2e
 ```
