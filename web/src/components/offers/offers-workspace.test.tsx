@@ -89,7 +89,8 @@ describe("OffersWorkspace", () => {
     await userEvent.click(within(sheet()).getByRole("button", { name: "Approve" }));
     await waitFor(() => expect(within(sheet()).getByText("Step 1: Approved")).toBeInTheDocument());
 
-    expect(await posts(backend)[0].json()).toEqual({ decision: "approved", expected_version: 1, reason: null });
+    expect(posts(backend)[0].headers.get("if-match")).toBe('"1"');
+    expect(await posts(backend)[0].json()).toEqual({ decision: "approved", reason: null });
     expect(within(sheet()).getByText("by You")).toBeInTheDocument();
     expect(within(sheet()).queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
     expect(within(sheet()).getByText(/Only a tenant admin can decide this step/)).toBeInTheDocument();
@@ -112,7 +113,8 @@ describe("OffersWorkspace", () => {
     await pasteInto(within(sheet()).getByLabelText(/Reason/), "Above band for level  ");
     await userEvent.click(reject);
     await waitFor(() => expect(within(sheet()).getByText("Step 2: Rejected")).toBeInTheDocument());
-    expect(await posts(backend)[0].json()).toEqual({ decision: "rejected", expected_version: 2, reason: "Above band for level" });
+    expect(posts(backend)[0].headers.get("if-match")).toBe('"2"');
+    expect(await posts(backend)[0].json()).toEqual({ decision: "rejected", reason: "Above band for level" });
     expect(within(sheet()).getByText("Above band for level")).toBeInTheDocument();
   });
 
@@ -169,7 +171,10 @@ describe("OffersWorkspace", () => {
     expect(within(sheet()).getByText(/Only a hiring manager can decide this step/)).toBeInTheDocument();
   });
 
-  it("refreshes and explains when another approver decided first", async () => {
+  it.each([
+    [412, "precondition-failed"],
+    [409, "version-conflict"],
+  ])("refreshes and explains when another approver decided first (%i)", async (status, slug) => {
     let conflictOnce = true;
     const backend = fakeOffersBackend({
       role: "hiring_manager",
@@ -182,8 +187,8 @@ describe("OffersWorkspace", () => {
         offer.version = 2;
         offer.decisions.push({ step: 1, decision: "rejected", actor_id: "user-other-1", decided_at: "2026-11-26T09:00:00Z", reason: "No budget" });
         return Response.json(
-          { type: `${PROBLEM_TYPE_BASE}version-conflict`, title: "Conflict", status: 409, current_version: 2 },
-          { status: 409 },
+          { type: `${PROBLEM_TYPE_BASE}${slug}`, title: "Conflict", status, current_version: 2 },
+          { status, headers: { etag: '"2"' } },
         );
       },
     });

@@ -1,7 +1,15 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 
+from app.api.conditional_requests import (
+    CONDITIONAL_RESPONSES,
+    ETAG_RESPONSE,
+    IfMatch,
+    etag,
+    parse_if_match,
+    precondition_exception,
+)
 from app.api.idempotency import CommandRoute
 from app.api.schemas import (
     ApproveOfferRequest,
@@ -41,6 +49,11 @@ from app.modules.offers.infrastructure.sqlalchemy_repository import (
     SqlAlchemyUnitOfWork,
 )
 from app.modules.workflow.domain.candidate_state_machine import CandidateStage
+from app.shared.concurrency import (
+    InvalidVersionPreconditionError,
+    VersionPreconditionFailedError,
+    VersionPreconditionRequiredError,
+)
 from app.shared.database import SessionDep
 from app.shared.observability import command_conflicts
 
@@ -106,7 +119,7 @@ def list_offers(
     )
 
 
-@router.get("/v1/offers/{offer_id}", response_model=OfferDetailResponse)
+@router.get("/v1/offers/{offer_id}", response_model=OfferDetailResponse, responses=ETAG_RESPONSE)
 def get_offer(
     offer_id: str,
     response: Response,
@@ -122,6 +135,7 @@ def get_offer(
             status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found"
         ) from error
     response.headers["Cache-Control"] = "private, no-store"
+    response.headers["ETag"] = etag(detail.offer.version)
     return OfferDetailResponse(
         id=detail.offer.id,
         candidate_case_id=detail.offer.candidate_case_id,
@@ -174,11 +188,16 @@ def create_offer(
     )
 
 
-@router.post("/v1/offers/{offer_id}/approvals", response_model=OfferResponse)
+@router.post(
+    "/v1/offers/{offer_id}/approvals", response_model=OfferResponse, responses=CONDITIONAL_RESPONSES
+)
 def approve_offer(
     offer_id: str,
     payload: ApproveOfferRequest,
+    request: Request,
     session: SessionDep,
+    response: Response,
+    if_match: IfMatch = None,
     actor: ActorContext = Depends(require("tenant:read")),
 ) -> OfferResponse:
     try:
@@ -195,6 +214,9 @@ def approve_offer(
                 actor_role=actor.role,
                 decision=payload.decision,
                 expected_version=payload.expected_version,
+                if_match=parse_if_match(
+                    request.headers.getlist("if-match") if if_match is not None else None
+                ),
                 reason=payload.reason,
             )
         )
@@ -202,13 +224,24 @@ def approve_offer(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found"
         ) from error
+    except (
+        InvalidVersionPreconditionError,
+        VersionPreconditionFailedError,
+        VersionPreconditionRequiredError,
+    ) as error:
+        raise precondition_exception(error) from error
     except OfferConcurrencyConflictError as error:
         command_conflicts.labels("offer").inc()
+        session.rollback()
         current = session.get(Offer, offer_id)
         if current is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found"
             ) from error
+        if current.tenant_id != actor.tenant_id:
+            raise HTTPException(status_code=404, detail="Resource not found") from error
+        if if_match is not None:
+            raise precondition_exception(VersionPreconditionFailedError(current.version)) from error
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -223,6 +256,7 @@ def approve_offer(
         ) from error
     except InvalidOfferApprovalError as error:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error)) from error
+    response.headers["ETag"] = etag(offer.version)
     return OfferResponse(
         id=offer.id,
         status=offer.status,

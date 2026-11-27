@@ -54,7 +54,9 @@ class CreateCandidateCaseRequest(BaseModel):
 
 class TransitionCandidateCaseRequest(BaseModel):
     target_stage: str = Field(min_length=3, max_length=40)
-    expected_version: int = Field(ge=1)
+    expected_version: int | None = Field(
+        default=None, ge=1, description="Legacy version precondition; alternatively supply If-Match"
+    )
 
 
 class CandidateCaseResponse(BaseModel):
@@ -147,7 +149,9 @@ class CreateOfferRequest(BaseModel):
 
 class ApproveOfferRequest(BaseModel):
     decision: str = Field(pattern=r"^(approved|rejected)$")
-    expected_version: int = Field(ge=1)
+    expected_version: int | None = Field(
+        default=None, ge=1, description="Legacy version precondition; alternatively supply If-Match"
+    )
     reason: str | None = None
 
     @model_validator(mode="after")

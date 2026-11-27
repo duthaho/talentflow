@@ -56,8 +56,14 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
             allow_origins=list(runtime_settings.cors_origins),
             allow_credentials=True,
             allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-            allow_headers=["Authorization", "Content-Type", "X-Correlation-Id", "Idempotency-Key"],
-            expose_headers=["Idempotent-Replayed", "Retry-After"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "X-Correlation-Id",
+                "Idempotency-Key",
+                "If-Match",
+            ],
+            expose_headers=["Idempotent-Replayed", "Retry-After", "ETag"],
         )
     app.state.session_factory = session_factory
     app.state.rate_limiter = rate_limiter

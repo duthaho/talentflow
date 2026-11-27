@@ -107,18 +107,23 @@ export function fakeOffersBackend({
     if (request.method === "POST" && approval) {
       const offer = store.get(approval[1]);
       if (!offer) return problem(404, "not-found", "Offer not found");
-      const body = (await request.json()) as { decision: "approved" | "rejected"; expected_version: number; reason?: string | null };
+      const body = (await request.json()) as { decision: "approved" | "rejected"; reason?: string | null };
+      const precondition = request.headers.get("if-match");
+      if (precondition === null) return problem(428, "precondition-required", "Supply If-Match or expected_version");
       if (body.decision === "rejected" && !body.reason?.trim()) {
         return problem(422, "validation-error", "Request validation failed", { errors: [{ pointer: "/body/reason", detail: "A rejection needs a reason" }] });
       }
-      if (body.expected_version !== offer.version) return problem(409, "version-conflict", "Offer has changed; refresh and retry", { current_version: offer.version });
+      if (precondition !== `"${offer.version}"`) return problem(412, "precondition-failed", "Offer has changed; refresh and retry", { current_version: offer.version });
       if (!view(offer).can_decide) return problem(403, "forbidden", "Actor cannot approve this step");
       offer.decisions.push({ step: offer.approval_step, decision: body.decision, actor_id: actorId, decided_at: "2026-11-26T10:30:00Z", reason: body.reason ?? null });
       offer.version += 1;
       if (body.decision === "rejected") offer.status = "rejected";
       else if (STEP_ROLES[offer.approval_step + 1]) offer.approval_step += 1;
       else offer.status = "approved";
-      return Response.json({ id: offer.id, status: offer.status, approval_step: offer.approval_step, version: offer.version, candidate_stage: "offer_pending_approval" });
+      return Response.json(
+        { id: offer.id, status: offer.status, approval_step: offer.approval_step, version: offer.version, candidate_stage: "offer_pending_approval" },
+        { headers: { etag: `"${offer.version}"` } },
+      );
     }
 
     const caseDetail = path.match(/^\/v1\/candidate-cases\/([^/]+)$/);

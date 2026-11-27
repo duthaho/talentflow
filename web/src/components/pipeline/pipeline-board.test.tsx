@@ -102,7 +102,7 @@ describe("PipelineBoard", () => {
     expect(blocked.defaultPrevented).toBe(false);
   });
 
-  it("drops a card with expected_version and moves it to the new stage", async () => {
+  it("drops a card with an If-Match precondition and moves it to the new stage", async () => {
     const { api, requests } = fakeApi([candidate("c1", "applied", 3)], {
       patch: () => Response.json(candidate("c1", "screening", 4)),
     });
@@ -115,7 +115,8 @@ describe("PipelineBoard", () => {
     expect(within(column("applied")).queryByText("Ada c1")).not.toBeInTheDocument();
     const patch = requests.find((request) => request.method === "PATCH")!;
     expect(new URL(patch.url).pathname).toBe("/v1/candidate-cases/c1/stage");
-    expect(await patch.json()).toEqual({ target_stage: "screening", expected_version: 3 });
+    expect(patch.headers.get("if-match")).toBe('"3"');
+    expect(await patch.json()).toEqual({ target_stage: "screening" });
   });
 
   it("ignores a drop on a stage the state machine does not allow", async () => {
@@ -155,7 +156,10 @@ describe("PipelineBoard", () => {
     ]);
   });
 
-  it("shows a changed-by-someone-else prompt on 409 and refreshes instead of overwriting", async () => {
+  it.each([
+    [412, "precondition-failed"],
+    [409, "version-conflict"],
+  ])("shows a changed-by-someone-else prompt on %i and refreshes instead of overwriting", async (status, slug) => {
     const user = userEvent.setup();
     let stage = "applied";
     const { api, requests } = fakeApi([], {
@@ -167,13 +171,13 @@ describe("PipelineBoard", () => {
         stage = "rejected";
         return Response.json(
           {
-            type: `${PROBLEM_TYPE_BASE}version-conflict`,
+            type: `${PROBLEM_TYPE_BASE}${slug}`,
             title: "Conflict",
-            status: 409,
+            status,
             detail: "Candidate case has changed; refresh and retry",
             current_version: 2,
           },
-          { status: 409 },
+          { status, headers: { etag: '"2"' } },
         );
       },
     });

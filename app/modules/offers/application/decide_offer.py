@@ -9,6 +9,7 @@ from app.modules.offers.application.ports import (
 )
 from app.modules.offers.domain.approval_policy import ApprovalPolicy
 from app.modules.offers.domain.offer import InvalidOfferApprovalError, Offer
+from app.shared.concurrency import resolve_expected_version
 
 
 class OfferNotFoundError(LookupError):
@@ -26,8 +27,9 @@ class DecideOfferCommand:
     actor_id: str
     actor_role: str
     decision: str
-    expected_version: int
+    expected_version: int | None
     reason: str | None = None
+    if_match: tuple[str, ...] | None = None
 
 
 class DecideOfferHandler:
@@ -48,7 +50,12 @@ class DecideOfferHandler:
         offer = self._offers.get(offer_id=command.offer_id, tenant_id=command.tenant_id)
         if offer is None:
             raise OfferNotFoundError(command.offer_id)
-        if offer.version != command.expected_version:
+        expected_version = resolve_expected_version(
+            current_version=offer.version,
+            expected_version=command.expected_version,
+            if_match=command.if_match,
+        )
+        if offer.version != expected_version:
             raise OfferConcurrencyConflictError(command.offer_id)
         outcome = offer.decide(
             decision=command.decision,
@@ -56,7 +63,7 @@ class DecideOfferHandler:
             policy=self._policy,
             reason=command.reason,
         )
-        if not self._offers.update(offer=outcome.offer, expected_version=command.expected_version):
+        if not self._offers.update(offer=outcome.offer, expected_version=expected_version):
             raise OfferConcurrencyConflictError(command.offer_id)
         candidate_stage = "offer_pending_approval"
         if outcome.candidate_target_stage is not None:

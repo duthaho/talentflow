@@ -39,6 +39,11 @@ def _busy() -> HTTPException:
 
 def fingerprint(request: Request, body: object) -> str:
     value = [request.method, request.scope["route"].path_format, request.path_params, body]
+    if (
+        request.method == "PATCH"
+        or request.scope["route"].path_format == "/v1/offers/{offer_id}/approvals"
+    ) and (conditions := request.headers.getlist("if-match")):
+        value.append(conditions)
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     ).hexdigest()
@@ -137,7 +142,7 @@ def _complete(session: Session, record_id: str, response: Response) -> None:
             headers={
                 name: value
                 for name, value in response.headers.items()
-                if name.lower() in {"content-type", "location"}
+                if name.lower() in {"content-type", "location", "etag"}
             },
         )
     )
@@ -149,7 +154,10 @@ class CommandRoute(APIRoute):
 
     def __init__(self, path, endpoint, **kwargs):
         if (
-            "POST" in (kwargs.get("methods") or [])
+            (
+                "POST" in (kwargs.get("methods") or [])
+                or path == "/v1/candidate-cases/{candidate_case_id}/stage"
+            )
             and path != "/v1/tenants"
             and not getattr(endpoint, "__idempotent_command__", False)
         ):
@@ -182,7 +190,10 @@ class CommandRoute(APIRoute):
         super().__init__(path, endpoint, **kwargs)
 
     def get_route_handler(self):
-        if "POST" not in self.methods or self.path == "/v1/tenants":
+        if (
+            "POST" not in self.methods
+            and self.path != "/v1/candidate-cases/{candidate_case_id}/stage"
+        ) or self.path == "/v1/tenants":
             return super().get_route_handler()
         original = super().get_route_handler()
 

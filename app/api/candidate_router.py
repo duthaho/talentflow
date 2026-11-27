@@ -5,6 +5,14 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BeforeValidator
 
+from app.api.conditional_requests import (
+    CONDITIONAL_RESPONSES,
+    ETAG_RESPONSE,
+    IfMatch,
+    etag,
+    parse_if_match,
+    precondition_exception,
+)
 from app.api.idempotency import CommandRoute
 from app.api.schemas import (
     CandidateCaseDetailResponse,
@@ -43,6 +51,11 @@ from app.modules.candidates.infrastructure.sqlalchemy_repository import (
 from app.modules.identity.security import ActorContext, require
 from app.modules.offers.infrastructure.sqlalchemy_repository import SqlAlchemyOfferRepository
 from app.modules.workflow.domain.candidate_state_machine import InvalidTransitionError
+from app.shared.concurrency import (
+    InvalidVersionPreconditionError,
+    VersionPreconditionFailedError,
+    VersionPreconditionRequiredError,
+)
 from app.shared.database import SessionDep
 from app.shared.observability import command_conflicts
 
@@ -93,7 +106,11 @@ def list_candidate_cases(
     )
 
 
-@router.get("/v1/candidate-cases/{candidate_case_id}", response_model=CandidateCaseDetailResponse)
+@router.get(
+    "/v1/candidate-cases/{candidate_case_id}",
+    response_model=CandidateCaseDetailResponse,
+    responses=ETAG_RESPONSE,
+)
 def get_candidate_case(
     candidate_case_id: str,
     response: Response,
@@ -109,6 +126,7 @@ def get_candidate_case(
             status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
         ) from error
     response.headers["Cache-Control"] = "private, no-store"
+    response.headers["ETag"] = etag(detail.version)
     return CandidateCaseDetailResponse(**detail.__dict__)
 
 
@@ -158,12 +176,18 @@ def create_candidate_case(
     )
 
 
-@router.patch("/v1/candidate-cases/{candidate_case_id}/stage", response_model=CandidateCaseResponse)
+@router.patch(
+    "/v1/candidate-cases/{candidate_case_id}/stage",
+    response_model=CandidateCaseResponse,
+    responses=CONDITIONAL_RESPONSES,
+)
 def transition_candidate_case_stage(
     candidate_case_id: str,
     payload: TransitionCandidateCaseRequest,
     request: Request,
     session: SessionDep,
+    response: Response,
+    if_match: IfMatch = None,
     actor: ActorContext = Depends(require("candidate:transition")),
     correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
 ) -> CandidateCaseResponse:
@@ -179,6 +203,9 @@ def transition_candidate_case_stage(
                 tenant_id=actor.tenant_id,
                 target_stage=payload.target_stage,
                 expected_version=payload.expected_version,
+                if_match=parse_if_match(
+                    request.headers.getlist("if-match") if if_match is not None else None
+                ),
                 actor_id=actor.actor_id,
                 correlation_id=correlation_id
                 or request.headers.get("X-Request-Id")
@@ -189,13 +216,24 @@ def transition_candidate_case_stage(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
         ) from error
+    except (
+        InvalidVersionPreconditionError,
+        VersionPreconditionFailedError,
+        VersionPreconditionRequiredError,
+    ) as error:
+        raise precondition_exception(error) from error
     except ConcurrencyConflictError as error:
         command_conflicts.labels("candidate_case").inc()
+        session.rollback()
         current = session.get(CandidateCase, candidate_case_id)
         if current is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Candidate case not found"
             ) from error
+        if current.tenant_id != actor.tenant_id:
+            raise HTTPException(status_code=404, detail="Resource not found") from error
+        if if_match is not None:
+            raise precondition_exception(VersionPreconditionFailedError(current.version)) from error
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -215,6 +253,7 @@ def transition_candidate_case_stage(
         ) from error
     record = session.get(CandidateCase, transitioned.id)
     assert record is not None
+    response.headers["ETag"] = etag(transitioned.version)
     return CandidateCaseResponse(
         id=record.id,
         requisition_id=record.requisition_id,

@@ -20,8 +20,9 @@ Start with the [project README](../README.md) for what TalentFlow is, the quick 
 | [004](adr/004-web-bff-session-and-typed-client.md) | Web app as a BFF with a server-side session and a generated API client | Accepted |
 | [005](adr/005-idempotency-keys.md) | PostgreSQL reservations and safe POST retries | Accepted |
 | [006](adr/006-integration-event-contract.md) | Integration event contract: CloudEvents envelope, catalog, RabbitMQ topology, evolution and PII rules | Accepted |
+| [007](adr/007-conditional-requests.md) | Aggregate version preconditions over HTTP (ETag / If-Match) | Accepted |
 
-New ADRs use the next number (007), the same header fields (status, date, issue) and sections (context, decision, consequences, rejected alternatives, revisit when). An ADR that is replaced gets the status `Superseded by ADR NNN` and is otherwise left unchanged.
+New ADRs use the next number (008), the same header fields (status, date, issue) and sections (context, decision, consequences, rejected alternatives, revisit when). An ADR that is replaced gets the status `Superseded by ADR NNN` and is otherwise left unchanged.
 
 ## Runbooks
 
