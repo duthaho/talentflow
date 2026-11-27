@@ -168,3 +168,22 @@ docs/           architecture, roadmap, ADRs, runbooks
 scripts/        PostgreSQL backup/restore, demo seed, OpenAPI export
 infra/opentofu/ legacy AWS foundation — out of scope, not maintained
 ```
+
+### Generated web API client
+
+The OpenAPI document and TypeScript client are build outputs and are not tracked.
+For a fresh local web checkout (Python 3.13, uv and Node 22):
+
+```sh
+uv sync --python 3.13 --frozen
+npm --prefix web ci
+make api-client
+npm --prefix web run typecheck
+npm --prefix web test
+```
+
+Run `make api-client` again after backend changes or switching branches. CI and
+Docker web builds generate from the backend source automatically; no live API or
+database is needed. CI uploads the OpenAPI contract for review. See
+[web setup and checks](web/README.md#checks) for artifact review and standalone
+Docker build instructions.

@@ -8,11 +8,18 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test": "node --test scripts/require-api-client.test.mjs && vitest run",
+    "test:coverage": "node --test scripts/require-api-client.test.mjs && vitest run --coverage",
     "api:generate": "openapi-typescript openapi.json --output src/lib/api/schema.ts",
-    "api:check": "npm run api:generate && git diff --exit-code -- openapi.json src/lib/api/schema.ts",
-    "test:e2e": "playwright test"
+    "api:check": "make -C .. api-client && npm run typecheck",
+    "test:e2e": "playwright test",
+    "api:require": "node scripts/require-api-client.mjs",
+    "predev": "npm run api:require",
+    "prebuild": "npm run api:require",
+    "pretypecheck": "npm run api:require",
+    "pretest": "npm run api:require",
+    "pretest:coverage": "npm run api:require",
+    "pretest:e2e": "npm run api:require"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

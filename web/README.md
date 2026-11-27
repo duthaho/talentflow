@@ -10,7 +10,10 @@ For a dev server against the compose stack:
 
 ```bash
 docker compose stop web
-cd web && npm ci
+uv sync --python 3.13 --frozen
+npm --prefix web ci
+make api-client
+cd web
 API_BASE_URL=http://localhost:8000 REDIS_URL=redis://localhost:6379/1 npm run dev
 ```
 
@@ -39,7 +42,24 @@ npm run build
 make api-client       # from the repo root: regenerate openapi.json and src/lib/api/schema.ts
 ```
 
-CI fails when `openapi.json` or `src/lib/api/schema.ts` differ from a fresh generation.
+`openapi.json` and `src/lib/api/schema.ts` are ignored build outputs. After a fresh
+checkout, backend changes, or switching branches, run `make api-client` from the
+repository root (Python 3.13, uv, Node 22 and npm dependencies are required; no
+running API or database is needed). Local dev, build, typecheck and test commands
+fail early with this setup instruction when either file is missing.
+`npm run api:check` regenerates both files and typechecks the app.
+
+CI always regenerates before lint, typecheck, tests and build, including the host
+client used by Playwright. The `web` job uploads `openapi-<commit SHA>` containing
+`openapi.json` for contract review. Compare it with the base commit's CI artifact
+to review API changes; there is no automatic breaking-change classifier. Typecheck
+still fails when an API type change breaks a web call site. Generated files never
+need to be committed, and CI does not push to PR branches.
+
+Compose builds the client inside the web image from the same checkout's Python
+backend source. A standalone image build must use the repository root context:
+`docker build -f web/Dockerfile -t talentflow-web .`. No host generation is needed
+for `docker compose build`. See [ADR 004](../docs/adr/004-web-bff-session-and-typed-client.md).
 
 ## Layout
 

@@ -202,7 +202,9 @@ services:
       retries: 6
 
   web:
-    build: ./web
+    build:
+      context: .
+      dockerfile: web/Dockerfile
     environment:
       APP_BASE_URL: http://localhost:${WEB_PORT:-3000}
       API_BASE_URL: http://api:8000

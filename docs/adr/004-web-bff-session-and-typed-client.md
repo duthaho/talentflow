@@ -19,7 +19,7 @@ Stage 3 adds `web/`, a Next.js App Router app. Users sign in through Keycloak an
 - Logout accepts only same-origin form posts (`Origin`/`Sec-Fetch-Site`, as the proxy does for unsafe methods). It deletes the Redis session, revokes the refresh token and redirects to Keycloak's end-session endpoint with `id_token_hint`. The Keycloak client allows only `/auth/callback` as a redirect URI and `/signed-out` as the post-logout URI, and requires S256 PKCE.
 - In compose, the browser uses Keycloak's public issuer (`localhost:8081`), while the web server calls the token, JWKS and revocation endpoints on `keycloak:8080`. The OIDC metadata is built explicitly (`keycloakMetadata`) because discovery would return only public URLs.
 
-**Contract-first typed client.** `make api-client` exports the FastAPI OpenAPI document to `web/openapi.json` (`scripts/export_openapi.py`) and generates `web/src/lib/api/schema.ts` with `openapi-typescript`. Both files are committed. The CI `web` job regenerates them and fails on any diff. Calls use `openapi-fetch`, so paths, parameters and response bodies are type-checked.
+**Contract-first typed client.** `make api-client` exports the FastAPI OpenAPI document to `web/openapi.json` (`scripts/export_openapi.py`) and generates `web/src/lib/api/schema.ts` with `openapi-typescript`. As revised by DUTH-138, both files are ignored build outputs to avoid conflicts between concurrent API PRs. The CI `web` job always regenerates them before its checks and uploads the OpenAPI document as a review artifact. The web Dockerfile generates the document in a Python stage and the TypeScript client in its Node build stage, using the repository root as context. Local commands explain how to generate missing outputs. Calls use `openapi-fetch`, so paths, parameters and response bodies are type-checked.
 
 **One error presentation.** Every API failure becomes RFC 9457 Problem Details (`web/src/lib/api/problem.ts`). Network failures and non-problem bodies are mapped to a fallback problem. `describeProblem` maps the problem `type` (or the status) to a single title, description, field errors and correlation id. Pages render it with `ProblemView`; client actions show it with `toastProblem`.
 
@@ -30,7 +30,8 @@ Stage 3 adds `web/`, a Next.js App Router app. Users sign in through Keycloak an
 - No token reaches browser JavaScript or web storage, so an XSS bug cannot exfiltrate a token. It can still act as the user through the BFF while the page is open; CSP hardening is stage 9.
 - Sessions can be revoked server-side, and token size does not hit cookie limits.
 - The web server needs Redis (database 1) and becomes a hop on every browser API call.
-- API changes that alter the OpenAPI document require `make api-client` in the same PR, or CI fails.
+- After API changes or switching branches, developers run `make api-client` locally. CI generates from its checkout, so incompatible web call sites fail typecheck even when a backend PR never touches `web/`. Reviewers compare OpenAPI artifacts for contract changes; automated breaking-change classification is deferred.
+- Docker web builds now need backend source and locked Python dependencies at build time; the runtime image still contains only the standalone Node app. No new secrets or runtime environment variables are required.
 - Each authenticated page load makes one `GET /v1/me` call (deduplicated per request).
 
 ## Rejected alternatives

@@ -16,3 +16,7 @@ node_modules/
 **/*.tfplan
 **/terraform.tfvars
 **/terraform.tfvars.json
+
+# API build outputs; regenerate with make api-client.
+/web/openapi.json
+/web/src/lib/api/schema.ts
