@@ -42,7 +42,10 @@ stacks on separate hosts or override the subnet, dynamic pool and /32 together.
 
 The apply proxy never loads sessions. Its fixed request header allow-list is
 content-type, accurate content-length, canonical x-forwarded-for and optional
-x-correlation-id. Only status, content-type and retry-after pass back. Same-origin
+x-correlation-id, forwarded only when it matches `^[A-Za-z0-9._-]{1,128}$`.
+The API persists only the middleware-validated correlation id; invalid values
+are replaced with a server-generated UUID before audit writes. Only status,
+content-type and retry-after pass back. Same-origin
 checks at web and explicit CORS origin validation at the API reject drive-by posts.
 ClamAV explicitly alerts on encrypted content and exceeded scan/recursion limits.
 

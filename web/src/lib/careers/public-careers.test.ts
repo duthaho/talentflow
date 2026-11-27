@@ -224,3 +224,26 @@ it("keeps upstream outages distinct from missing careers pages", async () => {
     vi.unstubAllGlobals();
   }
 });
+
+it.each<[string, string | null]>([
+  ["Request_123.trace-id", "Request_123.trace-id"],
+  ["x".repeat(128), "x".repeat(128)],
+  ["x".repeat(129), null],
+  ["x".repeat(200), null],
+  ["forged <script>alert(1)</script>", null],
+  ["", null],
+])("forwards only validated correlation IDs (%s)", async (value, expected) => {
+  const upstream = vi
+    .fn()
+    .mockResolvedValue(new Response(null, { status: 202 }));
+  const response = await forwardApplication(
+    request("body", { "x-correlation-id": value }),
+    "demo",
+    "job",
+    { ...deps, fetch: upstream },
+  );
+  expect(response.status).toBe(202);
+  expect(
+    (upstream.mock.calls[0][1].headers as Headers).get("x-correlation-id"),
+  ).toBe(expected);
+});

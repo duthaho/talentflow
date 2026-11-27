@@ -67,7 +67,8 @@ export async function forwardApplication(
     "x-forwarded-for": ip,
   });
   const correlation = request.headers.get("x-correlation-id");
-  if (correlation) headers.set("x-correlation-id", correlation);
+  if (correlation && /^[A-Za-z0-9._-]{1,128}$/.test(correlation))
+    headers.set("x-correlation-id", correlation);
   try {
     const response = await (deps.fetch ?? fetch)(
       `${deps.apiBaseUrl}/v1/public/tenants/${encodeURIComponent(slug)}/requisitions/${encodeURIComponent(requisitionId)}/applications`,

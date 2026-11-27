@@ -1,5 +1,4 @@
 from datetime import datetime
-from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -184,7 +183,7 @@ async def apply(slug: str, requisition_id: str, request: Request, session: Sessi
                     await cv.read(settings.attachment_max_bytes + 1)
                     if isinstance(cv, UploadFile)
                     else b"",
-                    request.headers.get("x-correlation-id") or str(uuid4()),
+                    request.state.correlation_id,
                 )
         except StarletteHTTPException as error:
             if error.status_code == 400:
