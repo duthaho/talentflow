@@ -15,7 +15,9 @@ from app.modules.webhooks.infrastructure.consumer import (
     decode_event,
 )
 from app.modules.webhooks.infrastructure.egress import EgressGuard, Outcome, PinnedSender
+from app.modules.webhooks.infrastructure.management import aware
 from app.modules.webhooks.infrastructure.models import (
+    Attempt,
     Delivery,
     Endpoint,
     Event,
@@ -319,3 +321,141 @@ def test_sender_error_codes_and_wall_clock_deadline(monkeypatch):
     monkeypatch.setattr(egress.asyncio, "timeout", lambda _: real_timeout(0.02))
     result = asyncio.run(PinnedSender(SlowGuard()).send("https://receiver.example", {}, b"{}"))
     assert result.error_code == "timeout"
+
+
+@pytest.mark.parametrize("fault", ["malformed_status", "decrypt", "no_key", "unexpected_sender"])
+def test_pre_send_and_receiver_failures_record_attempts_and_exhaust(
+    storage, monkeypatch, caplog, fault
+):
+    sessions, (_, _, _, delivery_id) = storage
+    now = [datetime.now(UTC)]
+    sends = []
+    cipher = build_cipher(Settings())
+    if fault == "no_key":
+        with sessions.begin() as session:
+            for key in session.scalars(select(Secret)):
+                key.status, key.ciphertext = "expired", None
+    if fault == "decrypt":
+        with sessions.begin() as session:
+            for key in session.scalars(select(Secret)):
+                key.ciphertext = "invalid-ciphertext-must-not-be-logged"
+
+    class Writer:
+        transport = SimpleNamespace(abort=lambda: None)
+
+        def write(self, wire):
+            sends.append(wire)
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            pass
+
+    class Reader:
+        async def readuntil(self, separator):
+            return b"HTTP/1.1\r\n\r\n"
+
+        async def read(self, size):
+            return b""
+
+    async def connect(*args, **kwargs):
+        return Reader(), Writer()
+
+    async def resolver(host, port):
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(asyncio, "open_connection", connect)
+    sender = PinnedSender(EgressGuard(resolver=resolver))
+    if fault == "unexpected_sender":
+
+        async def broken_send(*args):
+            raise RuntimeError("receiver-controlled sensitive text")
+
+        monkeypatch.setattr(sender, "send", broken_send)
+    worker = WebhookWorker(sessions, sender, cipher, clock=lambda: now[0], jitter=lambda: 1)
+    for attempt in range(1, 9):
+        assert worker.deliver_pending() == 0
+        with sessions() as session:
+            row = session.get(Delivery, delivery_id)
+            attempts = list(
+                session.scalars(
+                    select(Attempt)
+                    .where(Attempt.delivery_id == delivery_id)
+                    .order_by(Attempt.attempt_number)
+                )
+            )
+            assert row.attempt_count == len(attempts) == attempt
+            assert row.leased_until is None
+            assert attempts[-1].status_code is None and attempts[-1].error_code == "connect_error"
+            if fault in ("decrypt", "no_key"):
+                assert attempts[-1].signed_secret_ids == "" and not sends
+            if attempt < 8:
+                assert row.status == "pending" and aware(row.next_attempt_at) > now[0]
+                now[0] = aware(row.next_attempt_at)
+            else:
+                assert row.status == "dead_lettered" and row.next_attempt_at is None
+
+    if fault in ("decrypt", "no_key", "unexpected_sender"):
+        from app.shared.observability import JsonFormatter
+
+        warnings = [
+            json.loads(JsonFormatter().format(record))
+            for record in caplog.records
+            if record.message == "webhook_attempt_failed"
+        ]
+        assert len(warnings) == 8
+        assert all(record["delivery_id"] == delivery_id for record in warnings)
+        stage = "transport" if fault == "unexpected_sender" else "signing"
+        assert all(record["outcome"].startswith(stage + ":") for record in warnings)
+    assert "invalid-ciphertext-must-not-be-logged" not in caplog.text
+    assert "receiver-controlled sensitive text" not in caplog.text
+
+
+def test_unexpected_delivery_failure_does_not_abort_the_batch(storage):
+    sessions, (tenant_id, endpoint_id, _, _) = storage
+    now = datetime.now(UTC)
+    event_id = str(uuid4())
+    with sessions.begin() as session:
+        session.add(
+            Event(
+                tenant_id=tenant_id,
+                event_id=event_id,
+                event_type="offer.created.v1",
+                body={},
+                occurred_at=now,
+                received_at=now,
+            )
+        )
+        session.flush()
+        session.add(
+            Delivery(
+                tenant_id=tenant_id,
+                endpoint_id=endpoint_id,
+                event_id=event_id,
+                event_type="offer.created.v1",
+                kind="fanout",
+                status="pending",
+                created_at=now,
+                next_attempt_at=now,
+            )
+        )
+
+    class Sender:
+        calls = 0
+
+        async def send(self, *args):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("unexpected transport failure")
+            return Outcome(204)
+
+    sender = Sender()
+    worker = WebhookWorker(sessions, sender, build_cipher(Settings()))
+    assert worker.deliver_pending() == 1
+    assert sender.calls == 2
+    with sessions() as session:
+        rows = list(session.scalars(select(Delivery)))
+        assert sorted(row.status for row in rows) == ["pending", "succeeded"]
+        assert all(row.attempt_count == 1 and row.leased_until is None for row in rows)
+        assert len(list(session.scalars(select(Attempt)))) == 2

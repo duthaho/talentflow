@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import random
 import time
 from datetime import UTC, datetime, timedelta
@@ -11,8 +12,11 @@ from prometheus_client import Counter
 from sqlalchemy import func, or_, select
 
 from app.modules.webhooks.application.signing import aad, signature
+from app.modules.webhooks.infrastructure.egress import Outcome
 from app.modules.webhooks.infrastructure.management import audit, aware, cancel_pending
 from app.modules.webhooks.infrastructure.models import Attempt, Delivery, Endpoint, Event, Secret
+
+logger = logging.getLogger(__name__)
 
 outcomes = Counter("talentflow_webhook_deliveries_total", "Webhook delivery outcomes", ["outcome"])
 DELAYS = (0, 30, 120, 600, 3600, 10800, 21600, 43200)
@@ -138,12 +142,17 @@ class WebhookWorker:
                     .order_by(Secret.status)
                 )
             )
-            # 'current' sorts before 'previous'. No key-cache authority or queued URL snapshot.
+            event_id, url = delivery.event_id, endpoint.url
+        start = time.monotonic()
+        secret_ids = ""
+        stage = "signing"
+        try:
+            # Read eligibility on every attempt; never send a partial/unsigned request.
             timestamp = str(int(started.timestamp()))
             signatures = [
                 signature(
                     self.cipher.decrypt(k.ciphertext, aad(tenant_id, endpoint_id, k.id)),
-                    delivery.event_id,
+                    event_id,
                     timestamp,
                     body,
                 )
@@ -154,14 +163,26 @@ class WebhookWorker:
             headers = {
                 "Content-Type": "application/cloudevents+json; charset=utf-8",
                 "User-Agent": "TalentFlow-Webhooks/1",
-                "webhook-id": delivery.event_id,
+                "webhook-id": event_id,
                 "webhook-timestamp": timestamp,
                 "webhook-signature": " ".join(signatures),
             }
             secret_ids = " ".join(k.id for k in keys)
-            url = endpoint.url
-        start = time.monotonic()
-        result = await self.sender.send(url, headers, body)
+            stage = "transport"
+            result = await self.sender.send(url, headers, body)
+        except Exception as error:
+            # Preserve the ADR-008 error enum. Preparation/unknown transport failures
+            # use connect_error; only a safe stage and class distinguish them in logs.
+            # DB reads/writes remain outside this boundary: failed commits keep the lease.
+            logger.warning(
+                "webhook_attempt_failed",
+                extra={
+                    "event": "webhook_attempt_failed",
+                    "delivery_id": ident,
+                    "outcome": f"{stage}:{type(error).__name__}",
+                },
+            )
+            result = Outcome(error_code="connect_error")
         duration = int((time.monotonic() - start) * 1000)
         now = self.clock()
         with self.sessions.begin() as session:

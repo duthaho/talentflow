@@ -33,7 +33,11 @@ The required configuration names are `WEBHOOK_SECRET_KEYS` and
 real keys in Compose, source control, command history, logs or issue comments.
 Other settings are `WEBHOOK_ALLOW_HTTP`, `WEBHOOK_PRIVATE_NETWORK_ALLOWLIST`
 and `WEBHOOK_DELIVERY_RETENTION_DAYS` (default 30). The API and workers must share
-all decrypt keys and the same active key id.
+all decrypt keys and the same active key id. With `APP_ENV=production`, both
+`WEBHOOK_SECRET_KEYS` and `WEBHOOK_SECRET_ACTIVE_KEY_ID` are required on the API,
+migration commands and every worker container; the development defaults are not
+valid production configuration. The CI `container-smoke` job generates one masked,
+throwaway keyring and forwards both variables to every container in that job.
 
 Signing-secret rotation uses `POST /v1/webhook-endpoints/{id}/secret-rotations`
 with a concrete `If-Match` ETag and optional `grace_period_seconds` (default 86400).
@@ -71,7 +75,12 @@ List an endpoint's delivery log with `GET /v1/webhook-endpoints/{id}/deliveries`
 Filters include repeated `status`, `event_type`, `event_id` and the half-open
 `created_from`/`created_to` range. Follow `next_cursor` without interpreting it.
 `GET /v1/webhook-deliveries/{id}` includes attempts, status codes and safe error
-enums; receiver bodies and headers are never retained.
+enums; receiver bodies and headers are never retained. Malformed status lines,
+missing signing keys and decryption failures record a failed attempt using the
+existing `connect_error` enum, clear its lease and follow the same backoff and
+eight-attempt cap. Signing failures never send an unsigned/partially signed
+request. Safe warning logs identify the delivery, error stage and exception class,
+without the exception text, ciphertext or key material.
 
 Eight failed attempts dead-letter a delivery. `410` dead-letters immediately and
 disables the endpoint. Sustained failures disable it only after both 20 failures

@@ -157,7 +157,7 @@ page follows in DUTH-127.
 
 ## Configuration notes
 
-- Settings are validated at startup (`app/shared/settings.py`). With `APP_ENV=production` the app requires `AUTH_MODE=oidc_jwt`, PostgreSQL, Redis, explicit HTTPS CORS origins, HTTPS OIDC and calendar URLs, an absolute attachment root and ClamAV scanning.
+- Settings are validated at startup (`app/shared/settings.py`). With `APP_ENV=production` the app requires `AUTH_MODE=oidc_jwt`, PostgreSQL, Redis, explicit HTTPS CORS origins, HTTPS OIDC and calendar URLs, an absolute attachment root and ClamAV scanning. Production also requires `WEBHOOK_SECRET_KEYS` (a keyring of `kid:base64-of-32-random-bytes`) and `WEBHOOK_SECRET_ACTIVE_KEY_ID` (an id in that ring); the public development key is rejected. Supply both to the API, migration and worker containers through the environment/secret manager. See [webhook key operations](docs/webhooks/operations.md#keys-and-rotation).
 - Variable names are listed in [`.env.example`](.env.example). Values there are local development defaults only. Never commit real credentials.
 - `NOTIFICATION_EMAIL_ADAPTER=smtp` is the local default and sends to Mailpit at `mailpit:1025`; set `NOTIFICATION_EMAIL_ADAPTER=sendgrid` with `SENDGRID_API_KEY` to use SendGrid instead. `NOTIFICATION_FROM_EMAIL` is always required.
 

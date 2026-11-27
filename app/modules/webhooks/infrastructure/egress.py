@@ -210,7 +210,9 @@ class PinnedSender:
             return Outcome(error_code="timeout")
         except ssl.SSLError:
             return Outcome(error_code="tls_error")
-        except (OSError, ValueError, asyncio.IncompleteReadError, asyncio.LimitOverrunError):
+        except Exception:
+            # A receiver or transport bug must still enter the bounded attempt lifecycle.
+            # CancelledError remains uncaught so shutdown cancellation can propagate.
             return Outcome(error_code="connect_error")
 
     async def _send(self, url, headers, body):
@@ -247,7 +249,12 @@ class PinnedSender:
             await writer.drain()
             header_block = await reader.readuntil(b"\r\n\r\n")
             lines = header_block.decode("iso-8859-1").split("\r\n")
-            code = int(lines[0].split()[1])
+            status = re.fullmatch(
+                r"HTTP/1\.[01] ([1-5][0-9]{2})(?: [\t\x20-\x7e\x80-\xff]*)?", lines[0]
+            )
+            if status is None:
+                return Outcome(error_code="connect_error")
+            code = int(status.group(1))
             retry_after = None
             for line in lines[1:]:
                 name, _, value = line.partition(":")

@@ -337,3 +337,54 @@ def test_catalog_matches_runtime_subscriptions():
         if message["x-talentflow"]["webhook"]
     }
     assert {name: metadata[0] for name, metadata in EVENT_TYPES.items()} == public
+
+
+@pytest.mark.parametrize(
+    "status_line",
+    [
+        b"HTTP/1.1",
+        b"garbage",
+        b"garbage 200 OK",
+        b"HTTP/2 200 OK",
+        b"HTTP/1.1 20 OK",
+        b"HTTP/1.1 2000 OK",
+        b"HTTP/1.1 +200 OK",
+        b"HTTP/1.1 999 OK",
+    ],
+)
+def test_malformed_status_line_is_a_failed_transport_outcome(monkeypatch, status_line):
+    from types import SimpleNamespace
+
+    closed = []
+
+    class Writer:
+        transport = SimpleNamespace(abort=lambda: closed.append(True))
+
+        def write(self, data):
+            pass
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            pass
+
+    class Reader:
+        async def readuntil(self, separator):
+            return status_line + b"\r\n\r\n"
+
+        async def read(self, size):
+            return b""
+
+    async def connect(*args, **kwargs):
+        return Reader(), Writer()
+
+    async def resolver(host, port):
+        return ["93.184.216.34"]
+
+    monkeypatch.setattr(asyncio, "open_connection", connect)
+    result = asyncio.run(
+        PinnedSender(EgressGuard(resolver=resolver)).send("https://receiver.example", {}, b"{}")
+    )
+    assert result.status_code is None and result.error_code == "connect_error"
+    assert closed == [True]
