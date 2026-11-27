@@ -5,6 +5,31 @@ from __future__ import annotations
 from scripts import seed_demo
 
 
+def test_seed_database_publishes_two_requisitions_idempotently(tmp_path, monkeypatch) -> None:
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    from app.shared.database import Base
+    from app.shared.models import Requisition
+
+    url = f"sqlite:///{tmp_path / 'seed.db'}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    engine = create_engine(url)
+    Base.metadata.create_all(engine)
+    seed_demo.seed_database()
+    with Session(engine) as session:
+        first = session.scalars(select(Requisition).order_by(Requisition.id)).all()
+        assert len(first) == 2
+        assert all(job.published and job.published_at for job in first)
+        timestamps = [job.published_at for job in first]
+    seed_demo.seed_database()
+    with Session(engine) as session:
+        second = session.scalars(select(Requisition).order_by(Requisition.id)).all()
+        assert len(second) == 2
+        assert [job.published_at for job in second] == timestamps
+    engine.dispose()
+
+
 def test_seed_keycloak_updates_client_urls_for_selected_web_port(monkeypatch) -> None:
     monkeypatch.setenv("KEYCLOAK_ADMIN_URL", "http://keycloak:8080")
     monkeypatch.setenv("KEYCLOAK_WEB_BASE_URL", "http://localhost:13000")

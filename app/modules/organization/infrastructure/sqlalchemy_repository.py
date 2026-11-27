@@ -1,9 +1,21 @@
+from datetime import UTC, datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.modules.audit.persistence import AuditEvent
 from app.modules.organization.application.ports import RequisitionPage, RequisitionView, TenantView
 from app.modules.organization.persistence import Membership, Requisition, Tenant, User
+
+
+def requisition_view(record: Requisition) -> RequisitionView:
+    published_at = record.published_at
+    if published_at is not None and published_at.tzinfo is None:
+        # SQLite drops timezone information; persisted publication times are UTC.
+        published_at = published_at.replace(tzinfo=UTC)
+    return RequisitionView(
+        record.id, record.title, record.department, record.published, published_at
+    )
 
 
 class SqlAlchemyOrganizationRepository:
@@ -63,6 +75,38 @@ class SqlAlchemyOrganizationRepository:
         )
         return RequisitionView(requisition.id, requisition.title, requisition.department)
 
+    def set_publication(
+        self,
+        *,
+        tenant_id: str,
+        requisition_id: str,
+        published: bool,
+        actor_id: str,
+        correlation_id: str,
+    ) -> RequisitionView | None:
+        record = self._session.scalar(
+            select(Requisition)
+            .where(Requisition.id == requisition_id, Requisition.tenant_id == tenant_id)
+            .with_for_update()
+        )
+        if record is None:
+            return None
+        if record.published != published:
+            record.published = published
+            record.published_at = datetime.now(UTC) if published else None
+            self._session.add(
+                AuditEvent(
+                    tenant_id=tenant_id,
+                    actor_id=actor_id,
+                    action="requisition.published" if published else "requisition.unpublished",
+                    aggregate_type="requisition",
+                    aggregate_id=record.id,
+                    correlation_id=correlation_id,
+                    metadata_json={},
+                )
+            )
+        return requisition_view(record)
+
     def list_requisitions_page(
         self, *, tenant_id: str, cursor: str | None, limit: int
     ) -> RequisitionPage:
@@ -76,9 +120,11 @@ class SqlAlchemyOrganizationRepository:
             self._session.scalar(select(func.count()).select_from(Requisition).where(*filters)) or 0
         )
         return RequisitionPage(
-            items=[RequisitionView(record.id, record.title, record.department) for record in page],
+            items=[requisition_view(record) for record in page],
             next_cursor=page[-1].id if len(records) > limit else None,
             total=total,
+            tenant_slug=self._session.scalar(select(Tenant.slug).where(Tenant.id == tenant_id))
+            or "",
         )
 
 

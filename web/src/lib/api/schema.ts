@@ -440,6 +440,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/requisitions/{id}/publication": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set Requisition Publication */
+        patch: operations["set_requisition_publication_v1_requisitions__id__publication_patch"];
+        trace?: never;
+    };
     "/v1/retention-policy": {
         parameters: {
             query?: never;
@@ -965,6 +982,8 @@ export interface components {
             items: components["schemas"]["RequisitionResponse"][];
             /** Next Cursor */
             next_cursor: string | null;
+            /** Tenant Slug */
+            tenant_slug: string;
             /** Total */
             total: number;
         };
@@ -974,6 +993,13 @@ export interface components {
             department: string;
             /** Id */
             id: string;
+            /**
+             * Published
+             * @default false
+             */
+            published: boolean;
+            /** Published At */
+            published_at?: string | null;
             /** Title */
             title: string;
         };
@@ -996,6 +1022,11 @@ export interface components {
         RetentionPurgeResponse: {
             /** Purged Count */
             purged_count: number;
+        };
+        /** SetRequisitionPublicationRequest */
+        SetRequisitionPublicationRequest: {
+            /** Published */
+            published: boolean;
         };
         /** SubmitFeedbackRequest */
         SubmitFeedbackRequest: {
@@ -2228,6 +2259,48 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RequisitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_requisition_publication_v1_requisitions__id__publication_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Correlation-Id"?: string | null;
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRequisitionPublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -151,6 +151,10 @@ Status reflects the code at commit `db1f7bc` (2026-11-24). A row moves to `imple
 
 Candidate lifecycle: `applied → screening → interviewing → offer_pending_approval → offer_approved → hired`, with `offer_rejected`, `rejected` and `withdrawn` exits. See [architecture](docs/architecture.md#5-candidate-workflow-and-concurrency).
 
+Staff can publish jobs from Settings → Requisitions or through the
+[requisition publication API](docs/requisition-publication.md). The public careers
+page follows in DUTH-127.
+
 ## Configuration notes
 
 - Settings are validated at startup (`app/shared/settings.py`). With `APP_ENV=production` the app requires `AUTH_MODE=oidc_jwt`, PostgreSQL, Redis, explicit HTTPS CORS origins, HTTPS OIDC and calendar URLs, an absolute attachment root and ClamAV scanning.
