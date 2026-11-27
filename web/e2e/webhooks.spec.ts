@@ -56,9 +56,10 @@ test("tenant admin registers a webhook, sees the delivery and redelivers it", as
 test("a recruiter cannot open the webhook screens or call the webhook API", async ({ actor }) => {
   const recruiter = await actor("recruiter");
   await expect(recruiter.getByRole("link", { name: "Webhooks" })).toHaveCount(0);
-  await recruiter.goto("/settings/webhooks");
+  const pageResponse = await recruiter.goto("/settings/webhooks");
   await expect(recruiter.getByText("You don't have access")).toBeVisible();
   await expect(recruiter.getByRole("button", { name: "New endpoint" })).toHaveCount(0);
   const api = await recruiter.request.get("/api/tf/v1/webhook-endpoints");
   expect(api.status()).toBe(403);
+  expect(pageResponse?.status(), "AC3: the webhook page route must return HTTP 403 for non-admins").toBe(403);
 });
