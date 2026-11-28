@@ -21,10 +21,10 @@ The six proposed defaults were accepted. Two are adjusted to match `main`. Both 
 
 1. The account is created in a separate Keycloak realm, `employees`, that stands in for the company directory. A confidential client holds only `manage-users` on that realm. The user is created disabled and has no credentials.
 2. Steps 1–3 (employee record, account, day-1 tasks) are compensable. Once they succeed, the saga has passed its pivot. Notify only retries; when its retries run out, the saga ends `completed_with_warnings` and nothing is rolled back.
-3. **(adjusted)** One internal email goes through Mailpit. The candidate gets nothing. Requisitions have no hiring manager, so the recipients are the user who performed the hire and the requisition's `created_by`, deduplicated, provided each still has a membership in the tenant.
-4. Day-1 tasks are a fixed template in code: laptop, accounts, buddy, orientation. They are due on a start date the recruiter enters at hire time. Without a date, they are due 14 days after the hire. They are read-only.
+3. **(adjusted)** One internal email goes through Mailpit. The candidate gets nothing. Requisitions have no hiring manager, so the recipients are the user who performed the hire and the requisition's `created_by`, deduplicated, provided each still has a membership in the tenant. If no recipient is left, the notify step succeeds without an email and records the warning `no_recipients`; the saga ends `completed_with_warnings`.
+4. Day-1 tasks are a fixed template in code: laptop, accounts, buddy, orientation. They are due on a start date the recruiter enters at hire time. Without a date, they are due on the UTC date of the hire + 14 days. They are read-only.
 5. The web app shows a read-only saga timeline on the candidate detail page. A tenant admin can **retry** a saga that ended `compensated` and **cancel** a saga that is still `running`. Both actions are audited.
-6. **(adjusted)** Failure injection for demos is a setting, not a flag. ADR 010 allows only `release` and `ops` flags, which must be positive (`true` = runs) and fall back to `false`. A fault flag would break both rules, and a flagd outage would then compensate every running saga. Instead, `ONBOARDING_FAULT_INJECTION` lists step names whose adapter call fails. Startup refuses it when `APP_ENV=production`. Changing it needs a worker restart (`docker compose up -d onboarding-worker`).
+6. **(adjusted)** Failure injection for demos is a setting, not a flag. ADR 010 allows only `release` and `ops` flags, which must be positive (`true` = runs) and fall back to `false`. A fault flag would break both rules, and a flagd outage would then compensate every running saga. Instead, `ONBOARDING_FAULT_INJECTION` lists step names whose adapter call fails. It is fail-closed: it is accepted only when `APP_ENV` is `development` or `test`, and any other value, including a future one, makes startup fail. Changing it needs a worker restart (`docker compose up -d onboarding-worker`).
 
 ## Goals
 
@@ -71,6 +71,8 @@ stateDiagram-v2
   compensating --> cancelled: all compensations done (cancel path)
   compensating --> compensation_failed: a compensation exhausted
   compensated --> running: admin retry (attempt + 1)
+  compensated --> cancelled: candidate erased
+  running --> completed_with_warnings: candidate erased after pivot (notify skipped)
   completed --> [*]
   completed_with_warnings --> [*]
   cancelled --> [*]
@@ -80,7 +82,7 @@ stateDiagram-v2
 | # | Step | Action | Compensation | Attempt timeout | Retries (backoff) | Step deadline |
 |---|---|---|---|---|---|---|
 | 1 | `create_employee` | `PUT` the employee on the HRIS stub, keyed by saga id | `DELETE` the employee (a 404 counts as success) | 5 s | 4 (10 s, 30 s, 2 min, 5 min) | 15 min |
-| 2 | `provision_account` | Create a disabled user in realm `employees`. Username `tf-<candidate_case_id>`; a 409 adopts the existing user if it carries this saga's attribute | Delete the user (a 404 counts as success) | 5 s | 4 (same) | 15 min |
+| 2 | `provision_account` | Create a disabled user in realm `employees`. Username `tf-<candidate_case_id>`; a 409 adopts the existing user if its `onboarding_saga_id` attribute equals this saga's id; a 409 for a user with no or a different attribute is a non-retryable failure (`directory_conflict`), so the step fails at once and the saga compensates | Delete the user (a 404 counts as success) | 5 s | 4 (same) | 15 min |
 | 3 | `schedule_tasks` | Insert the four template tasks, due on the start date | Mark the saga's tasks `cancelled` | — (local DB) | 2 (10 s, 30 s) | 5 min |
 | 4 | `notify` | Write one notification delivery for the recipients (decision 3) | none (after the pivot) | — (local DB) | 4 (same as 1) | 30 min |
 
@@ -99,7 +101,7 @@ Rules:
 
 ### Hire with a start date
 
-`PATCH /v1/candidate-cases/{id}/stage` (existing) gains an optional `start_date` (`YYYY-MM-DD`). It is accepted only with `target_stage = hired`; otherwise the request fails with `422 validation-error`. The schema field is `TransitionCandidateCaseRequest.start_date`. The date must fall between today and today + 365 days. It is stored in a new nullable column, `candidate_cases.hire_start_date` (expand-only migration), and returned on the case response. The event payload does not change: the saga reads the date through the candidates port.
+`PATCH /v1/candidate-cases/{id}/stage` (existing) gains an optional `start_date` (`YYYY-MM-DD`). It is accepted only with `target_stage = hired`; otherwise the request fails with `422 validation-error`. The schema field is `TransitionCandidateCaseRequest.start_date`. "Today" is the current UTC date. The date must fall between today and today + 365 days, both bounds inclusive. Without a date, tasks are due on the UTC date of the hire + 14 days. It is stored in a new nullable column, `candidate_cases.hire_start_date` (expand-only migration), and returned on the case response. The event payload does not change: the saga reads the date through the candidates port.
 
 ### Read
 
@@ -144,7 +146,7 @@ Rules:
 |---|---|
 | `candidate_case.stage_changed.v1`, `to_stage = hired` | Evaluate the flag. Insert a saga and its step rows, unless a saga for `(tenant_id, candidate_case_id)` already exists (unique constraint) or an erasure tombstone exists. |
 | `candidate_case.stage_changed.v1`, any other `to_stage` | Inbox insert only (`skipped`). |
-| `candidate_case.erased.v1` | If the saga is running before the pivot, cancel it (compensate). If no saga exists, write a tombstone so that a late `hired` event cannot start one. A finished saga is left as it is (it holds no personal data). |
+| `candidate_case.erased.v1` | Set `erased_at` on the saga, or write a tombstone when no saga exists, so a late `hired` event cannot start one. Then by state:<br>• `running` before the pivot → cancel (compensate), ending `cancelled`.<br>• `running` after the pivot (notify pending) → notify is skipped without reading the candidate or sending, and the saga ends `completed_with_warnings` (`candidate_erased`).<br>• `compensating` → finishes compensating, then ends `cancelled`.<br>• `compensated` → moves to `cancelled`, so retry returns `409`.<br>• `completed`, `completed_with_warnings`, `cancelled`, `compensation_failed` → unchanged (no personal data held).<br>Every step checks `erased_at` before reading the candidate port and never sends data for an erased candidate. |
 
 ### Configuration (names only)
 
@@ -153,7 +155,7 @@ Rules:
 - `KEYCLOAK_ONBOARDING_CLIENT_ID`
 - `KEYCLOAK_ONBOARDING_CLIENT_SECRET` (secret; the Compose dev value is public and documented as such)
 - `HRIS_STUB_URL`
-- `ONBOARDING_FAULT_INJECTION` (comma-separated step names; empty by default; refused in production)
+- `ONBOARDING_FAULT_INJECTION` (comma-separated step names; empty by default; accepted only when `APP_ENV` is `development` or `test`)
 - the existing `WORKER_*` settings
 
 ### Runtime
@@ -181,7 +183,7 @@ Traced to the issue's AC1–AC4.
   - the candidate detail page shows each step as succeeded.
 
   A Playwright E2E test and an integration test against a real broker cover this.
-- **AC2 (start date default):** Given no start date, when the candidate is hired, then the tasks are due 14 days after the hire. Given `start_date` with a target stage other than `hired`, the API returns `422`.
+- **AC2 (start date default):** Given no start date, when the candidate is hired, then the tasks are due on the UTC date of the hire + 14 days. Given a start date of today or today + 365 days (UTC), it is accepted; one day outside either bound returns `422`. Given `start_date` with a target stage other than `hired`, the API returns `422`.
 - **AC3 (compensation per step, issue AC2):** Given a fault injected at `create_employee`, `provision_account` or `schedule_tasks`, when the saga runs, then the step retries on its schedule and fails, then every completed step is compensated in reverse order, and the saga ends `compensated`. Three tests, one per step, assert the exact order of compensation calls and the final external state (nothing left in the HRIS or Keycloak).
 - **AC4 (pivot):** Given a fault at `notify`, when its retries run out, then nothing is compensated and the saga ends `completed_with_warnings`. A test covers this.
 - **AC5 (timeouts):** Given an adapter that does not answer within the attempt timeout, the attempt counts as failed and is retried. Given a step that keeps failing until its deadline, the saga compensates. Tests use a controllable clock, not sleeps.
@@ -191,9 +193,11 @@ Traced to the issue's AC1–AC4.
   - the same `hired` event delivered twice creates one saga;
   - two different events for the same hire (for example a replayed outbox row with a new id) create one saga, because of the unique constraint;
   - `erased` before `hired` leaves a tombstone and no saga;
-  - `erased` during a running saga compensates it;
+  - `erased` during a running saga before the pivot compensates it and ends `cancelled`;
+  - `erased` after the pivot, with notify pending, ends `completed_with_warnings` with no email and no candidate read;
+  - `erased` on a `compensated` saga moves it to `cancelled`, and a later retry returns `409`;
   - two worker instances claiming the same due step perform one attempt (row lock plus the saga `version` check).
-- **AC9 (gate):** Given the flag off or flagd unreachable, a hire creates no saga, and the consumer counts `skipped_flag_off`. Given a running saga, turning the flag off does not stop it. With the gate off, retry and cancel return `403 feature-disabled`. The panel is hidden in the web app when the feature is off and no saga exists.
+- **AC9 (gate):** Given the flag off or flagd unreachable, a hire creates no saga, and the consumer counts `skipped_flag_off`. Given a running saga, turning the flag off does not stop it. Given an enabled tenant whose hire was skipped during a flagd outage, the runbook recovery in `docs/onboarding.md` starts the saga (see R6). With the gate off, retry and cancel return `403 feature-disabled`. The panel is hidden in the web app when the feature is off and no saga exists.
 - **AC10 (admin actions):** A tenant admin can retry a `compensated` saga (a new attempt starts from step 1) and cancel a running saga before the pivot. Any other state returns `409`. A recruiter gets `403 forbidden`. A stale `If-Match` returns `412`. Each action is audited. Tests cover each case.
 - **AC11 (privacy and isolation):**
   - Saga, step and task rows and API responses contain no name or email.
@@ -204,7 +208,8 @@ Traced to the issue's AC1–AC4.
 - **AC12 (security of provisioning):**
   - The onboarding Keycloak client can manage users only in realm `employees`. A test against the real Keycloak shows it gets `403` on realm `talentflow`.
   - The secret is read from settings and excluded from their representation.
-  - `ONBOARDING_FAULT_INJECTION` makes startup fail when `APP_ENV=production`.
+  - A non-empty `ONBOARDING_FAULT_INJECTION` makes startup fail unless `APP_ENV` is `development` or `test`.
+  - A 409 on a user without this saga's `onboarding_saga_id` fails the step without retry and compensates, and a test covers it.
 - **AC13 (docs, issue AC4):**
   - ADR 011 compares orchestration with choreography and the in-house process manager with Temporal, using the forces in this spec.
   - `docs/onboarding.md` covers operations: states, metrics, fault injection, and manual cleanup after `compensation_failed`.
@@ -231,10 +236,22 @@ Traced to the issue's AC1–AC4.
 - **R3. Scope size.** Worker, two adapters, a stub service, a realm, an API, a web panel and an ADR. The plan step splits this into stages that each merge on their own (for example process manager and API first, then the web panel and E2E).
 - **R4. Erasure after completion.** The directory account and the HRIS employee hold the candidate's name and email. They are left in place because, once hired, those records fall under employment, which is the HRIS's concern, not the ATS's. If the requester or Hoàng-Security disagree, it becomes a follow-up, not a change to this saga.
 - **R5. Keycloak admin client scope creep.** A misconfigured client could manage the login realm. AC12 tests the boundary against the real server.
+- **R6. Skipped hire during a flagd outage.** ADR 010 fails closed, so a hire processed while flagd is unreachable records `skipped_flag_off` and never starts a saga, even for an enabled tenant. `docs/onboarding.md` gives the recovery: find the skipped events through the consumer metric and logs (event id, tenant id), then republish them straight to `onboarding.events` per `docs/events/operations.md` after deleting their `onboarding` inbox rows. The saga's unique constraint keeps this safe to repeat. An admin "start onboarding" action is a possible follow-up, not part of this issue.
+
+## Security review
+
+This spec is security- and data-sensitive. Hoàng-Security is asked for a design review at the `plan` step, before any code, covering:
+
+- **Privileged credential.** The `employees`-realm admin client: least privilege (`manage-users` on `employees` only, nothing on `talentflow`), how `KEYCLOAK_ONBOARDING_CLIENT_SECRET` is handled (settings only, excluded from representations, only in `onboarding-worker`, public dev value documented as such), and the token lifetime (AC12, R5).
+- **PII flow and minimisation.** Name and email leave the ATS for the HRIS stub and Keycloak. They are read at step time and never stored in saga tables, logs, metrics, errors or API responses. The notification email carries the name and start date to internal recipients only (AC11).
+- **New admin permission.** `onboarding:manage` (tenant admins only), tenant isolation on every saga route, audit of retry and cancel (AC10).
+- **Erasure and retention.** The erasure handling in the events table, and the R4 decision to keep the employee record and directory account after a completed onboarding.
+- **Fault injection.** The fail-closed `APP_ENV` guard on `ONBOARDING_FAULT_INJECTION`.
+- **Network exposure.** `hris-stub` and Keycloak admin reach: default network only, with no published ports for `hris-stub`.
 
 ## Open questions
 
-None. The requester answered all six on 2026-11-28. The two adjustments above follow from `main` and are flagged for spec review.
+None. The requester answered all six on 2026-11-28. The two adjustments above follow from `main`. Spec review round 1 (Trung-PM) findings are resolved in this revision.
 
 ## Rollout and rollback
 
