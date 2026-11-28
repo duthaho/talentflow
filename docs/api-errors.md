@@ -74,6 +74,15 @@ the endpoint is not enabled, or the same event already has a pending delivery to
 that endpoint. Wait for the delivery to finish, or re-enable the endpoint.
 Registered by DUTH-62.
 
+## feature-disabled
+
+403: the feature is not enabled for the caller's tenant, or its flag could not be
+evaluated and failed closed (ADR-010 §3, §6). The body adds `feature`, a public
+feature name such as `webhooks`, and never names the flag key. Precedence: after
+`unauthorized` and `forbidden`, before every other error. Reads and the
+operations that switch existing configuration off stay available; see ADR-010
+for the per-route list. Registered by DUTH-65.
+
 ## internal-error
 
 An unexpected server failure occurred. Its detail never exposes exception data.

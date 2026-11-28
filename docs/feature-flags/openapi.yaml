@@ -1,0 +1,164 @@
+openapi: 3.1.0
+info:
+  title: TalentFlow feature-flag state
+  version: 1.0.0
+  description: |
+    Server-evaluated feature state for the web app, and the `feature-disabled` problem.
+    The reasoning is in ADR-010 (`docs/adr/010-feature-flags.md`). DUTH-65 implements it;
+    the generated `web/openapi.json` must match the `CurrentActorResponse` schemas below.
+
+    - `features` is evaluated by the API from the authenticated principal (tenant and role).
+      Clients cannot influence the evaluation context.
+    - Flag keys, variants and evaluation reasons are never part of a response.
+    - The gate-off responses for the webhook admin paths are in `webhooks-gate.overlay.yaml`.
+  license:
+    name: Proprietary showcase
+    identifier: LicenseRef-Proprietary
+
+servers:
+  - url: http://localhost:8000
+    description: API in the local Compose stack.
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: identity
+    description: The calling actor and their tenant.
+
+paths:
+  /v1/me:
+    get:
+      tags: [identity]
+      operationId: getCurrentActor
+      summary: Current actor, tenant, role, permissions and feature state
+      description: |
+        Additive change: `features` is new and always present. A feature-flag failure never fails
+        this endpoint; the fail-closed fallbacks from ADR-010 §6 are returned instead
+        (`enabled: false`, `delivery_paused: true`).
+      responses:
+        '200':
+          description: The calling actor.
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CurrentActorResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403':
+          description: '`forbidden`: the principal is not a member of the requested tenant.'
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloak access token. The web app calls the API through its BFF session (ADR 004).
+
+  headers:
+    NoStore:
+      schema: {type: string, const: 'private, no-store'}
+
+  responses:
+    Unauthorized:
+      description: '`unauthorized`'
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    FeatureDisabled:
+      description: >-
+        `feature-disabled`: the feature is not enabled for the caller's tenant, or its flag could not
+        be evaluated (fail-closed). The body is identical in both cases.
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/FeatureDisabledProblem'}
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details, as described in `docs/api-errors.md`.
+      required: [type, title, status, detail, instance, correlation_id]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        instance: {type: string}
+        correlation_id: {type: string}
+
+    FeatureDisabledProblem:
+      description: '`feature-disabled` (403). `feature` is a public name from `Features`, never a flag key.'
+      allOf:
+        - {$ref: '#/components/schemas/Problem'}
+        - type: object
+          required: [feature]
+          properties:
+            type: {const: 'https://github.com/duthaho/talentflow/blob/main/docs/api-errors.md#feature-disabled'}
+            status: {const: 403}
+            feature: {$ref: '#/components/schemas/FeatureName'}
+      examples:
+        - type: https://github.com/duthaho/talentflow/blob/main/docs/api-errors.md#feature-disabled
+          title: Feature Disabled
+          status: 403
+          detail: Webhooks are not enabled for this organization. Existing endpoints can still be viewed, disabled, rotated or deleted.
+          instance: /v1/webhook-endpoints
+          correlation_id: 0b7e6a4c2f1d4e0a9c8b7a6f5e4d3c2b
+          feature: webhooks
+
+    FeatureName:
+      type: string
+      description: Stable public feature name. Survives the removal of the flag behind it.
+      enum: [webhooks]
+
+    CurrentActorResponse:
+      type: object
+      required: [user_id, email, tenant_id, tenant_name, role, permissions, features]
+      properties:
+        user_id: {type: string}
+        email:
+          anyOf: [{type: string}, {type: 'null'}]
+        display_name: {type: 'null'}
+        tenant_id: {type: string}
+        tenant_name: {type: string}
+        role:
+          type: string
+          enum: [tenant_admin, recruiter, auditor, hiring_manager, interviewer]
+        permissions:
+          type: array
+          items: {type: string}
+        features: {$ref: '#/components/schemas/Features'}
+
+    Features:
+      type: object
+      description: >-
+        Server-evaluated feature state for the caller's tenant (ADR-010 §4). New public features are
+        added as new required properties; a removed flag leaves its property in place with a constant value.
+      required: [webhooks]
+      additionalProperties: false
+      properties:
+        webhooks: {$ref: '#/components/schemas/WebhooksFeature'}
+
+    WebhooksFeature:
+      type: object
+      required: [enabled, delivery_paused]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: >-
+            `release.webhooks.outbound` for this tenant. When false, the webhook admin API allows only
+            reads, disable, secret rotation and delete (403 `feature-disabled` otherwise).
+        delivery_paused:
+          type: boolean
+          description: >-
+            True when pending deliveries are not being sent: the gate is off, the
+            `ops.webhooks.delivery` kill switch is off, or flagd is unavailable. Paused deliveries
+            stay `pending`, keep their attempt count and resume automatically.
+      examples:
+        - {enabled: true, delivery_paused: false}
