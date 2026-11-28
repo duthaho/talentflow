@@ -8,7 +8,8 @@ from sqlalchemy.exc import IntegrityError
 def test_pause_table_expand_constraint_and_downgrade(tmp_path, monkeypatch):
     url = f"sqlite:///{tmp_path / 'pauses.db'}"
     monkeypatch.setenv("DATABASE_URL", url)
-    config = Config("alembic.ini")
+    config = Config()
+    config.set_main_option("script_location", "migrations")
     command.upgrade(config, "head")
     engine = create_engine(url)
     with engine.begin() as connection:

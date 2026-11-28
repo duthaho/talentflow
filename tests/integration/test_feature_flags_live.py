@@ -191,7 +191,8 @@ def assert_disabled(client, headers):
 def test_postgres_migration_roundtrip_and_two_workers_resume_once(stack, monkeypatch, tmp_path):
     _, _, url, _ = stack
     monkeypatch.setenv("DATABASE_URL", url)
-    config = Config("alembic.ini")
+    config = Config()
+    config.set_main_option("script_location", "migrations")
     command.upgrade(config, "head")
     engine = build_engine(url)
     assert inspect(engine).has_table("webhook_delivery_pauses")
