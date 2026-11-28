@@ -10,6 +10,7 @@ from app.modules.candidates.application.ports import (
     UnitOfWork,
 )
 from app.modules.candidates.domain.candidate_case import CandidateCase
+from app.modules.candidates.domain.start_date import validate_start_date
 from app.modules.workflow.domain.candidate_state_machine import CandidateStage
 from app.shared.concurrency import resolve_expected_version
 
@@ -88,8 +89,6 @@ class TransitionCandidateHandler:
             raise ApprovedOfferRequiredError(
                 "An approved offer is required before hiring a candidate"
             )
-        from app.modules.onboarding.domain.policy import validate_start_date
-
         validate_start_date(command.target_stage, command.start_date, datetime.now(UTC).date())
         transitioned = candidate.transition(target_stage, command.start_date)
         if not self._repository.transition(

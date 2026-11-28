@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.candidates.domain.start_date import validate_start_date
+
 
 class CreateTenantRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
@@ -75,17 +77,15 @@ class CreateCandidateCaseRequest(BaseModel):
 class TransitionCandidateCaseRequest(BaseModel):
     start_date: date | None = None
 
-    @model_validator(mode="after")
-    def valid_start_date(self):
-        from app.modules.onboarding.domain.policy import validate_start_date
-
-        validate_start_date(self.target_stage, self.start_date, datetime.now(UTC).date())
-        return self
-
     target_stage: str = Field(min_length=3, max_length=40)
     expected_version: int | None = Field(
         default=None, ge=1, description="Legacy version precondition; alternatively supply If-Match"
     )
+
+    @model_validator(mode="after")
+    def valid_start_date(self):
+        validate_start_date(self.target_stage, self.start_date, datetime.now(UTC).date())
+        return self
 
 
 class CandidateCaseResponse(BaseModel):

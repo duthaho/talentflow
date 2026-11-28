@@ -160,3 +160,24 @@ def test_public_routes_never_resolve_an_actor():
 
     assert len(checked) > 30
     assert sum(path.startswith("/v1/public/") for path in checked) == 3
+
+
+def test_candidates_context_does_not_depend_on_onboarding():
+    import ast
+
+    violations = []
+    for path in (DOMAIN_ROOT / "candidates").rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            modules = (
+                [node.module or ""]
+                if isinstance(node, ast.ImportFrom)
+                else ([alias.name for alias in node.names] if isinstance(node, ast.Import) else [])
+            )
+            if any(
+                name == "app.modules.onboarding" or name.startswith("app.modules.onboarding.")
+                for name in modules
+            ):
+                violations.append(f"{path}:{node.lineno}")
+    assert not violations, "Upstream candidates imports downstream onboarding: " + ", ".join(
+        violations
+    )

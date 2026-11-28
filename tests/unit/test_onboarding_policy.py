@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -7,7 +7,6 @@ from app.modules.onboarding.domain.policy import (
     can_retry,
     decide,
     on_outcome,
-    validate_start_date,
 )
 
 
@@ -70,14 +69,3 @@ def test_compensation_policy_and_actions():
         )
         == "cancelled"
     )
-
-
-def test_dates():
-    today = date(2026, 1, 1)
-    for value in (None, today, today + timedelta(days=365)):
-        validate_start_date("hired", value, today)
-    for value in (today - timedelta(days=1), today + timedelta(days=366)):
-        with pytest.raises(ValueError):
-            validate_start_date("hired", value, today)
-    with pytest.raises(ValueError):
-        validate_start_date("screening", today, today)

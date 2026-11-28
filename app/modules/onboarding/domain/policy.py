@@ -1,7 +1,7 @@
 """Stable retry policy. Time is supplied by callers, never read here."""
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 STEPS = ("create_employee", "provision_account", "schedule_tasks", "notify")
 TASKS = {
@@ -49,15 +49,6 @@ class AttemptTimeout(TransientStepError):
 class DirectoryConflict(PermanentStepError):
     def __init__(self):
         super().__init__("directory_conflict")
-
-
-def validate_start_date(target: str, value: date | None, today: date) -> None:
-    if value is not None and (
-        target != "hired" or not today <= value <= today + timedelta(days=365)
-    ):
-        raise ValueError(
-            "start_date requires hired and must be within today through today +365 UTC"
-        )
 
 
 def can_retry(status, attempt, erased_at):
