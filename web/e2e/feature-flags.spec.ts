@@ -3,6 +3,7 @@ import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { expect, test } from "./fixtures";
+import { PROBLEM_TYPE_BASE } from "../src/lib/api/problem";
 import type { Page } from "@playwright/test";
 
 // The real flagd container reads this bind-mounted file (docker-compose.yml) and hot-reloads it.
@@ -116,4 +117,33 @@ test("a flagd outage falls back to gate off and delivery paused, and the web rec
   await expectFeature(admin, { enabled: true, delivery_paused: false }, 30_000);
   await admin.reload();
   await expect(admin.getByRole("button", { name: "New endpoint", exact: true })).toBeVisible();
+});
+
+test("a transient refusal recovers through the real server refresh when the flag is already enabled again", async ({ actor }) => {
+  const admin = await actor("admin");
+  await expectFeature(admin, { enabled: true, delivery_paused: false });
+  await admin.goto("/settings/webhooks");
+  await admin.getByRole("button", { name: "New endpoint", exact: true }).click();
+  const form = admin.getByRole("dialog", { name: "New webhook endpoint" });
+  await form.getByLabel("Receiver URL").fill("http://webhook-demo:8080/events?run=transient-refusal");
+  await form.getByLabel(/candidate_case\.created\.v1/).check();
+
+  // Inject only the brief mutation refusal. /v1/me and the RSC refresh use the real
+  // enabled API, testing the server-to-client prop handoff that a component rerender cannot.
+  await admin.route("**/api/tf/v1/webhook-endpoints", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await route.fulfill({
+      status: 403,
+      contentType: "application/problem+json",
+      body: JSON.stringify({ type: `${PROBLEM_TYPE_BASE}feature-disabled`, title: "Feature Disabled", status: 403, feature: "webhooks" }),
+    });
+  });
+  const refreshed = admin.waitForResponse((response) => new URL(response.url()).pathname === "/settings/webhooks" && response.request().headers()["rsc"] === "1");
+  await form.getByRole("button", { name: "Create endpoint", exact: true }).click();
+  expect((await refreshed).status()).toBe(200);
+  await expect(form).toBeHidden();
+  await expectFeature(admin, { enabled: true, delivery_paused: false });
+  await expect(admin.getByRole("button", { name: "New endpoint", exact: true })).toBeVisible();
+  await expect(admin.getByText(NOTICE)).toHaveCount(0);
+  await expect(admin.getByRole("link", { name: "Webhooks" })).toBeVisible();
 });
