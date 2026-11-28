@@ -12,6 +12,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "tenant_admin": frozenset(
         {
             "webhook:manage",
+            "onboarding:manage",
             "requisition:create",
             "candidate:create",
             "candidate:transition",

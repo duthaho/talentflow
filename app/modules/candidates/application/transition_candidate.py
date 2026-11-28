@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 
 from app.modules.candidates.application.ports import (
     ApprovedOfferRepository,
@@ -37,6 +38,7 @@ class TransitionCandidateCommand:
     expected_version: int | None
     actor_id: str
     correlation_id: str
+    start_date: date | None = None
     if_match: tuple[str, ...] | None = None
 
 
@@ -86,7 +88,10 @@ class TransitionCandidateHandler:
             raise ApprovedOfferRequiredError(
                 "An approved offer is required before hiring a candidate"
             )
-        transitioned = candidate.transition(target_stage)
+        from app.modules.onboarding.domain.policy import validate_start_date
+
+        validate_start_date(command.target_stage, command.start_date, datetime.now(UTC).date())
+        transitioned = candidate.transition(target_stage, command.start_date)
         if not self._repository.transition(
             candidate=transitioned, expected_version=expected_version
         ):

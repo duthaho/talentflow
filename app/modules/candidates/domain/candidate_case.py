@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from uuid import uuid4
 
 from app.modules.workflow.domain.candidate_state_machine import CandidateStage, transition_to
@@ -13,6 +14,7 @@ class CandidateCase:
     requisition_id: str
     stage: CandidateStage
     version: int
+    hire_start_date: date | None = None
 
     @classmethod
     def open(cls, *, tenant_id: str, requisition_id: str) -> CandidateCase:
@@ -24,11 +26,12 @@ class CandidateCase:
             version=1,
         )
 
-    def transition(self, target: CandidateStage) -> CandidateCase:
+    def transition(self, target: CandidateStage, start_date: date | None = None) -> CandidateCase:
         return CandidateCase(
             id=self.id,
             tenant_id=self.tenant_id,
             requisition_id=self.requisition_id,
             stage=transition_to(self.stage, target),
             version=self.version + 1,
+            hire_start_date=start_date if target is CandidateStage.HIRED else self.hire_start_date,
         )

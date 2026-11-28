@@ -32,6 +32,7 @@ class SqlAlchemyCandidateRepository:
         consent = self._session.get(CandidateConsent, record.id)
         created_at = record.created_at
         return CandidateDetail(
+            hire_start_date=record.hire_start_date,
             source=record.source,
             consent={
                 "version": consent.version,
@@ -118,6 +119,7 @@ class SqlAlchemyCandidateRepository:
             .values(
                 stage=candidate.stage.value,
                 version=candidate.version,
+                hire_start_date=candidate.hire_start_date,
                 terminal_at=datetime.now(UTC)
                 if candidate.stage.value in {"rejected", "withdrawn"}
                 else None,
@@ -207,6 +209,7 @@ class SqlAlchemyCandidateRepository:
             requisition_id=record.requisition_id,
             stage=CandidateStage(record.stage),
             version=record.version,
+            hire_start_date=record.hire_start_date,
         )
 
 

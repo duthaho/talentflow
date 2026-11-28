@@ -14,7 +14,8 @@ class Flag:
 
 WEBHOOKS_OUTBOUND = Flag("release.webhooks.outbound")
 WEBHOOKS_DELIVERY = Flag("ops.webhooks.delivery")
-REGISTRY = (WEBHOOKS_OUTBOUND, WEBHOOKS_DELIVERY)
+ONBOARDING_SAGA = Flag("release.onboarding.saga")
+REGISTRY = (WEBHOOKS_OUTBOUND, WEBHOOKS_DELIVERY, ONBOARDING_SAGA)
 
 
 @dataclass(frozen=True)

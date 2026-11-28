@@ -14,6 +14,7 @@ from app.api.health_router import router as health_router
 from app.api.identity_router import router as identity_router
 from app.api.interview_router import router as interview_router
 from app.api.offer_router import router as offer_router
+from app.api.onboarding_router import router as onboarding_router
 from app.api.organization_router import router as organization_router
 from app.api.public_careers_router import router as public_careers_router
 from app.api.reporting_router import router as reporting_router
@@ -111,6 +112,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
         identity_router,
         interview_router,
         offer_router,
+        onboarding_router,
         organization_router,
         reporting_router,
         retention_router,
