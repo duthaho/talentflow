@@ -1,0 +1,67 @@
+overlay: 1.0.0
+info:
+  title: Webhook release gate (ADR-010 §3)
+  version: 1.0.0
+extends: ../webhooks/openapi.yaml
+# DUTH-65 applies these actions to docs/webhooks/openapi.yaml in the same PR that adds the gate,
+# then runs scripts/sync_webhook_contract.py. Applying them earlier breaks
+# tests/unit/test_webhook_security.py, which compares that file with the generated routes.
+actions:
+  - target: $.info
+    description: Document the gate in the contract summary.
+    update:
+      description: |
+        Contract for tenant-admin webhook management and for the outbound webhook request.
+        The reasoning behind every rule is in ADR-008 (`docs/adr/008-outbound-webhooks.md`).
+        DUTH-62 implements it; the generated `web/openapi.json` must match these paths and schemas.
+
+        - Every path requires the `webhook:manage` permission (role `tenant_admin`).
+        - Errors are RFC 9457 Problem Details (`docs/api-errors.md`).
+        - `Idempotency-Key` follows ADR-005; `If-Match` / `ETag` follow ADR-007.
+        - The plaintext signing secret appears only in the 201 responses of create and rotate.
+        - The release gate `release.webhooks.outbound` (ADR-010 §3): when it is off for the tenant,
+          create, redeliver and every PATCH other than exactly `{"enabled": false}` return
+          403 `feature-disabled`. Reads, disable, secret rotation and delete stay available.
+          Precedence: 401, then 403 `forbidden`, then 403 `feature-disabled`, then everything else.
+          Exception: PATCH validates its body first, because the gate reads the parsed model, so an
+          invalid PATCH body gets 422 `validation-error` before the gate.
+
+  - target: $.components.responses
+    description: Add the response used by gated operations.
+    update:
+      ForbiddenOrFeatureDisabled:
+        description: >-
+          `forbidden`: the caller lacks `webhook:manage`; or `feature-disabled`: webhooks are not
+          enabled for the tenant (ADR-010 §3). `feature-disabled` carries `feature: webhooks`.
+        headers:
+          Cache-Control: {$ref: '#/components/headers/NoStore'}
+        content:
+          application/problem+json:
+            schema: {$ref: '#/components/schemas/Problem'}
+
+  - target: $.components.schemas.Problem.properties
+    description: The `feature-disabled` extension member.
+    update:
+      feature:
+        type: string
+        enum: [webhooks]
+        description: Present only on `feature-disabled`. A public feature name, never a flag key.
+
+  - target: $.paths['/v1/webhook-endpoints'].post.responses['403']
+    description: Create is gated.
+    update: {$ref: '#/components/responses/ForbiddenOrFeatureDisabled'}
+
+  - target: $.paths['/v1/webhook-endpoints/{endpoint_id}'].patch.responses['403']
+    description: 'PATCH is gated unless the raw body is exactly {"enabled": false}.'
+    update: {$ref: '#/components/responses/ForbiddenOrFeatureDisabled'}
+
+  - target: $.paths['/v1/webhook-endpoints/{endpoint_id}'].patch
+    description: State the PATCH exception.
+    update:
+      x-talentflow-feature-gate:
+        feature: webhooks
+        allowed-when-disabled-body: {enabled: false}
+
+  - target: $.paths['/v1/webhook-deliveries/{delivery_id}/redeliveries'].post.responses['403']
+    description: Redelivery is gated.
+    update: {$ref: '#/components/responses/ForbiddenOrFeatureDisabled'}

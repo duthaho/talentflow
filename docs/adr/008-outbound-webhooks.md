@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-11-27
 - **Issue:** DUTH-140 (parent DUTH-43); implemented by DUTH-62 (API, consumer, worker) and DUTH-141 (admin screens)
+- **Amended by:** [ADR-010](010-feature-flags.md): release gate on the admin API, paused (not cancelled) deliveries, and the auto-disable streak excluding paused time
 
 ## Context
 
