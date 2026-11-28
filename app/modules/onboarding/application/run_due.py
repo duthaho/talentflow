@@ -31,6 +31,8 @@ class DueStepRunner:
         claim = self.repository.claim(self.clock())
         if claim is None:
             return False
+        if claim is True:
+            return True
         error, ref = None, None
         try:
             if claim.step == "create_employee":

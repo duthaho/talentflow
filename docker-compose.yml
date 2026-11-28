@@ -79,6 +79,7 @@ services:
       - "127.0.0.1:${KEYCLOAK_PORT:-8081}:8080"
     volumes:
       - ./keycloak/realm-talentflow.json:/opt/keycloak/data/import/realm-talentflow.json:ro
+      - ./keycloak/realm-employees.json:/opt/keycloak/data/import/realm-employees.json:ro
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; grep -q '200 OK' <&3"]
       interval: 5s
@@ -347,6 +348,49 @@ services:
       timeout: 5s
       retries: 6
     restart: unless-stopped
+
+  onboarding-worker:
+    build: .
+    command: ["python", "-m", "app.workers.onboarding"]
+    environment:
+      <<: *runtime_environment
+      OTEL_SERVICE_NAME: talentflow-onboarding-worker
+      KEYCLOAK_ADMIN_URL: http://keycloak:8080
+      KEYCLOAK_ONBOARDING_REALM: employees
+      KEYCLOAK_ONBOARDING_CLIENT_ID: talentflow-onboarding
+      KEYCLOAK_ONBOARDING_CLIENT_SECRET: ${KEYCLOAK_ONBOARDING_CLIENT_SECRET:-dev-onboarding-client-secret}
+      HRIS_STUB_URL: http://hris-stub:8090
+      HRIS_STUB_TOKEN: ${HRIS_STUB_TOKEN:-dev-hris-stub-token}
+      ONBOARDING_FAULT_INJECTION: ${ONBOARDING_FAULT_INJECTION:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      hris-stub:
+        condition: service_healthy
+      flagd:
+        condition: service_started
+    restart: unless-stopped
+    stop_grace_period: 35s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8005/health/ready', timeout=3)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  hris-stub:
+    build: .
+    command: ["python", "-m", "app.workers.hris_stub"]
+    environment:
+      HRIS_STUB_TOKEN: ${HRIS_STUB_TOKEN:-dev-hris-stub-token}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=3)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   retention-worker:
     build: .

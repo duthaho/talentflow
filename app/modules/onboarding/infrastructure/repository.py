@@ -265,7 +265,7 @@ class SqlAlchemySagaRepository:
                     self._failure(session, saga, step, steps, now, error, undo)
                 else:
                     self._success(session, saga, step, steps, now, None, undo)
-                return None
+                return True
             person = None
             if not undo:
                 if saga.erased_at is not None:
