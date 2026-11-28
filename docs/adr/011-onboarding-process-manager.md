@@ -19,8 +19,12 @@ with a future due time is a recoverable lease. Claim uses a short transaction,
 Outcome recording is fenced by a unique owner token. Local task/notification
 work commits atomically with its outcome. Hired/erased races use a transaction
 advisory lock on the tenant/case pair. Cancellation waits for a live attempt;
-expired ambiguous effects are cleaned by stable ownership identity without PII
-reads. Compensation runs in reverse order. Notify is after the pivot.
+every attempted external step is treated as potentially effective until its
+ownership-checked cleanup succeeds when abandoned. This includes retry-wait
+steps after a timeout, regardless of the latest failure class. The persisted
+attempt count is sufficient; no extra uncertainty flag or schema is needed.
+Cleanup uses stable ownership identity without PII reads and runs in reverse
+order. Notify is after the pivot.
 
 This choice makes us responsible for policy, lease recovery and tests. PostgreSQL
 concurrency, killed-process recovery against real HRIS/Keycloak, fake-clock

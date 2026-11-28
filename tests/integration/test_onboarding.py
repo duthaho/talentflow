@@ -143,8 +143,8 @@ def test_happy_path_defaults_and_duplicate(process):
 @pytest.mark.parametrize(
     "step,undo",
     [
-        ("create_employee", []),
-        ("provision_account", ["undo_create_employee"]),
+        ("create_employee", ["undo_create_employee"]),
+        ("provision_account", ["undo_provision_account", "undo_create_employee"]),
         ("schedule_tasks", ["undo_provision_account", "undo_create_employee"]),
     ],
 )
@@ -324,10 +324,12 @@ def test_fake_timeout_boundary_and_deadline(process):
         deadline = step.deadline_at
     assert not runner.run_one()
     now[0] = deadline
-    runner.run_one()
-    with sessions() as s:
-        assert s.scalar(select(Saga.status)) == "compensated"
-    assert not effects.calls
+    assert runner.run_one()  # deadline transition counts as processed work
+    from app.modules.onboarding.application.run_due import bounded
+
+    runner.execute = bounded
+    assert advance(process) == "compensated"
+    assert effects.calls == ["undo_create_employee"]
 
 
 def test_notify_no_recipients_and_anonymized_read(process):

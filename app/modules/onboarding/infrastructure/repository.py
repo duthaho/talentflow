@@ -1,6 +1,7 @@
 """PostgreSQL is the timer, lease and state store. Never hold a transaction over HTTP."""
 
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -15,7 +16,6 @@ from app.modules.onboarding.domain.policy import (
     STEP_POLICIES,
     STEPS,
     TASKS,
-    AttemptTimeout,
     PermanentStepError,
     decide,
     on_outcome,
@@ -97,7 +97,7 @@ def finish(session, saga, status, now):
 
 
 def compensation(session, saga, steps, now):
-    """Leave an in-flight effect fenced until its result or lease expiry."""
+    """Clean every potentially effective external step before claiming a clean outcome."""
     for step in steps:
         if step.status == "in_flight" and step.lease_owner:
             return
@@ -105,6 +105,16 @@ def compensation(session, saga, steps, now):
     for step in steps:
         if step.status in {"pending", "retry_wait"}:
             step.status = "not_run"
+        # Any earlier attempt may have acted despite a lost response. The last
+        # error cannot disprove that effect. Both deletes are idempotent, and
+        # directory deletion additionally checks this saga's ownership marker.
+        if (
+            step.step in STEPS[:2]
+            and step.attempts > 0
+            and step.status in {"failed", "not_run"}
+            and step.compensation_status not in {"done", "failed"}
+        ):
+            step.compensation_status = "pending"
         step.next_attempt_at = None
     for step in reversed(steps[:3]):
         if (
@@ -254,12 +264,12 @@ class SqlAlchemySagaRepository:
                 return True
             if not undo and saga.compensation_reason and step.status != "in_flight":
                 compensation(session, saga, steps, now)
-                return None
+                return True
             if not undo and step.deadline_at and aware(step.deadline_at) <= now:
                 self._failure(
                     session, saga, step, steps, now, PermanentStepError("deadline_exceeded"), False
                 )
-                return None
+                return True
             if step.deadline_at is None:
                 step.deadline_at = now + timedelta(seconds=STEP_POLICIES[step.step].deadline)
             if undo:
@@ -289,7 +299,7 @@ class SqlAlchemySagaRepository:
                     step.status = "not_run"
                     step.lease_owner = None
                     compensation(session, saga, steps, now)
-                    return None
+                    return True
                 candidate = SqlCandidatesReader(session).snapshot(
                     saga.tenant_id, saga.candidate_case_id
                 )
@@ -297,7 +307,7 @@ class SqlAlchemySagaRepository:
                     step.status = "not_run"
                     step.lease_owner = None
                     erase(session, saga, now)
-                    return None
+                    return True
                 person = {
                     "tenant_id": saga.tenant_id,
                     "candidate_case_id": saga.candidate_case_id,
@@ -358,8 +368,6 @@ class SqlAlchemySagaRepository:
         step.lease_owner = None
         code = error.code if isinstance(error, PermanentStepError) else type(error).__name__
         # Allow only symbolic error classes, even for arbitrary injected adapters.
-        import re
-
         step.last_error = (
             code if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", code) else "StepError"
         )
@@ -381,18 +389,6 @@ class SqlAlchemySagaRepository:
             permanent=isinstance(error, PermanentStepError) and not undo,
         )
         step.next_attempt_at = decision.due_at
-        if not undo and saga.compensation_reason and step.step in STEPS[:2]:
-            step.status = "failed"
-            step.compensation_status = "pending"
-            compensation(session, saga, steps, now)
-            return
-        if (
-            not undo
-            and decision.action == "failed"
-            and isinstance(error, AttemptTimeout)
-            and step.step in STEPS[:2]
-        ):
-            step.compensation_status = "pending"
         if decision.action == "retry":
             if undo:
                 step.compensation_status = "retry_wait"

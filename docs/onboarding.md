@@ -72,9 +72,16 @@ missing/different attribute. HTTP delete and missing-resource 404 are idempotent
 Record external cleanup in the incident/DSAR record; do not pretend manual cleanup
 has restarted the stopped saga. Retry through the API is limited to `compensated`.
 
-Candidate erasure before the pivot requests compensation, including any ambiguous
-in-flight effect after its lease expires. Every subsequent candidate read is
-suppressed. After the pivot, notify is skipped; existing HRIS/directory records are
+Candidate erasure before the pivot requests compensation. Every attempted HRIS
+or directory step is cleaned up when it is abandoned, including a step in
+`retry_wait` whose earlier attempt timed out after the remote effect. Exhausted
+retries, a later 5xx, deadline expiry, admin cancellation and erasure all use this
+same conservative rule: compensate the attempted step itself, then prior steps
+in reverse order. Missing resources are successful no-ops, and directory deletion
+still requires the saga ownership attribute. A live in-flight effect is fenced
+until its result or lease expiry. Failed cleanup ends `compensation_failed`;
+the saga never claims `compensated` or `cancelled` before cleanup succeeds.
+Every subsequent candidate read is suppressed. After the pivot, notify is skipped; existing HRIS/directory records are
 retained under decision R4. **Every erasure request for a hired person must be
 forwarded to the HRIS and directory owner using the external reference ids**.
 This is also the DUTH-69 DSAR handoff rule; deleting/anonymizing the recruiting case
