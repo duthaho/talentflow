@@ -98,7 +98,7 @@ Gate on and kill switch off means "management works, delivery is paused". Gate o
       "variants": {"on": true, "off": false},
       "defaultVariant": "off",
       "targeting": {
-        "if": [{"in": [{"var": "tenant_id"}, ["00000000-0000-4000-8000-000000000001"]]}, "on", "off"]
+        "if": [{"in": [{"var": "tenant_id"}, ["00000000-0000-4000-8000-000000000001"]]}, "on", null]
       },
       "metadata": {
         "kind": "release", "owner": "backend", "issue": "DUTH-65",
@@ -110,7 +110,7 @@ Gate on and kill switch off means "management works, delivery is paused". Gate o
       "variants": {"on": true, "off": false},
       "defaultVariant": "on",
       "targeting": {
-        "if": [{"in": [{"var": "tenant_id"}, []]}, "off", "on"]
+        "if": [{"in": [{"var": "tenant_id"}, []]}, "off", null]
       },
       "metadata": {
         "kind": "ops", "owner": "backend", "issue": "DUTH-65", "contextScope": "tenant", "createdAt": "2026-11-28"
@@ -120,7 +120,13 @@ Gate on and kill switch off means "management works, delivery is paused". Gate o
 }
 ```
 
-To pause one tenant, add its id to the `ops.webhooks.delivery` list. To pause every tenant, set `defaultVariant` to `off`. Both are one-line, reviewed changes that flagd reloads without a restart. For a percentage rollout, `release.webhooks.outbound` may use flagd's `fractional` operator. It buckets on `targetingKey`, which is the tenant id, so a tenant stays in the same bucket.
+Targeting only names the **exceptions**. Its else branch is always `null`, and flagd falls back to `defaultVariant` when targeting returns `null`. So `defaultVariant` is the value for every unlisted tenant, and changing it really changes every unlisted tenant. A hard-coded else branch such as `"on"` would silently ignore a `defaultVariant` edit; lint rule 8 (§7) forbids it.
+
+- To pause one tenant, add its id to the `ops.webhooks.delivery` list.
+- To pause **every** tenant, set its `defaultVariant` to `off`. Listed and unlisted tenants are then all `off`.
+- Emergency alternative: `"state": "DISABLED"` makes every evaluation return the code fallback `false`, which also pauses everything.
+
+Each is a one-line, reviewed change that flagd reloads without a restart. Targeting lists hold opaque tenant UUIDs only, never tenant names or other customer identifiers, because the file is committed to a public repository. For a percentage rollout, `release.webhooks.outbound` may use flagd's `fractional` operator. It buckets on `targetingKey`, which is the tenant id, so a tenant stays in the same bucket.
 
 **Code side.** One registry module defines each flag once, with its key, fallback and scope. The application layer depends on a `FeatureFlags` port (`is_enabled(flag, context) -> bool`), and the OpenFeature adapter implements it in infrastructure. No other module imports `openfeature`, and an architecture test enforces this. No code passes a flag key as a string literal.
 
@@ -151,7 +157,7 @@ Rules:
 
 ### 3. API behavior when the gate is off
 
-**Precedence:** 401 `unauthorized` → 403 `forbidden` (missing `webhook:manage`) → **403 `feature-disabled`** → everything else (400, 404, 409, 412, 422, 428). So a recruiter still gets `forbidden`, and a request that is invalid and also blocked gets `feature-disabled`. The gate check runs before idempotency handling. Only 2xx responses are stored (ADR 005), so a retry after the gate opens runs normally.
+**Precedence:** 401 `unauthorized` → 403 `forbidden` (missing `webhook:manage`) → **403 `feature-disabled`** → everything else (400, 404, 409, 412, 428). So a recruiter still gets `forbidden`. The one exception is PATCH: its gate needs the parsed body, so a PATCH body that fails model validation gets 422 `validation-error` first, whatever the gate state. The gate check runs before idempotency handling. Only 2xx responses are stored (ADR 005), so a retry after the gate opens runs normally.
 
 | Operation | Gate off |
 | --- | --- |
@@ -159,7 +165,7 @@ Rules:
 | `GET /v1/webhook-endpoints`, `GET /v1/webhook-endpoints/{id}` | allowed |
 | `GET /v1/webhook-endpoints/{id}/deliveries`, `GET /v1/webhook-deliveries/{id}` | allowed |
 | `PATCH /v1/webhook-endpoints/{id}` with a JSON body that is **exactly** `{"enabled": false}` | allowed. ADR 008 behavior is unchanged: `disabled_reason = manual` and pending deliveries are **cancelled**, which is the admin's explicit choice. |
-| `PATCH` with any other body (re-enable, URL, description, event types, or `enabled:false` combined with another field) | **403 `feature-disabled`**. The check reads the raw JSON body, before field validation. |
+| `PATCH` with any other body (re-enable, URL, description, event types, or `enabled:false` combined with another field) | **403 `feature-disabled`**. The check compares the **parsed** request model, `model_dump(exclude_unset=True) == {"enabled": False}`, so the gate and the handler can never read the body differently (duplicate keys, `0` for `false`). |
 | `DELETE /v1/webhook-endpoints/{id}` | allowed |
 | `POST /v1/webhook-endpoints/{id}/secret-rotations` | allowed. It is a containment action for a leaked secret, and nothing is signed while delivery is paused. |
 | `POST /v1/webhook-endpoints` (create) | **403 `feature-disabled`** |
@@ -225,7 +231,8 @@ The kill switch and the gate are evaluated **per tenant, without a role**, using
    - The tenant is in the snapshot but not allowed: `INSERT … ON CONFLICT (tenant_id) DO UPDATE SET reason = EXCLUDED.reason`. `paused_since` keeps its first value.
    - The tenant is allowed again: in **one transaction**, `DELETE FROM webhook_delivery_pauses WHERE tenant_id = :t RETURNING paused_since`. If a row came back, the transaction also runs `UPDATE webhook_endpoints SET failure_streak_started_at = failure_streak_started_at + (now() - :paused_since) WHERE tenant_id = :t AND failure_streak_started_at IS NOT NULL`. `DELETE … RETURNING` succeeds for only one replica, so the shift is applied exactly once.
    - `reason = flag_error` means the flags fell back because flagd was unreachable. `flag_off` means a flag really evaluated to `off`.
-   - The table holds no PII and needs no retention rule: a row exists only while its tenant is paused.
+   - A tenant that has a pause row but is no longer in the snapshot (for example, an admin cancelled all its pending deliveries during the pause) is treated as resumed: the same `DELETE … RETURNING` and shift run. So a row exists only while its tenant has pending deliveries and is paused.
+   - The table holds no PII and needs no retention rule.
 6. **Retention.** Paused rows are `pending`, not terminal, so the 30-day purge (ADR 008 §5) never touches them, nor the `webhook_events` they reference. Events are kept for as long as the pause lasts. To discard them, an admin disables or deletes the endpoint, which cancels its pending deliveries (allowed even with the gate off, §3).
 7. **Worker loop.** `pending_count()` keeps counting paused rows, so the loop polls at `WORKER_POLL_SECONDS` while a backlog exists. That poll interval bounds how quickly a resume is noticed.
 8. **No flags in the consumer**, as stated in §3.
@@ -241,7 +248,7 @@ The outcome confirms the behavior the issue asked for: when a flag is off or fla
 | `release.webhooks.outbound` | `false` (fail-closed) | Create, re-enable and redeliver return 403. Reads, disable, rotate and delete keep working. |
 | `ops.webhooks.delivery` | `false` (fail-closed) | Every tenant's deliveries pause (`reason = flag_error`) and resume when flagd is back. |
 
-Both fail closed because the failure is reversible: nothing is lost or retried away, and outbound data never leaves without an explicit `on`. A future flag picks its fallback by asking which state is safe to stay in for an unknown time. Its PR says why. For `release` flags, the fallback must equal the value of the file's `defaultVariant`, and the lint checks this.
+Both fail closed because the failure is reversible: nothing is lost or retried away, and outbound data never leaves without an explicit `on`. A future flag picks its fallback by asking which state is safe to stay in for an unknown time. Its PR says why. Every flag's code fallback is its `off` variant, `false`, and lint rule 7 checks this. The file's `defaultVariant` may move to `on` during rollout (§7); the fallback does not. So a fully rolled-out release flag still turns its feature off during a flagd outage, until the flag is retired.
 
 **Timeout.** Each evaluation has a **200 ms** deadline (`FLAGD_DEADLINE_MS`). The provider does not retry. The SDK reconnects in the background. A request makes at most 2 evaluations, so flags add at most 400 ms in the worst case. Startup does **not** wait for flagd: `/health/ready` of the API and workers does not depend on it, and an unready provider simply returns the fallback.
 
@@ -260,7 +267,7 @@ Both fail closed because the failure is reversible: nothing is lost or retried a
 | --- | --- | --- |
 | **Create** | One PR adds the flag to `flags/talentflow.flagd.json` with metadata, its registry entry (key, fallback, scope), the checks in code, and tests for both values and the fallback. The file starts at the safe value. | Code review. Hoàng-Security reviews flags that gate data leaving the system or authorization. |
 | **Roll out** | Each step is a reviewed one-line PR: tenant list → optional `fractional` → `defaultVariant: on` with no targeting. flagd hot-reloads every step. | Code review |
-| **Remove (release only)** | (1) The flag is fully on everywhere for **at least 7 days**. (2) PR A deletes the checks and the registry entry. Public fields stay (for example `features.webhooks.enabled` becomes a constant `true`), so the API contract does not change. (3) **After** PR A is merged, PR B deletes the entry from the file. | The order matters: if the file entry goes first, evaluations hit `FLAG_NOT_FOUND`, return the fail-closed fallback, and switch the feature **off**. |
+| **Remove (release only)** | (1) The flag is fully on everywhere for **at least 7 days**: `defaultVariant: on`, no `targeting`. (2) **PR A** deletes every check and marks the registry entry `retired=True`. A retired entry cannot be evaluated: `is_enabled` raises, and nothing in code references it. Public fields stay (for example `features.webhooks.enabled` becomes a constant `true`), so the API contract does not change. (3) **After** PR A is merged, **PR B** deletes the file entry and the retired registry entry together. | The order matters: if the file entry goes first, evaluations hit `FLAG_NOT_FOUND`, return the fail-closed fallback, and switch the feature **off**. The registry and file key sets stay equal at every step (rule 5). |
 | **Kill switch (`ops`)** | Permanent. It has no `expiresAt`. Its owner reviews it whenever the module's ADR changes. | — |
 
 **Ownership.** `metadata.owner` names the team role (`backend`, `frontend`, `platform`) that answers for the flag. `metadata.issue` names the issue that introduced it.
@@ -273,9 +280,11 @@ Both fail closed because the failure is reversible: nothing is lost or retried a
 2. every key matches the naming regex;
 3. the required metadata is present (`kind`, `owner`, `issue`, `contextScope`, `createdAt`, plus `expiresAt` for `release` flags);
 4. no `release` flag has expired, and none expires more than 90 days after creation;
-5. the keys in the file and the keys in the code registry are the same set. A key in only one place fails, which catches half-finished removals;
+5. the keys in the file and the keys in the code registry (retired entries included) are the same set. A key in only one place fails, which catches half-finished removals;
 6. `contextScope: tenant` flags contain no `{"var": "role"}` in their targeting;
-7. for `release` flags, the code fallback equals the `defaultVariant` value.
+7. every flag has exactly the variants `on: true` and `off: false`, and its code fallback is `false`. `defaultVariant` may be `on` or `off`;
+8. `targeting`, when present, is one `if` whose else branch is `null`, so `defaultVariant` decides for every unlisted tenant;
+9. a `retired` registry entry is fully on in the file (`defaultVariant: on`, no `targeting`), and no code outside the registry references it (an AST check).
 
 ### 8. Test matrix DUTH-65 must cover (AC2)
 
@@ -286,15 +295,15 @@ Integration tests use `FEATURE_FLAGS_PROVIDER=file`, the real flagd JsonLogic ev
 | T1 | Tenant isolation | Gate on for tenant A, off for tenant B | A: create 201, `/v1/me` `enabled: true`, deliveries sent. B: create 403 `feature-disabled`, `enabled: false`, deliveries stay `pending` with an unchanged `attempt_count`. |
 | T2 | Role isolation | Same tenant, `tenant_admin` vs `recruiter`; plus a test-only `request`-scope flag that targets `role` | A recruiter gets 403 `forbidden`, not `feature-disabled`. The `release.webhooks.outbound` result is the same for every role. The request-scope test flag differs by role. |
 | T3 | No client targeting | Send `?tenant_id=`, body fields, `X-Feature-*` headers, and an `X-Tenant-Id` the principal is not a member of | The context key set is exactly `{targetingKey, tenant_id, role}` in the API and `{targetingKey, tenant_id}` in the worker. The foreign `X-Tenant-Id` gets the existing 403. The evaluation result does not change. |
-| T4 | Gate-off route matrix | Every row of the §3 table, including `PATCH {"enabled": false}`, `{"enabled": false, "description": "x"}` and `{"enabled": true}` | Statuses as in §3. Allowed disable/delete cancel pending deliveries (ADR 008). A 403 is not stored under its `Idempotency-Key`. |
-| T5 | Kill switch | Gate on, `ops.webhooks.delivery` off for tenant A | Every API operation works. Redeliver creates a paused `pending` row. A's rows are not claimed. Tenant B keeps delivering. A pause row exists with `reason = flag_off`. |
-| T6 | Hot reload | In the running stack, edit the mounted flag file (gate off → on, delivery on → off → on) | The API enforces the new value within 5 s. The worker pauses or resumes within 5 s + `WORKER_POLL_SECONDS` + 10 s in flight. After a reload, `/settings/webhooks` shows the matching state. |
+| T4 | Gate-off route matrix | Every row of the §3 table, including `PATCH {"enabled": false}`, `{"enabled": false, "description": "x"}`, `{"enabled": true}`, the duplicate-key raw body `{"enabled": true, "enabled": false}` and `{"enabled": 0}` | Statuses as in §3. The duplicate-key body and `{"enabled": 0}` are decided on the parsed model, so the gate allows exactly the bodies the handler applies as a disable, and blocks the rest. Allowed disable/delete cancel pending deliveries (ADR 008). A 403 is not stored under its `Idempotency-Key`. |
+| T5 | Kill switch | Gate on, `ops.webhooks.delivery` off for tenant A | Every API operation works. Redeliver creates a paused `pending` row. A's rows are not claimed. Tenant B keeps delivering. A pause row exists with `reason = flag_off`. **Global stop:** with an empty tenant list and `defaultVariant: off`, every tenant pauses, including tenants that were never listed. The same holds for `"state": "DISABLED"`. Setting `defaultVariant` back to `on` resumes them all. |
+| T6 | Hot reload | In the running stack, edit the mounted flag file (gate off → on; delivery on → off → on for one listed tenant; then the global stop: `ops.webhooks.delivery` `defaultVariant` on → off → on with an unlisted tenant B) | The API enforces the new value within 5 s. The worker pauses or resumes within 5 s + `WORKER_POLL_SECONDS` + 10 s in flight. During the global stop, unlisted tenant B pauses and its `/v1/me` shows `delivery_paused: true`. After a reload, `/settings/webhooks` shows the matching state. |
 | T7 | flagd outage | Stop flagd, or point the provider at a closed port | Each evaluation returns the fallback in under 300 ms. `/v1/me` returns 200 with `enabled: false, delivery_paused: true`. Reads, disable, rotate and delete keep working, and create returns 403. Worker rows stay unchanged, with a pause row `reason = flag_error`. `/health/ready` stays green. One rate-limited WARN appears. |
 | T8 | Recovery | Start flagd again after T7 | Deliveries are sent in `next_attempt_at` order. Each delivery's `attempt_count` grows by exactly 1 per real attempt. `failure_streak_started_at` is shifted by the paused duration. With two workers racing on resume, the shift is applied exactly once. |
-| T9 | Streak | An endpoint with 19 failures over 70 h, then a 3-day pause, then one failure | The endpoint is **not** auto-disabled (the streak age excludes the pause). Without the pause, the same history does disable it, as in ADR 008. |
+| T9 | Streak | An endpoint with 19 failures over 70 h, then a 3-day pause, then one failure | The endpoint is **not** auto-disabled (the streak age excludes the pause). Control: the same history with the pause counted (the §5.5 shift skipped) **is** disabled, because the streak is then older than 72 h. A stale pause row for a tenant with no pending deliveries is deleted on the next snapshot. |
 | T10 | Agreement | A table-driven test over {gate on/off} × {delivery on/off} × {flagd up/down} | For every cell: API create allowed ⇔ `features.webhooks.enabled`; worker delivers ⇔ `NOT features.webhooks.delivery_paused`. The web shows the state that `/v1/me` returned (component tests: nav visibility, read-only disabled page, paused banner, `router.refresh()` on 403). |
 | T11 | Telemetry hygiene | Capture spans, metrics and logs during T1, T7 and T8 | Only the allowed attributes from §6 appear. No email, user id, token, URL or evaluation context. |
-| T12 | Lifecycle lint | The seven lint rules in §7, each with a failing fixture | Each one fails with a message that names the flag. |
+| T12 | Lifecycle lint | The nine lint rules in §7, each with a failing fixture (including a hard-coded else branch such as `"on"`, and a retired entry still referenced in code). Plus passing fixtures for every lifecycle stage: a new release flag (`defaultVariant: off`, tenant list); a fully rolled-out flag (`defaultVariant: on`, fallback `false`); after removal PR A (retired registry entry, file fully on); and after PR B (both gone). | Each failing fixture fails with a message that names the flag and the rule. Every lifecycle-stage fixture passes, so following §7 never turns the build red; the only intended red build is the expiry in rule 4. |
 
 ## Consequences
 

@@ -27,7 +27,7 @@ Start with the [project README](../README.md) for what TalentFlow is, the quick 
 | [009](adr/009-public-careers-intake.md) | Anonymous careers intake: bounded uploads, abuse controls, consent and audit | Accepted |
 | [010](adr/010-feature-flags.md) | Feature flags: webhook release gate and delivery kill switch, server-side evaluation context, fail-closed defaults, lifecycle | Accepted |
 
-New ADRs use the next number (010), the same header fields (status, date, issue) and sections (context, decision, consequences, rejected alternatives, revisit when). An ADR that is replaced gets the status `Superseded by ADR NNN` and is otherwise left unchanged.
+New ADRs use the next number (011), the same header fields (status, date, issue) and sections (context, decision, consequences, rejected alternatives, revisit when). An ADR that is replaced gets the status `Superseded by ADR NNN` and is otherwise left unchanged.
 
 ## Runbooks
 
