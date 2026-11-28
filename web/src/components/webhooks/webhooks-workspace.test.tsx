@@ -448,4 +448,25 @@ describe("WebhooksWorkspace feature gate (ADR-010 §4)", () => {
     expect(screen.getByRole("button", { name: "New endpoint" })).toBeInTheDocument();
     expect(actions("crm.example.com")).toContain("Edit");
   });
+
+  it("recovers after a transient gate refusal when the next server render is already enabled", async () => {
+    const backend = fakeWebhooksBackend({ endpoints: [fakeEndpoint("crm"), fakeEndpoint("old", { status: "disabled", disabled_reason: "manual" })] });
+    const view = await renderWorkspace(backend);
+
+    // The page rendered while enabled; a brief flagd outage refuses the next mutation.
+    backend.gate.enabled = false;
+    await userEvent.click(screen.getByRole("button", { name: "Enable old.example.com" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(DISABLED_NOTICE));
+    expect(router.refresh).toHaveBeenCalledOnce();
+
+    // flagd recovers before router.refresh completes. The refreshed /v1/me is true again,
+    // so ADR-010 §4 requires this server render to restore the management controls.
+    backend.gate.enabled = true;
+    view.rerender(<WebhooksWorkspace feature={{ enabled: true, deliveryPaused: false }} api={backend.api} pollIntervalMs={1} pollTimeoutMs={200} />);
+
+    await waitFor(() => expect(screen.queryByText(DISABLED_NOTICE)).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "New endpoint" })).toBeInTheDocument();
+    expect(actions("crm.example.com")).toContain("Edit");
+    expect(within(endpointRow("old.example.com")).getByRole("button", { name: "Enable old.example.com" })).toBeInTheDocument();
+  });
 });
