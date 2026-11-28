@@ -216,3 +216,14 @@ class Attempt(Base):
     status_code: Mapped[int | None] = mapped_column(Integer)
     error_code: Mapped[str | None] = mapped_column(String(32))
     signed_secret_ids: Mapped[str] = mapped_column(String(80))
+
+
+class DeliveryPause(Base):
+    __tablename__ = "webhook_delivery_pauses"
+    __table_args__ = (
+        CheckConstraint("reason IN ('flag_off', 'flag_error')", name="ck_webhook_pause_reason"),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    paused_since: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reason: Mapped[str] = mapped_column(String(16), nullable=False)

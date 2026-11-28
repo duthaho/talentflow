@@ -28,6 +28,7 @@ const ME = {
   tenant_name: "Acme",
   role: "interviewer" as const,
   permissions: ["feedback:submit"],
+  features: { webhooks: { enabled: true, delivery_paused: false } },
 };
 
 describe("getCurrentActor", () => {
@@ -53,6 +54,7 @@ describe("getCurrentActor", () => {
         tenantName: "Acme",
         role: "interviewer",
         permissions: ["feedback:submit"],
+        features: { webhooks: { enabled: true, deliveryPaused: false } },
       },
     });
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -90,6 +92,11 @@ describe("toActor", () => {
 
   it("keeps a null email and uses the user id when nothing else is known", () => {
     expect(toActor({ ...ME, email: null }, { email: "", name: "" })).toMatchObject({ email: null, displayName: "u" });
+  });
+
+  it("maps the server-evaluated webhook flags, including the flagd-outage fallback", () => {
+    const outage = { webhooks: { enabled: false, delivery_paused: true } };
+    expect(toActor({ ...ME, features: outage }, { email: "", name: "" }).features).toEqual({ webhooks: { enabled: false, deliveryPaused: true } });
   });
 
   it("drops permissions the web app does not know", () => {

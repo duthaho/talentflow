@@ -9,6 +9,7 @@ export type ProblemDetails = {
   correlation_id?: string;
   errors?: { pointer: string; detail: string }[];
   current_version?: number;
+  feature?: string;
 };
 
 export type ProblemPresentation = {
@@ -33,6 +34,10 @@ export function fallbackProblem(status: number, detail?: string): ProblemDetails
     status,
     detail: detail ?? (status === 0 ? "The TalentFlow API could not be reached." : `The API responded with HTTP ${status}.`),
   };
+}
+
+export function isFeatureDisabled(problem: Pick<ProblemDetails, "type">): boolean {
+  return problem.type === `${PROBLEM_TYPE_BASE}feature-disabled`;
 }
 
 export function toProblem(status: number, body: unknown): ProblemDetails {

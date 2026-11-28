@@ -8,7 +8,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { settle, type ApiClient } from "@/lib/api/client";
 import { ifMatch } from "@/lib/api/precondition";
 import { isStale } from "@/lib/webhooks/format";
-import type { ProblemDetails } from "@/lib/api/problem";
+import { isFeatureDisabled, type ProblemDetails } from "@/lib/api/problem";
 import {
   DESCRIPTION_MAX,
   URL_MAX,
@@ -36,6 +36,7 @@ export function EndpointDialog({
   onOpenChange,
   onSaved,
   onStale,
+  onFeatureDisabled,
 }: {
   api: ApiClient;
   eventTypes: WebhookEventType[];
@@ -43,11 +44,12 @@ export function EndpointDialog({
   onOpenChange: (open: boolean) => void;
   onSaved: (endpoint: WebhookEndpoint, secret: PlaintextSecret | null) => void;
   onStale: (problem: ProblemDetails) => void;
+  onFeatureDisabled: () => void;
 }) {
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
-        {target && <EndpointForm key={target.mode === "edit" ? `${target.endpoint.id}:${target.endpoint.version}` : "create"} api={api} eventTypes={eventTypes} target={target} onSaved={onSaved} onStale={onStale} />}
+        {target && <EndpointForm key={target.mode === "edit" ? `${target.endpoint.id}:${target.endpoint.version}` : "create"} api={api} eventTypes={eventTypes} target={target} onSaved={onSaved} onStale={onStale} onFeatureDisabled={onFeatureDisabled} />}
       </DialogContent>
     </Dialog>
   );
@@ -59,12 +61,14 @@ function EndpointForm({
   target,
   onSaved,
   onStale,
+  onFeatureDisabled,
 }: {
   api: ApiClient;
   eventTypes: WebhookEventType[];
   target: EndpointDialogTarget;
   onSaved: (endpoint: WebhookEndpoint, secret: PlaintextSecret | null) => void;
   onStale: (problem: ProblemDetails) => void;
+  onFeatureDisabled: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => draftFor(target));
   const [clientErrors, setClientErrors] = useState<ReturnType<typeof validateEndpointDraft>>({});
@@ -98,7 +102,8 @@ function EndpointForm({
       if (result.ok) {
         const { secret, ...endpoint } = result.data;
         onSaved(endpoint, secret);
-      } else setProblem(result.problem);
+      } else if (isFeatureDisabled(result.problem)) onFeatureDisabled();
+      else setProblem(result.problem);
       return;
     }
     const result = await settle(
@@ -110,6 +115,7 @@ function EndpointForm({
     setSubmitting(false);
     if (result.ok) onSaved(result.data, null);
     else if (isStale(result.problem)) onStale(result.problem);
+    else if (isFeatureDisabled(result.problem)) onFeatureDisabled();
     else setProblem(result.problem);
   }
 

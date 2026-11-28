@@ -30,7 +30,7 @@ from app.shared.settings import Settings
 
 
 @pytest.fixture
-def storage():
+def storage(feature_flags):
     sessions = build_session_factory("sqlite://")
     Base.metadata.create_all(sessions.kw["bind"])
     now = datetime.now(UTC)
@@ -229,7 +229,7 @@ def test_consumer_database_error_rolls_back_inbox_before_retry(storage, monkeypa
     assert original(good)
 
 
-def test_expired_lease_is_reclaimed_and_stale_result_is_fenced(storage):
+def test_expired_lease_is_reclaimed_and_stale_result_is_fenced(feature_flags, storage):
     sessions, (tenant, endpoint, _, delivery) = storage
     now = [datetime.now(UTC)]
 
@@ -237,11 +237,15 @@ def test_expired_lease_is_reclaimed_and_stale_result_is_fenced(storage):
         async def send(self, *args):
             return Outcome(204)
 
-    worker = WebhookWorker(sessions, Sender(), build_cipher(Settings()), clock=lambda: now[0])
+    worker = WebhookWorker(
+        sessions, Sender(), build_cipher(Settings()), flags=feature_flags, clock=lambda: now[0]
+    )
     first = worker.claim()
     assert first[0] == delivery and worker.claim() is None
     now[0] += timedelta(seconds=61)
-    next_worker = WebhookWorker(sessions, Sender(), build_cipher(Settings()), clock=lambda: now[0])
+    next_worker = WebhookWorker(
+        sessions, Sender(), build_cipher(Settings()), flags=feature_flags, clock=lambda: now[0]
+    )
     second = next_worker.claim()
     assert second[0] == first[0] and second[3] > first[3]
     assert not asyncio.run(worker.attempt(first))
@@ -250,7 +254,7 @@ def test_expired_lease_is_reclaimed_and_stale_result_is_fenced(storage):
     worker.release_leases()
 
 
-def test_url_is_read_per_attempt_and_cancelled_lease_never_sends(storage):
+def test_url_is_read_per_attempt_and_cancelled_lease_never_sends(feature_flags, storage):
     sessions, (tenant, endpoint, _, delivery) = storage
     calls = []
 
@@ -259,7 +263,7 @@ def test_url_is_read_per_attempt_and_cancelled_lease_never_sends(storage):
             calls.append(args)
             return Outcome(204)
 
-    worker = WebhookWorker(sessions, Sender(), build_cipher(Settings()))
+    worker = WebhookWorker(sessions, Sender(), build_cipher(Settings()), flags=feature_flags)
     claim = worker.claim()
     with sessions.begin() as session:
         row = session.get(Endpoint, endpoint)
@@ -274,7 +278,7 @@ def test_url_is_read_per_attempt_and_cancelled_lease_never_sends(storage):
     assert len(calls) == 1
 
 
-def test_cancellation_during_send_cannot_be_overwritten(storage):
+def test_cancellation_during_send_cannot_be_overwritten(feature_flags, storage):
     sessions, (_, _, _, delivery) = storage
 
     class Sender:
@@ -285,7 +289,7 @@ def test_cancellation_during_send_cannot_be_overwritten(storage):
                 row.leased_until = None
             return Outcome(204)
 
-    worker = WebhookWorker(sessions, Sender(), build_cipher(Settings()))
+    worker = WebhookWorker(sessions, Sender(), build_cipher(Settings()), flags=feature_flags)
     assert not asyncio.run(worker.attempt(worker.claim()))
     with sessions() as session:
         assert session.get(Delivery, delivery).status == "cancelled"
@@ -325,7 +329,7 @@ def test_sender_error_codes_and_wall_clock_deadline(monkeypatch):
 
 @pytest.mark.parametrize("fault", ["malformed_status", "decrypt", "no_key", "unexpected_sender"])
 def test_pre_send_and_receiver_failures_record_attempts_and_exhaust(
-    storage, monkeypatch, caplog, fault
+    storage, feature_flags, monkeypatch, caplog, fault
 ):
     sessions, (_, _, _, delivery_id) = storage
     now = [datetime.now(UTC)]
@@ -373,7 +377,9 @@ def test_pre_send_and_receiver_failures_record_attempts_and_exhaust(
             raise RuntimeError("receiver-controlled sensitive text")
 
         monkeypatch.setattr(sender, "send", broken_send)
-    worker = WebhookWorker(sessions, sender, cipher, clock=lambda: now[0], jitter=lambda: 1)
+    worker = WebhookWorker(
+        sessions, sender, cipher, flags=feature_flags, clock=lambda: now[0], jitter=lambda: 1
+    )
     for attempt in range(1, 9):
         assert worker.deliver_pending() == 0
         with sessions() as session:
@@ -412,7 +418,7 @@ def test_pre_send_and_receiver_failures_record_attempts_and_exhaust(
     assert "receiver-controlled sensitive text" not in caplog.text
 
 
-def test_unexpected_delivery_failure_does_not_abort_the_batch(storage):
+def test_unexpected_delivery_failure_does_not_abort_the_batch(feature_flags, storage):
     sessions, (tenant_id, endpoint_id, _, _) = storage
     now = datetime.now(UTC)
     event_id = str(uuid4())
@@ -451,7 +457,7 @@ def test_unexpected_delivery_failure_does_not_abort_the_batch(storage):
             return Outcome(204)
 
     sender = Sender()
-    worker = WebhookWorker(sessions, sender, build_cipher(Settings()))
+    worker = WebhookWorker(sessions, sender, build_cipher(Settings()), flags=feature_flags)
     assert worker.deliver_pending() == 1
     assert sender.calls == 2
     with sessions() as session:

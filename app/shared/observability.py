@@ -90,7 +90,18 @@ class JsonFormatter(logging.Formatter):
         correlation_id = correlation_id_context.get()
         if correlation_id:
             payload["correlation_id"] = correlation_id
-        for key in ("event", "delivery_id", "outcome", "published", "delivered", "purged"):
+        for key in (
+            "event",
+            "delivery_id",
+            "outcome",
+            "published",
+            "delivered",
+            "purged",
+            "flag_key",
+            "error_code",
+            "reason",
+            "tenant_id",
+        ):
             if value := getattr(record, key, None):
                 payload[key] = value
         return json.dumps(payload, default=str)

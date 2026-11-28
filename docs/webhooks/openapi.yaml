@@ -11,6 +11,12 @@ info:
     - Errors are RFC 9457 Problem Details (`docs/api-errors.md`).
     - `Idempotency-Key` follows ADR-005; `If-Match` / `ETag` follow ADR-007.
     - The plaintext signing secret appears only in the 201 responses of create and rotate.
+    - The release gate `release.webhooks.outbound` (ADR-010 §3): when it is off for the tenant,
+      create, redeliver and every PATCH other than exactly `{"enabled": false}` return
+      403 `feature-disabled`. Reads, disable, secret rotation and delete stay available.
+      Precedence: 401, then 403 `forbidden`, then 403 `feature-disabled`, then everything else.
+      Exception: PATCH validates its body first, because the gate reads the parsed model, so an
+      invalid PATCH body gets 422 `validation-error` before the gate.
   license:
     name: Proprietary showcase
     identifier: LicenseRef-Proprietary
@@ -98,7 +104,7 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/WebhookEndpointWithSecret'}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
+        '403': {$ref: '#/components/responses/ForbiddenOrFeatureDisabled'}
         '409':
           description: '`conflict` (URL already registered) or `webhook-endpoint-limit-reached` (10 per tenant).'
           content:
@@ -126,6 +132,9 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
     patch:
       tags: [webhooks]
+      x-talentflow-feature-gate:
+        feature: webhooks
+        allowed-when-disabled-body: {enabled: false}
       operationId: updateWebhookEndpoint
       summary: Update URL, description, subscriptions or enabled state
       description: >-
@@ -150,7 +159,7 @@ paths:
               schema: {$ref: '#/components/schemas/WebhookEndpoint'}
         '400': {$ref: '#/components/responses/InvalidPrecondition'}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
+        '403': {$ref: '#/components/responses/ForbiddenOrFeatureDisabled'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409':
           description: '`conflict`: another endpoint already uses this URL, or an Idempotency-Key reservation is in progress.'
@@ -307,7 +316,7 @@ paths:
               schema: {$ref: '#/components/schemas/WebhookDelivery'}
         '400': {$ref: '#/components/responses/ValidationError'}
         '401': {$ref: '#/components/responses/Unauthorized'}
-        '403': {$ref: '#/components/responses/Forbidden'}
+        '403': {$ref: '#/components/responses/ForbiddenOrFeatureDisabled'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409':
           description: >-
@@ -450,6 +459,16 @@ components:
       schema: {type: string, const: 'private, no-store'}
 
   responses:
+    ForbiddenOrFeatureDisabled:
+      description: '`forbidden`: the caller lacks `webhook:manage`; or `feature-disabled`: webhooks are not
+        enabled for the tenant (ADR-010 §3). `feature-disabled` carries `feature: webhooks`.'
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     Unauthorized:
       description: '`unauthorized`'
       content:
@@ -510,6 +529,7 @@ components:
         detail: {type: string}
         instance: {type: string}
         correlation_id: {type: string}
+        feature: {type: string, enum: [webhooks], description: Public feature name on feature-disabled.}
         current_version: {type: integer}
         errors:
           type: array

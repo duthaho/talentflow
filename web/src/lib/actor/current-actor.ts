@@ -35,6 +35,9 @@ export function toActor(me: CurrentActorResponse, session: Pick<StoredSession, "
     tenantName: me.tenant_name,
     role: me.role,
     permissions: me.permissions.filter(isPermission),
+    features: {
+      webhooks: { enabled: me.features.webhooks.enabled, deliveryPaused: me.features.webhooks.delivery_paused },
+    },
   };
 }
 

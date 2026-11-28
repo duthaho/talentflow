@@ -32,7 +32,8 @@ def test_expand_source_default_consent_nullable_and_downgrade_keeps_system_user(
     config = Config()
     config.set_main_option("script_location", "migrations")
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["d127a001"]
+    assert script.get_heads() == ["d65a001"]
+    assert script.get_revision("d65a001").down_revision == "d127a001"
     assert script.get_revision("d127a001").down_revision == "d62a001"
     command.upgrade(config, "d62a001")
     engine = create_engine(url)

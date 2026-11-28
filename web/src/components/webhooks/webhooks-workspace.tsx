@@ -1,18 +1,21 @@
 "use client";
 
-import { KeyRound, ListOrdered, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { CirclePause, Info, KeyRound, ListOrdered, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { FormProblem } from "@/components/pipeline/form-fields";
 import { toastProblem } from "@/components/problem/toast-problem";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi, settle, type ApiClient } from "@/lib/api/client";
 import { ifMatch } from "@/lib/api/precondition";
-import { describeProblem, type ProblemDetails } from "@/lib/api/problem";
+import type { Features } from "@/lib/actor/actor";
+import { describeProblem, isFeatureDisabled, type ProblemDetails } from "@/lib/api/problem";
 import { formatTimestamp } from "@/lib/candidates/detail";
 import { useResource } from "@/lib/candidates/use-resource";
 import { disabledReasonLabel, hostOf, isStale, type WebhookEndpoint } from "@/lib/webhooks/format";
@@ -27,10 +30,12 @@ const ENDPOINT_PAGE_LIMIT = 100;
 type EndpointsState = { status: "loading" } | { status: "ready"; items: WebhookEndpoint[] } | { status: "error"; problem: ProblemDetails };
 
 export function WebhooksWorkspace({
+  feature,
   api: injectedApi,
   pollIntervalMs,
   pollTimeoutMs,
 }: {
+  feature: Features["webhooks"];
   api?: ApiClient;
   pollIntervalMs?: number;
   pollTimeoutMs?: number;
@@ -45,6 +50,16 @@ export function WebhooksWorkspace({
   const [deleting, setDeleting] = useState<WebhookEndpoint | null>(null);
   const [revealed, setRevealed] = useState<RevealedSecret | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
+  const router = useRouter();
+  const [disabledByApi, setDisabledByApi] = useState(false);
+  const [renderedFeature, setRenderedFeature] = useState(feature);
+  // `feature` comes from the server page, so a new object means a fresh /v1/me render (ADR-010 §4).
+  // That render is authoritative even when its value matches the one before the refused mutation.
+  if (renderedFeature !== feature) {
+    setRenderedFeature(feature);
+    setDisabledByApi(false);
+  }
+  const enabled = feature.enabled && !disabledByApi;
 
   const eventTypes = useResource(useCallback(() => settle(api.GET("/v1/webhook-event-types")), [api]));
 
@@ -83,6 +98,14 @@ export function WebhooksWorkspace({
     reload();
   }
 
+  // ADR-010 §4: the gate closed mid-session. Switch to the read-only view now, then re-render the
+  // server tree so the shell and this page pick up the fresh /v1/me state.
+  function onFeatureDisabled() {
+    setDialog(null);
+    setDisabledByApi(true);
+    router.refresh();
+  }
+
   async function toggle(endpoint: WebhookEndpoint) {
     setToggling(endpoint.id);
     const enabled = endpoint.status !== "enabled";
@@ -97,6 +120,7 @@ export function WebhooksWorkspace({
       upsert(result.data);
       toast.success(enabled ? `Enabled ${hostOf(endpoint.url)}.` : `Disabled ${hostOf(endpoint.url)}. Pending deliveries were cancelled.`);
     } else if (isStale(result.problem)) onStale(result.problem);
+    else if (isFeatureDisabled(result.problem)) onFeatureDisabled();
     else toastProblem(result.problem);
   }
 
@@ -105,6 +129,25 @@ export function WebhooksWorkspace({
 
   return (
     <div className="space-y-8">
+      {!enabled && (
+        <Alert role="status">
+          <Info aria-hidden />
+          <AlertTitle>Webhooks are turned off</AlertTitle>
+          <AlertDescription>
+            Webhooks are turned off for your organization. You can still view, disable, rotate or delete existing endpoints. Events for enabled endpoints are kept and
+            sent if webhooks are turned back on.
+          </AlertDescription>
+        </Alert>
+      )}
+      {enabled && feature.deliveryPaused && (
+        <Alert role="status" className="border-amber-500/50 bg-amber-50 text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+          <CirclePause aria-hidden />
+          <AlertTitle>Delivery is paused</AlertTitle>
+          <AlertDescription className="text-current">
+            Delivery is paused for your organization. Pending deliveries are kept and will be sent when delivery resumes; waiting does not use up retry attempts.
+          </AlertDescription>
+        </Alert>
+      )}
       <section aria-labelledby="webhook-endpoints-heading" aria-busy={endpoints.status === "loading"} className="space-y-3">
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -113,10 +156,12 @@ export function WebhooksWorkspace({
             </h2>
             <p className="text-sm text-muted-foreground">Up to 10 per tenant. Each endpoint receives only the events it subscribes to.</p>
           </div>
-          <Button onClick={() => setDialog({ mode: "create" })} disabled={!typesReady || endpoints.status !== "ready"}>
-            <Plus aria-hidden />
-            New endpoint
-          </Button>
+          {enabled && (
+            <Button onClick={() => setDialog({ mode: "create" })} disabled={!typesReady || endpoints.status !== "ready"}>
+              <Plus aria-hidden />
+              New endpoint
+            </Button>
+          )}
         </header>
 
         {eventTypes.state.status === "error" && (
@@ -145,7 +190,7 @@ export function WebhooksWorkspace({
         )}
         {endpoints.status === "ready" && endpoints.items.length === 0 && (
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            No webhook endpoints yet. Add one to send hiring events to your own systems.
+            {enabled ? "No webhook endpoints yet. Add one to send hiring events to your own systems." : "Webhooks are not available for your organization yet."}
           </p>
         )}
         {endpoints.status === "ready" && endpoints.items.length > 0 && (
@@ -157,6 +202,7 @@ export function WebhooksWorkspace({
                 selected={endpoint.id === selectedId}
                 toggling={toggling === endpoint.id}
                 canEdit={typesReady}
+                readOnly={!enabled}
                 onShowDeliveries={() => setSelectedId(endpoint.id)}
                 onEdit={() => setDialog({ mode: "edit", endpoint })}
                 onToggle={() => void toggle(endpoint)}
@@ -175,7 +221,9 @@ export function WebhooksWorkspace({
           endpoint={selected}
           pollIntervalMs={pollIntervalMs}
           pollTimeoutMs={pollTimeoutMs}
+          readOnly={!enabled}
           onRedelivered={() => void refreshEndpoint(selected.id)}
+          onFeatureDisabled={onFeatureDisabled}
         />
       )}
 
@@ -185,6 +233,7 @@ export function WebhooksWorkspace({
         target={dialog}
         onOpenChange={(open) => !open && setDialog(null)}
         onStale={onStale}
+        onFeatureDisabled={onFeatureDisabled}
         onSaved={(endpoint, secret) => {
           upsert(endpoint);
           setDialog(null);
@@ -225,6 +274,7 @@ function EndpointRow({
   selected,
   toggling,
   canEdit,
+  readOnly,
   onShowDeliveries,
   onEdit,
   onToggle,
@@ -235,6 +285,7 @@ function EndpointRow({
   selected: boolean;
   toggling: boolean;
   canEdit: boolean;
+  readOnly: boolean;
   onShowDeliveries: () => void;
   onEdit: () => void;
   onToggle: () => void;
@@ -278,14 +329,18 @@ function EndpointRow({
           <ListOrdered aria-hidden />
           Deliveries
         </Button>
-        <Button size="sm" variant="outline" onClick={onEdit} disabled={!canEdit} aria-label={`Edit ${host}`}>
-          <Pencil aria-hidden />
-          Edit
-        </Button>
-        <Button size="sm" variant="outline" onClick={onToggle} disabled={toggling} aria-label={`${endpoint.status === "enabled" ? "Disable" : "Enable"} ${host}`}>
-          <Power aria-hidden />
-          {toggling ? "Saving…" : endpoint.status === "enabled" ? "Disable" : "Enable"}
-        </Button>
+        {!readOnly && (
+          <Button size="sm" variant="outline" onClick={onEdit} disabled={!canEdit} aria-label={`Edit ${host}`}>
+            <Pencil aria-hidden />
+            Edit
+          </Button>
+        )}
+        {(!readOnly || endpoint.status === "enabled") && (
+          <Button size="sm" variant="outline" onClick={onToggle} disabled={toggling} aria-label={`${endpoint.status === "enabled" ? "Disable" : "Enable"} ${host}`}>
+            <Power aria-hidden />
+            {toggling ? "Saving…" : endpoint.status === "enabled" ? "Disable" : "Enable"}
+          </Button>
+        )}
         <Button size="sm" variant="outline" onClick={onRotate} aria-label={`Rotate secret for ${host}`}>
           <KeyRound aria-hidden />
           Rotate secret

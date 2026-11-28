@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     notification_from_email: str = "notifications@talentflow.local"
     notification_smtp_host: str = "mailpit"
     notification_smtp_port: int = 1025
+    feature_flags_provider: Literal["flagd", "file"] = "flagd"
+    flagd_host: str = "flagd"
+    flagd_port: int = Field(default=8013, ge=1, le=65535)
+    flagd_resolver: Literal["rpc"] = "rpc"
+    flagd_deadline_ms: int = Field(default=200, gt=0, le=200)
+    flagd_tls: bool = False
+    flagd_cache: Literal["disabled"] = "disabled"
+    flagd_offline_flag_source_path: str | None = None
     webhook_secret_keys: SecretStr = SecretStr("dev:AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")
     webhook_secret_active_key_id: str = "dev"
     webhook_allow_http: bool = False
@@ -77,6 +85,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_runtime_configuration(self) -> "Settings":
+        if self.feature_flags_provider == "file" and not self.flagd_offline_flag_source_path:
+            raise ValueError("File flags require FLAGD_OFFLINE_FLAG_SOURCE_PATH")
         if self.app_env == "production":
             if self.auth_mode != "oidc_jwt":
                 raise ValueError("Production requires AUTH_MODE=oidc_jwt")

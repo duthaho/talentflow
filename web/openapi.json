@@ -106,6 +106,21 @@
         },
         "description": "`forbidden`: the caller lacks `webhook:manage`."
       },
+      "ForbiddenOrFeatureDisabled": {
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description": "`forbidden`: the caller lacks `webhook:manage`; or `feature-disabled`: webhooks are not enabled for the tenant (ADR-010 \u00a73). `feature-disabled` carries `feature: webhooks`.",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/NoStore"
+          }
+        }
+      },
       "InvalidPrecondition": {
         "content": {
           "application/problem+json": {
@@ -1008,6 +1023,9 @@
             ],
             "title": "Email"
           },
+          "features": {
+            "$ref": "#/components/schemas/Features"
+          },
           "permissions": {
             "items": {
               "type": "string"
@@ -1045,7 +1063,8 @@
           "tenant_id",
           "tenant_name",
           "role",
-          "permissions"
+          "permissions",
+          "features"
         ],
         "title": "CurrentActorResponse",
         "type": "object"
@@ -1101,6 +1120,19 @@
         "minItems": 1,
         "type": "array",
         "uniqueItems": true
+      },
+      "Features": {
+        "additionalProperties": false,
+        "properties": {
+          "webhooks": {
+            "$ref": "#/components/schemas/WebhooksFeature"
+          }
+        },
+        "required": [
+          "webhooks"
+        ],
+        "title": "Features",
+        "type": "object"
       },
       "FeedbackResponse": {
         "properties": {
@@ -1765,6 +1797,13 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "feature": {
+            "description": "Public feature name on feature-disabled.",
+            "enum": [
+              "webhooks"
+            ],
+            "type": "string"
           },
           "instance": {
             "type": "string"
@@ -2658,6 +2697,25 @@
         "format": "uri",
         "maxLength": 2048,
         "type": "string"
+      },
+      "WebhooksFeature": {
+        "additionalProperties": false,
+        "properties": {
+          "delivery_paused": {
+            "title": "Delivery Paused",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "delivery_paused"
+        ],
+        "title": "WebhooksFeature",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -6640,7 +6698,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "$ref": "#/components/responses/ForbiddenOrFeatureDisabled"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -6783,7 +6841,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "$ref": "#/components/responses/ForbiddenOrFeatureDisabled"
           },
           "409": {
             "content": {
@@ -6939,7 +6997,7 @@
             "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
-            "$ref": "#/components/responses/Forbidden"
+            "$ref": "#/components/responses/ForbiddenOrFeatureDisabled"
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
@@ -6972,7 +7030,13 @@
         "summary": "Update URL, description, subscriptions or enabled state",
         "tags": [
           "webhooks"
-        ]
+        ],
+        "x-talentflow-feature-gate": {
+          "allowed-when-disabled-body": {
+            "enabled": false
+          },
+          "feature": "webhooks"
+        }
       }
     },
     "/v1/webhook-endpoints/{endpoint_id}/deliveries": {

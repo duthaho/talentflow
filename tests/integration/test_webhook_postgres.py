@@ -130,7 +130,12 @@ def test_redelivery_pending_uniqueness_and_four_inflight_leases(pg_api):
     endpoint = register(pg_api)
     queue(pg_api, endpoint, 5)
     runners = [
-        WebhookWorker(app.state.session_factory, None, build_cipher(app.state.runtime_settings))
+        WebhookWorker(
+            app.state.session_factory,
+            None,
+            build_cipher(app.state.runtime_settings),
+            flags=app.state.feature_flags,
+        )
         for _ in range(5)
     ]
     # The query is global, so isolate every other tenant's pending fixtures first.
@@ -255,7 +260,10 @@ def test_real_rabbit_fanout_and_pinned_signed_http(pg_api):
             assert len(rows) == 1
             ident = rows[0].id
         runner = WebhookWorker(
-            app.state.session_factory, PinnedSender(guard), build_cipher(app.state.runtime_settings)
+            app.state.session_factory,
+            PinnedSender(guard),
+            build_cipher(app.state.runtime_settings),
+            flags=app.state.feature_flags,
         )
         # Claim directly to avoid unrelated pending fixtures from earlier tests.
         now = datetime.now(UTC)

@@ -3,6 +3,7 @@
 from sqlalchemy import text
 
 import app.shared.models  # noqa: F401
+from app.modules.feature_flags.infrastructure.openfeature import OpenFeatureFlags
 from app.modules.webhooks.application.contracts import EVENT_TYPES
 from app.modules.webhooks.infrastructure.cipher import build_cipher
 from app.modules.webhooks.infrastructure.consumer import WebhookConsumer
@@ -24,6 +25,7 @@ def main():
         settings.rabbitmq_url.get_secret_value(), consumer="webhooks", bindings=tuple(EVENT_TYPES)
     )
     consumer = WebhookConsumer(sessions, broker)
+    flags = OpenFeatureFlags(settings)
     worker = WebhookWorker(
         sessions,
         PinnedSender(
@@ -33,6 +35,7 @@ def main():
             )
         ),
         build_cipher(settings),
+        flags=flags,
     )
     loop: WorkerLoop
 
@@ -61,6 +64,7 @@ def main():
         )
         loop.run()
     finally:
+        flags.close()
         broker.close()
         sessions.kw["bind"].dispose()
 

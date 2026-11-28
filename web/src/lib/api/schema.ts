@@ -1046,6 +1046,7 @@ export interface components {
             display_name?: null;
             /** Email */
             email: string | null;
+            features: components["schemas"]["Features"];
             /** Permissions */
             permissions: string[];
             /**
@@ -1074,6 +1075,10 @@ export interface components {
          */
         EventType: "candidate_case.created.v1" | "candidate_case.stage_changed.v1" | "candidate_case.erased.v1" | "interview.scheduled.v1" | "offer.created.v1";
         EventTypeList: components["schemas"]["EventType"][];
+        /** Features */
+        Features: {
+            webhooks: components["schemas"]["WebhooksFeature"];
+        };
         /** FeedbackResponse */
         FeedbackResponse: {
             /** Comments */
@@ -1299,6 +1304,11 @@ export interface components {
                 detail: string;
                 pointer: string;
             }[];
+            /**
+             * @description Public feature name on feature-disabled.
+             * @enum {string}
+             */
+            feature?: "webhooks";
             instance: string;
             status: number;
             title: string;
@@ -1590,11 +1600,28 @@ export interface components {
          * @example https://hooks.example.com/talentflow?token=abc
          */
         WebhookUrl: string;
+        /** WebhooksFeature */
+        WebhooksFeature: {
+            /** Delivery Paused */
+            delivery_paused: boolean;
+            /** Enabled */
+            enabled: boolean;
+        };
     };
     responses: {
         /** @description `forbidden`: the caller lacks `webhook:manage`. */
         Forbidden: {
             headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `forbidden`: the caller lacks `webhook:manage`; or `feature-disabled`: webhooks are not enabled for the tenant (ADR-010 §3). `feature-disabled` carries `feature: webhooks`. */
+        ForbiddenOrFeatureDisabled: {
+            headers: {
+                "Cache-Control": components["headers"]["NoStore"];
                 [name: string]: unknown;
             };
             content: {
@@ -3239,7 +3266,7 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            403: components["responses"]["ForbiddenOrFeatureDisabled"];
             404: components["responses"]["NotFound"];
             /** @description `delivery-not-redeliverable` (the original is not terminal, the endpoint is not enabled, or this event already has a pending delivery to this endpoint), or `conflict` while an Idempotency-Key reservation is in progress. */
             409: {
@@ -3318,7 +3345,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            403: components["responses"]["ForbiddenOrFeatureDisabled"];
             /** @description `conflict` (URL already registered) or `webhook-endpoint-limit-reached` (10 per tenant). */
             409: {
                 headers: {
@@ -3424,7 +3451,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidPrecondition"];
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+            403: components["responses"]["ForbiddenOrFeatureDisabled"];
             404: components["responses"]["NotFound"];
             /** @description `conflict`: another endpoint already uses this URL, or an Idempotency-Key reservation is in progress. */
             409: {

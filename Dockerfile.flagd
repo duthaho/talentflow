@@ -1,0 +1,5 @@
+# Official flagd runtime plus a static readiness probe (the upstream image has no shell).
+FROM busybox:1.37.0-musl@sha256:f6a95d611e0a8780fabdb2aec43e31275b2720dfefa3e41b16835bfc42454478 AS probe
+FROM ghcr.io/open-feature/flagd:v0.19.0@sha256:ff8a3331927805db001af431d27580a404e3dbcdcc1b94426984c46f7564d808
+COPY --from=probe /bin/busybox /busybox
+USER 65532:65532

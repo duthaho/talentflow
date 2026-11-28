@@ -15,6 +15,7 @@ CLEAN_ARCHITECTURE_MODULES = (
     "reporting",
     "retention",
     "webhooks",
+    "feature_flags",
 )
 ALLOWED_CROSS_CONTEXT_PERSISTENCE_IMPORTS = {
     ("candidates", "retention"): "public consent reads the tenant retention period",
