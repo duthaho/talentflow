@@ -23,6 +23,8 @@ actions:
           create, redeliver and every PATCH other than exactly `{"enabled": false}` return
           403 `feature-disabled`. Reads, disable, secret rotation and delete stay available.
           Precedence: 401, then 403 `forbidden`, then 403 `feature-disabled`, then everything else.
+          Exception: PATCH validates its body first, because the gate reads the parsed model, so an
+          invalid PATCH body gets 422 `validation-error` before the gate.
 
   - target: $.components.responses
     description: Add the response used by gated operations.

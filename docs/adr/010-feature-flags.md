@@ -126,7 +126,13 @@ Targeting only names the **exceptions**. Its else branch is always `null`, and f
 - To pause **every** tenant, set its `defaultVariant` to `off`. Listed and unlisted tenants are then all `off`.
 - Emergency alternative: `"state": "DISABLED"` makes every evaluation return the code fallback `false`, which also pauses everything.
 
-Each is a one-line, reviewed change that flagd reloads without a restart. Targeting lists hold opaque tenant UUIDs only, never tenant names or other customer identifiers, because the file is committed to a public repository. For a percentage rollout, `release.webhooks.outbound` may use flagd's `fractional` operator. It buckets on `targetingKey`, which is the tenant id, so a tenant stays in the same bucket.
+Each is a one-line, reviewed change that flagd reloads without a restart. Targeting lists hold opaque tenant UUIDs only, never tenant names or other customer identifiers, because the file is committed to a public repository. **Percentage rollout (release flags only).** A `release` flag may replace its `null` else branch with flagd's `fractional` operator, in exactly this shape:
+
+```json
+{"if": [{"in": [{"var": "tenant_id"}, [<tenant ids>]]}, "on", {"fractional": [["on", N], ["off", 100 - N]]}]}
+```
+
+`fractional` buckets on `targetingKey`, which is the tenant id, so a tenant stays in the same bucket as `N` grows. Listed tenants stay `on`. While this shape is in place, `defaultVariant` does not apply to unlisted tenants. A release rollback is therefore the one-line change of the else branch back to `null`, with `defaultVariant: off`. `ops` flags **never** use `fractional`: their else branch is always `null`, so the `defaultVariant` global stop always reaches every tenant.
 
 **Code side.** One registry module defines each flag once, with its key, fallback and scope. The application layer depends on a `FeatureFlags` port (`is_enabled(flag, context) -> bool`), and the OpenFeature adapter implements it in infrastructure. No other module imports `openfeature`, and an architecture test enforces this. No code passes a flag key as a string literal.
 
@@ -266,7 +272,7 @@ Both fail closed because the failure is reversible: nothing is lost or retried a
 | Step | What happens | Gate |
 | --- | --- | --- |
 | **Create** | One PR adds the flag to `flags/talentflow.flagd.json` with metadata, its registry entry (key, fallback, scope), the checks in code, and tests for both values and the fallback. The file starts at the safe value. | Code review. Hoàng-Security reviews flags that gate data leaving the system or authorization. |
-| **Roll out** | Each step is a reviewed one-line PR: tenant list → optional `fractional` → `defaultVariant: on` with no targeting. flagd hot-reloads every step. | Code review |
+| **Roll out** | Each step is a reviewed one-line PR: tenant list (else `null`) → optional `fractional` else branch in the §1 shape, raising `N` → `defaultVariant: on` with no targeting. flagd hot-reloads every step. | Code review |
 | **Remove (release only)** | (1) The flag is fully on everywhere for **at least 7 days**: `defaultVariant: on`, no `targeting`. (2) **PR A** deletes every check and marks the registry entry `retired=True`. A retired entry cannot be evaluated: `is_enabled` raises, and nothing in code references it. Public fields stay (for example `features.webhooks.enabled` becomes a constant `true`), so the API contract does not change. (3) **After** PR A is merged, **PR B** deletes the file entry and the retired registry entry together. | The order matters: if the file entry goes first, evaluations hit `FLAG_NOT_FOUND`, return the fail-closed fallback, and switch the feature **off**. The registry and file key sets stay equal at every step (rule 5). |
 | **Kill switch (`ops`)** | Permanent. It has no `expiresAt`. Its owner reviews it whenever the module's ADR changes. | — |
 
@@ -283,7 +289,7 @@ Both fail closed because the failure is reversible: nothing is lost or retried a
 5. the keys in the file and the keys in the code registry (retired entries included) are the same set. A key in only one place fails, which catches half-finished removals;
 6. `contextScope: tenant` flags contain no `{"var": "role"}` in their targeting;
 7. every flag has exactly the variants `on: true` and `off: false`, and its code fallback is `false`. `defaultVariant` may be `on` or `off`;
-8. `targeting`, when present, is one `if` whose else branch is `null`, so `defaultVariant` decides for every unlisted tenant;
+8. `targeting`, when present, is one `if` over a `tenant_id` list whose then branch is the non-default variant and whose else branch is `null`, so `defaultVariant` decides for every unlisted tenant. The single exception: a `release` flag with `defaultVariant: off` may use, as the else branch, the §1 `fractional` shape with exactly the buckets `on` and `off`, integer weights summing to 100. Any `fractional` in an `ops` flag fails;
 9. a `retired` registry entry is fully on in the file (`defaultVariant: on`, no `targeting`), and no code outside the registry references it (an AST check).
 
 ### 8. Test matrix DUTH-65 must cover (AC2)
@@ -303,7 +309,7 @@ Integration tests use `FEATURE_FLAGS_PROVIDER=file`, the real flagd JsonLogic ev
 | T9 | Streak | An endpoint with 19 failures over 70 h, then a 3-day pause, then one failure | The endpoint is **not** auto-disabled (the streak age excludes the pause). Control: the same history with the pause counted (the §5.5 shift skipped) **is** disabled, because the streak is then older than 72 h. A stale pause row for a tenant with no pending deliveries is deleted on the next snapshot. |
 | T10 | Agreement | A table-driven test over {gate on/off} × {delivery on/off} × {flagd up/down} | For every cell: API create allowed ⇔ `features.webhooks.enabled`; worker delivers ⇔ `NOT features.webhooks.delivery_paused`. The web shows the state that `/v1/me` returned (component tests: nav visibility, read-only disabled page, paused banner, `router.refresh()` on 403). |
 | T11 | Telemetry hygiene | Capture spans, metrics and logs during T1, T7 and T8 | Only the allowed attributes from §6 appear. No email, user id, token, URL or evaluation context. |
-| T12 | Lifecycle lint | The nine lint rules in §7, each with a failing fixture (including a hard-coded else branch such as `"on"`, and a retired entry still referenced in code). Plus passing fixtures for every lifecycle stage: a new release flag (`defaultVariant: off`, tenant list); a fully rolled-out flag (`defaultVariant: on`, fallback `false`); after removal PR A (retired registry entry, file fully on); and after PR B (both gone). | Each failing fixture fails with a message that names the flag and the rule. Every lifecycle-stage fixture passes, so following §7 never turns the build red; the only intended red build is the expiry in rule 4. |
+| T12 | Lifecycle lint | The nine lint rules in §7, each with a failing fixture (including a hard-coded else branch such as `"on"`, a `fractional` in an `ops` flag, a `fractional` whose weights don't sum to 100 or that names a third bucket, and a retired entry still referenced in code). Plus passing fixtures for every lifecycle stage: a new release flag (`defaultVariant: off`, tenant list); a percentage rollout (the §1 `fractional` else branch, for example `N = 25`); a fully rolled-out flag (`defaultVariant: on`, fallback `false`); after removal PR A (retired registry entry, file fully on); and after PR B (both gone). | Each failing fixture fails with a message that names the flag and the rule. Every lifecycle-stage fixture passes, so following §7 never turns the build red; the only intended red build is the expiry in rule 4. |
 
 ## Consequences
 
