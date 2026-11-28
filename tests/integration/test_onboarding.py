@@ -177,9 +177,17 @@ def test_compensation_failure_stops_automatic_work(process):
         saga = s.scalar(select(Saga))
         erase(s, saga, process[4][0])
         from app.modules.audit.persistence import AuditEvent
+
         s.flush()
 
-        assert s.scalar(select(AuditEvent.action)) == "onboarding_erasure_cleanup_required"
+        assert (
+            s.scalar(
+                select(AuditEvent.action).where(
+                    AuditEvent.action == "onboarding_erasure_cleanup_required"
+                )
+            )
+            == "onboarding_erasure_cleanup_required"
+        )
 
 
 @pytest.mark.parametrize("position", [0, 1, 2, 3, 4])
@@ -222,3 +230,238 @@ def test_cancel_waits_for_in_flight_outcome(process):
     assert repo.record(claim, now[0], external_ref="employee")
     assert advance(process) == "cancelled"
     assert effects.calls == ["undo_create_employee"]
+
+
+def test_parallel_claim_skips_locked_saga(process):
+    from threading import Event, Thread
+
+    from sqlalchemy import event as sql_event
+
+    engine = process[0].kw["bind"]
+    claimed = Event()
+    release = Event()
+    results = []
+    errors = []
+
+    def pause(conn, cursor, statement, parameters, context, executemany):
+        if statement.startswith("UPDATE onboarding_sagas") and not claimed.is_set():
+            claimed.set()
+            assert release.wait(10)
+
+    sql_event.listen(engine, "after_cursor_execute", pause)
+
+    def first():
+        try:
+            results.append(process[1].claim(process[4][0]))
+        except BaseException as error:
+            errors.append(error)
+
+    thread = Thread(target=first)
+    thread.start()
+    try:
+        assert claimed.wait(10)
+        assert process[1].claim(process[4][0]) is None
+    finally:
+        release.set()
+        thread.join(10)
+        sql_event.remove(engine, "after_cursor_execute", pause)
+    assert not errors and len(results) == 1 and results[0]
+    assert process[1].claim(process[4][0]) is None
+
+
+def test_start_erase_race_is_serialized(process):
+    from threading import Barrier, Thread
+
+    from sqlalchemy import delete
+
+    sessions, repo, runner, effects, now, event = process
+    with sessions.begin() as s:
+        s.execute(delete(Step))
+        s.execute(delete(Saga))
+    barrier = Barrier(2)
+    errors = []
+
+    def apply(ev):
+        try:
+            barrier.wait(10)
+            with sessions.begin() as s:
+                repo.start(s, ev, now[0], True)
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [
+        Thread(target=apply, args=(ev,))
+        for ev in (event, {**event, "id": str(uuid4()), "type": "candidate_case.erased.v1"})
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(15)
+        assert not thread.is_alive()
+    assert not errors
+    with sessions() as s:
+        saga = s.scalar(select(Saga))
+        assert saga is None or (saga.erased_at and saga.status == "cancelled")
+    assert not effects.calls
+
+
+def test_fake_timeout_boundary_and_deadline(process):
+    from app.modules.onboarding.domain.policy import AttemptTimeout
+
+    sessions, repo, runner, effects, now, event = process
+
+    async def timeout(call, seconds):
+        call.close()
+        now[0] += timedelta(seconds=seconds)
+        raise AttemptTimeout()
+
+    runner.execute = timeout
+    assert runner.run_one()
+    with sessions() as s:
+        step = s.scalar(select(Step).where(Step.position == 1))
+        assert step.last_error == "AttemptTimeout"
+        assert step.next_attempt_at == now[0] + timedelta(seconds=10)
+        deadline = step.deadline_at
+    assert not runner.run_one()
+    now[0] = deadline
+    runner.run_one()
+    with sessions() as s:
+        assert s.scalar(select(Saga.status)) == "compensated"
+    assert not effects.calls
+
+
+def test_notify_no_recipients_and_anonymized_read(process):
+    from sqlalchemy import delete
+
+    with process[0].begin() as s:
+        s.execute(delete(Membership))
+    assert advance(process) == "completed_with_warnings"
+    with process[0]() as s:
+        assert s.scalar(select(Saga.warning)) == "no_recipients"
+
+
+def test_consumer_flag_off_tombstone_and_untrusted_hire(process):
+    from sqlalchemy import delete
+
+    from app.modules.notifications.persistence import InboxMessage
+    from app.modules.onboarding.infrastructure.consumer import OnboardingConsumer
+    from app.modules.onboarding.infrastructure.models import Tombstone
+
+    sessions, repo, runner, effects, now, event = process
+
+    class Flags:
+        def is_enabled(self, *args):
+            return False
+
+    consumer = OnboardingConsumer(sessions, None, repo, Flags(), clock=lambda: now[0])
+    with sessions.begin() as s:
+        s.execute(delete(Step))
+        s.execute(delete(Saga))
+    assert consumer.apply(event) == "skipped_flag_off"
+    assert consumer.apply(event) == "duplicate"
+    with sessions() as s:
+        assert s.scalar(select(InboxMessage.event_id)) == event["id"]
+        assert s.scalar(select(Saga)) is None
+    # Enabling cannot replay an inboxed hire; R6 explicitly deletes that entry.
+    consumer.flags.is_enabled = lambda *args: True
+    assert consumer.apply(event) == "duplicate"
+    with sessions.begin() as s:
+        s.execute(delete(InboxMessage))
+    assert consumer.apply(event) == "started"
+    with sessions.begin() as s:
+        s.execute(delete(Step))
+        s.execute(delete(Saga))
+    assert (
+        consumer.apply({**event, "id": str(uuid4()), "type": "candidate_case.erased.v1"})
+        == "erased"
+    )
+    assert consumer.apply({**event, "id": str(uuid4())}) == "skipped"
+    with sessions() as s:
+        assert s.get(Tombstone, (event["tenantid"], event["subject"]))
+    with sessions.begin() as s:
+        s.execute(delete(Tombstone))
+        candidate = s.get(CandidateCase, event["subject"])
+        candidate.stage = "applied"
+    assert consumer.apply({**event, "id": str(uuid4())}) == "skipped"
+    with sessions.begin() as s:
+        s.get(CandidateCase, event["subject"]).stage = "hired"
+        s.get(CandidateCase, event["subject"]).anonymized_at = now[0]
+    assert consumer.apply({**event, "id": str(uuid4())}) == "skipped"
+
+
+def test_erasure_after_crash_compensates_ambiguous_effect_without_candidate_read(process):
+    sessions, repo, runner, effects, now, event = process
+    claim = repo.claim(now[0])
+    assert claim
+    # The external effect succeeded, but the worker died before its record tx.
+    import asyncio
+
+    asyncio.run(effects.upsert_employee(claim.saga_id, claim.person))
+    with sessions.begin() as s:
+        erase(s, s.scalar(select(Saga)), now[0])
+        s.get(CandidateCase, event["subject"]).anonymized_at = now[0]
+    now[0] += timedelta(seconds=35)
+    assert advance(process) == "cancelled"
+    assert not effects.resources
+    assert effects.calls == ["create_employee", "undo_create_employee"]
+
+
+def test_commit_only_metrics_and_erasure_template(process):
+    from app.modules.onboarding.infrastructure.metrics import refresh_running, running, sagas
+
+    before = sagas.labels("completed")._value.get()
+    assert advance(process) == "completed"
+    assert sagas.labels("completed")._value.get() == before + 1
+    process[2].run_one()
+    assert sagas.labels("completed")._value.get() == before + 1
+    refresh_running(process[0])
+    assert running._value.get() == 0
+    from app.modules.notifications.application.email_delivery import EmailDeliverySender
+    from app.modules.notifications.persistence import NotificationDelivery
+
+    with process[0].begin() as s:
+        candidate = s.get(CandidateCase, process[5]["subject"])
+        candidate.anonymized_at = process[4][0]
+        delivery = s.scalar(select(NotificationDelivery))
+
+    class Recorder:
+        def send(self, **kwargs):
+            self.message = kwargs
+
+    adapter = Recorder()
+    EmailDeliverySender(process[0], adapter)(delivery)
+    assert "a new hire" in adapter.message["text"] and "PrivateName" not in adapter.message["text"]
+
+
+def test_foreign_tenant_event_and_transaction_rollback_leave_no_saga(process):
+    from app.modules.notifications.persistence import InboxMessage
+    from app.modules.onboarding.infrastructure.consumer import OnboardingConsumer
+
+    sessions, repo, runner, effects, now, event = process
+    other = str(uuid4())
+    with sessions.begin() as s:
+        s.add(Tenant(id=other, name="Other", slug=other))
+
+    class Flags:
+        def is_enabled(self, *args):
+            return True
+
+    consumer = OnboardingConsumer(sessions, None, repo, Flags(), clock=lambda: now[0])
+    forged = {**event, "id": str(uuid4()), "tenantid": other}
+    assert consumer.apply(forged) == "skipped"
+    with sessions() as s:
+        assert s.scalar(select(Saga.id).where(Saga.tenant_id == other)) is None
+    # Inbox and saga writes roll back together if process startup fails.
+    original = repo.start
+
+    def fail(*args):
+        raise RuntimeError("transaction abort")
+
+    repo.start = fail
+    replay = {**event, "id": str(uuid4())}
+    with pytest.raises(RuntimeError):
+        consumer.apply(replay)
+    with sessions() as s:
+        assert s.get(InboxMessage, ("onboarding", replay["id"])) is None
+    repo.start = original
+    assert consumer.apply(replay) == "duplicate"

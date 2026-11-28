@@ -45,6 +45,60 @@
         "w": 12,
         "h": 9
       }
+    },
+    {
+      "type": "row",
+      "title": "Onboarding",
+      "id": 640,
+      "gridPos": {
+        "x": 0,
+        "y": 9,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Onboarding terminal outcomes",
+      "id": 641,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(talentflow_onboarding_sagas_total[5m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active onboarding sagas",
+      "id": 642,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "max(talentflow_onboarding_running)",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,

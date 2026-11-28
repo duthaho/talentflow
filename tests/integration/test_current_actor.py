@@ -68,7 +68,10 @@ def test_current_actor_returns_each_seeded_role_and_permissions() -> None:
                 "tenant_name": "TalentFlow Demo",
                 "role": role,
                 "permissions": sorted(ROLE_PERMISSIONS[role]),
-                "features": {"webhooks": {"enabled": True, "delivery_paused": False}},
+                "features": {
+                    "onboarding": True,
+                    "webhooks": {"enabled": True, "delivery_paused": False},
+                },
             }
 
 

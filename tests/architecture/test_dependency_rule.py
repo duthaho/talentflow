@@ -16,8 +16,14 @@ CLEAN_ARCHITECTURE_MODULES = (
     "retention",
     "webhooks",
     "feature_flags",
+    "onboarding",
 )
 ALLOWED_CROSS_CONTEXT_PERSISTENCE_IMPORTS = {
+    ("onboarding", "candidates"): "step-time candidate ownership and erasure reads",
+    ("onboarding", "organization"): "notification recipient membership reads",
+    ("onboarding", "notifications"): "transactional inbox and notification enqueue",
+    ("onboarding", "audit"): "admin commands and erasure cleanup audit",
+    ("notifications", "candidates"): "render onboarding names at send time",
     ("candidates", "retention"): "public consent reads the tenant retention period",
     ("webhooks", "notifications"): "webhook fanout shares the broker inbox transaction",
     ("webhooks", "audit"): "webhook lifecycle writes tenant-scoped audit in the transaction",
@@ -123,6 +129,7 @@ def test_application_layer_depends_on_ports_not_frameworks() -> None:
 def test_public_routes_never_resolve_an_actor():
     from fastapi.routing import APIRoute
 
+    from app.api.onboarding_router import onboarding_actor
     from app.api.webhook_router import webhook_actor
     from app.main import create_app
     from app.modules.identity.security import resolve_actor
@@ -138,7 +145,7 @@ def test_public_routes_never_resolve_an_actor():
                 yield route
 
     # Webhooks wrap resolve_actor to preserve their distinct 401/403 contract.
-    authentication_guards = {resolve_actor, webhook_actor}
+    authentication_guards = {resolve_actor, webhook_actor, onboarding_actor}
     checked = []
     for route in routes(create_app("sqlite://")):
         if not isinstance(route, APIRoute) or not route.path.startswith("/v1/"):

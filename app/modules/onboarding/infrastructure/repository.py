@@ -9,17 +9,18 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.modules.audit.persistence import AuditEvent
-from app.modules.candidates.persistence import CandidateCase
 from app.modules.notifications.persistence import NotificationDelivery
 from app.modules.onboarding.application.ports import Claim
 from app.modules.onboarding.domain.policy import (
     STEP_POLICIES,
     STEPS,
     TASKS,
+    AttemptTimeout,
     PermanentStepError,
     decide,
     on_outcome,
 )
+from app.modules.onboarding.infrastructure.candidates import SqlCandidatesReader
 from app.modules.onboarding.infrastructure.models import Saga, Step, Task, Tombstone
 from app.modules.organization.persistence import Membership, Requisition
 
@@ -66,7 +67,7 @@ def add_steps(session, saga, now):
         )
 
 
-def audit(session, saga, action, actor, correlation):
+def audit(session, saga, action, actor, correlation, metadata=None):
     session.add(
         AuditEvent(
             tenant_id=saga.tenant_id,
@@ -75,7 +76,7 @@ def audit(session, saga, action, actor, correlation):
             aggregate_type="onboarding_saga",
             aggregate_id=saga.id,
             correlation_id=correlation,
-            metadata_json={"attempt": saga.attempt},
+            metadata_json={"attempt": saga.attempt, **(metadata or {})},
         )
     )
 
@@ -85,6 +86,13 @@ def finish(session, saga, status, now):
     saga.finished_at = now
     # Defer metric publication until COMMIT; rollback must not report an outcome.
     if status_before != status:
+        audit(
+            session,
+            saga,
+            "onboarding." + status,
+            "system:onboarding",
+            saga.correlation_id or str(uuid4()),
+        )
         session.info.setdefault("onboarding_outcomes", []).append(status)
 
 
@@ -99,7 +107,9 @@ def compensation(session, saga, steps, now):
             step.status = "not_run"
         step.next_attempt_at = None
     for step in reversed(steps[:3]):
-        if step.status == "succeeded" and step.compensation_status != "done":
+        if (
+            step.status == "succeeded" or step.compensation_status == "pending"
+        ) and step.compensation_status != "done":
             step.compensation_status = "pending"
             step.next_attempt_at = now
             return
@@ -172,10 +182,8 @@ class SqlAlchemySagaRepository:
             return "erased"
         if event["data"].get("to_stage") != "hired":
             return "skipped"
-        candidate = session.scalar(
-            select(CandidateCase).where(CandidateCase.id == case, CandidateCase.tenant_id == tenant)
-        )
-        if candidate is None or candidate.stage != "hired" or candidate.anonymized_at is not None:
+        candidate = SqlCandidatesReader(session).snapshot(tenant, case)
+        if candidate is None or candidate.stage != "hired":
             return "skipped"
         if session.get(Tombstone, (tenant, case)):
             return "skipped"
@@ -236,6 +244,14 @@ class SqlAlchemySagaRepository:
             if changed.rowcount != 1:
                 return None
             undo = step.compensation_status in {"pending", "retry_wait", "in_flight"}
+            if not undo and saga.compensation_reason and step.status == "in_flight":
+                # The prior owner crashed with an ambiguous external effect. Delete
+                # by stable ownership identity without reading erased candidate PII.
+                step.status = "failed"
+                step.compensation_status = "pending"
+                step.lease_owner = None
+                compensation(session, saga, steps, now)
+                return True
             if not undo and saga.compensation_reason and step.status != "in_flight":
                 compensation(session, saga, steps, now)
                 return None
@@ -274,13 +290,10 @@ class SqlAlchemySagaRepository:
                     step.lease_owner = None
                     compensation(session, saga, steps, now)
                     return None
-                candidate = session.scalar(
-                    select(CandidateCase).where(
-                        CandidateCase.id == saga.candidate_case_id,
-                        CandidateCase.tenant_id == saga.tenant_id,
-                    )
+                candidate = SqlCandidatesReader(session).snapshot(
+                    saga.tenant_id, saga.candidate_case_id
                 )
-                if candidate is None or candidate.anonymized_at is not None:
+                if candidate is None:
                     step.status = "not_run"
                     step.lease_owner = None
                     erase(session, saga, now)
@@ -312,6 +325,14 @@ class SqlAlchemySagaRepository:
             return True
 
     def _success(self, session, saga, step, steps, now, ref, undo):
+        audit(
+            session,
+            saga,
+            "onboarding.step_compensated" if undo else "onboarding.step_succeeded",
+            "system:onboarding",
+            saga.correlation_id or str(uuid4()),
+            {"step": step.step},
+        )
         step.lease_owner = None
         step.next_attempt_at = None
         step.last_error = None
@@ -342,6 +363,14 @@ class SqlAlchemySagaRepository:
         step.last_error = (
             code if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", code) else "StepError"
         )
+        audit(
+            session,
+            saga,
+            "onboarding.compensation_failed_attempt" if undo else "onboarding.step_failed",
+            "system:onboarding",
+            saga.correlation_id or str(uuid4()),
+            {"step": step.step, "error": step.last_error},
+        )
         session.info.setdefault("onboarding_attempts", []).append((step.step, "failed"))
         decision = decide(
             now=now,
@@ -352,6 +381,18 @@ class SqlAlchemySagaRepository:
             permanent=isinstance(error, PermanentStepError) and not undo,
         )
         step.next_attempt_at = decision.due_at
+        if not undo and saga.compensation_reason and step.step in STEPS[:2]:
+            step.status = "failed"
+            step.compensation_status = "pending"
+            compensation(session, saga, steps, now)
+            return
+        if (
+            not undo
+            and decision.action == "failed"
+            and isinstance(error, AttemptTimeout)
+            and step.step in STEPS[:2]
+        ):
+            step.compensation_status = "pending"
         if decision.action == "retry":
             if undo:
                 step.compensation_status = "retry_wait"
@@ -399,13 +440,10 @@ class SqlAlchemySagaRepository:
             if saga.erased_at is not None:
                 saga.warning = "candidate_erased"
                 return
-            candidate = session.scalar(
-                select(CandidateCase).where(
-                    CandidateCase.id == saga.candidate_case_id,
-                    CandidateCase.tenant_id == saga.tenant_id,
-                )
+            candidate = SqlCandidatesReader(session).snapshot(
+                saga.tenant_id, saga.candidate_case_id
             )
-            if candidate is None or candidate.anonymized_at is not None:
+            if candidate is None:
                 saga.erased_at = now
                 saga.warning = "candidate_erased"
                 return

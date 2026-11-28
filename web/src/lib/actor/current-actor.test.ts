@@ -28,7 +28,7 @@ const ME = {
   tenant_name: "Acme",
   role: "interviewer" as const,
   permissions: ["feedback:submit"],
-  features: { webhooks: { enabled: true, delivery_paused: false } },
+  features: { onboarding: false, webhooks: { enabled: true, delivery_paused: false } },
 };
 
 describe("getCurrentActor", () => {
@@ -95,7 +95,7 @@ describe("toActor", () => {
   });
 
   it("maps the server-evaluated webhook flags, including the flagd-outage fallback", () => {
-    const outage = { webhooks: { enabled: false, delivery_paused: true } };
+    const outage = { onboarding: false, webhooks: { enabled: false, delivery_paused: true } };
     expect(toActor({ ...ME, features: outage }, { email: "", name: "" }).features).toEqual({ webhooks: { enabled: false, deliveryPaused: true } });
   });
 

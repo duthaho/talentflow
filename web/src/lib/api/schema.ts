@@ -269,6 +269,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/candidate-cases/{candidate_case_id}/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Onboarding */
+        get: operations["getCandidateCaseOnboarding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/candidate-cases/{candidate_case_id}/stage": {
         parameters: {
             query?: never;
@@ -399,6 +416,40 @@ export interface paths {
         put?: never;
         /** Approve Offer */
         post: operations["approve_offer_v1_offers__offer_id__approvals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/onboarding-sagas/{saga_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancelOnboardingSaga"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/onboarding-sagas/{saga_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry */
+        post: operations["retryOnboardingSaga"];
         delete?: never;
         options?: never;
         head?: never;
@@ -745,6 +796,13 @@ export interface webhooks {
 }
 export interface components {
     schemas: {
+        /** Actions */
+        Actions: {
+            /** Can Cancel */
+            can_cancel: boolean;
+            /** Can Retry */
+            can_retry: boolean;
+        };
         /** ApproveOfferRequest */
         ApproveOfferRequest: {
             /** Decision */
@@ -847,6 +905,8 @@ export interface components {
             email: string;
             /** First Name */
             first_name: string;
+            /** Hire Start Date */
+            hire_start_date?: string | null;
             /** Id */
             id: string;
             /** Last Name */
@@ -870,6 +930,8 @@ export interface components {
             email: string;
             /** First Name */
             first_name: string;
+            /** Hire Start Date */
+            hire_start_date?: string | null;
             /** Id */
             id: string;
             /** Last Name */
@@ -1077,6 +1139,11 @@ export interface components {
         EventTypeList: components["schemas"]["EventType"][];
         /** Features */
         Features: {
+            /**
+             * Onboarding
+             * @default false
+             */
+            onboarding: boolean;
             webhooks: components["schemas"]["WebhooksFeature"];
         };
         /** FeedbackResponse */
@@ -1254,6 +1321,47 @@ export interface components {
             title: string;
             /** Version */
             version: number;
+        };
+        /** OnboardingSaga */
+        OnboardingSaga: {
+            actions: components["schemas"]["Actions"];
+            /** Attempt */
+            attempt: number;
+            /**
+             * Candidate Case Id
+             * Format: uuid
+             */
+            candidate_case_id: string;
+            /** Finished At */
+            finished_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "compensating" | "compensated" | "completed" | "completed_with_warnings" | "cancelled" | "compensation_failed";
+            /** Steps */
+            steps: components["schemas"]["StepResponse"][];
+            /** Tasks */
+            tasks: components["schemas"]["TaskResponse"][];
+            /** Version */
+            version: number;
+            /** Warning */
+            warning: ("notify_exhausted" | "no_recipients" | "candidate_erased") | null;
         };
         /** PipelineCandidateSummary */
         PipelineCandidateSummary: {
@@ -1454,6 +1562,29 @@ export interface components {
             /** Published */
             published: boolean;
         };
+        /** StepResponse */
+        StepResponse: {
+            /** Attempts */
+            attempts: number;
+            /** Compensation Status */
+            compensation_status: ("pending" | "in_flight" | "retry_wait" | "done" | "failed") | null;
+            /** Completed At */
+            completed_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Next Attempt At */
+            next_attempt_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "in_flight" | "retry_wait" | "succeeded" | "failed" | "skipped" | "not_run";
+            /**
+             * Step
+             * @enum {string}
+             */
+            step: "create_employee" | "provision_account" | "schedule_tasks" | "notify";
+        };
         /** SubmitFeedbackRequest */
         SubmitFeedbackRequest: {
             /** Comments */
@@ -1462,6 +1593,26 @@ export interface components {
             recommendation: string;
             /** Score */
             score: number;
+        };
+        /** TaskResponse */
+        TaskResponse: {
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "laptop" | "accounts" | "buddy" | "orientation";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "scheduled" | "cancelled";
+            /** Title */
+            title: string;
         };
         /** TenantResponse */
         TenantResponse: {
@@ -1479,6 +1630,8 @@ export interface components {
              * @description Legacy version precondition; alternatively supply If-Match
              */
             expected_version?: number | null;
+            /** Start Date */
+            start_date?: string | null;
             /** Target Stage */
             target_stage: string;
         };
@@ -2382,6 +2535,43 @@ export interface operations {
             };
         };
     };
+    getCandidateCaseOnboarding: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path: {
+                candidate_case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingSaga"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     transition_candidate_case_stage_v1_candidate_cases__candidate_case_id__stage_patch: {
         parameters: {
             query?: never;
@@ -2763,6 +2953,286 @@ export interface operations {
                         [key: string]: unknown;
                     };
                 };
+            };
+            /** @description Precondition failed; refetch before retrying */
+            412: {
+                headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Supply If-Match or expected_version */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    cancelOnboardingSaga: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Strong aggregate ETag, e.g. "3", a list of strong tags, or *. Alternative to expected_version; both must agree. Missing: 428; stale: 412; malformed or conflicting: 400. Idempotent replays are resolved first. */
+                "If-Match"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path: {
+                saga_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingSaga"];
+                };
+            };
+            /** @description Invalid or contradictory preconditions */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden or feature-disabled (feature: onboarding) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown saga or another tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description State disallows action; problem contains current_status */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Precondition failed; refetch before retrying */
+            412: {
+                headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Supply If-Match or expected_version */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    retryOnboardingSaga: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Strong aggregate ETag, e.g. "3", a list of strong tags, or *. Alternative to expected_version; both must agree. Missing: 428; stale: 412; malformed or conflicting: 400. Idempotent replays are resolved first. */
+                "If-Match"?: string | null;
+                /** @description Optional retry key: 1–255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After. */
+                "Idempotency-Key"?: string | null;
+                authorization?: string | null;
+                "X-Tenant-Id"?: string | null;
+                "X-Actor-Id"?: string | null;
+            };
+            path: {
+                saga_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    /** @description Strong aggregate version validator, e.g. "3". See ADR-007. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingSaga"];
+                };
+            };
+            /** @description Invalid or contradictory preconditions */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": {
+                        correlation_id: string;
+                        current_version?: number;
+                        detail: string;
+                        instance: string;
+                        status: number;
+                        title: string;
+                        /** Format: uri */
+                        type: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden or feature-disabled (feature: onboarding) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown saga or another tenant */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description State disallows action; problem contains current_status */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Precondition failed; refetch before retrying */
             412: {

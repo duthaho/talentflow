@@ -51,6 +51,7 @@ def test_candidate_detail_reads_are_tenant_scoped_and_private() -> None:
         "stage",
         "version",
         "created_at",
+        "hire_start_date",
         "source",
         "consent",
     }

@@ -1,6 +1,7 @@
 """External effects and durable attempt boundary, independent of frameworks."""
 
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Protocol
 
 
@@ -26,5 +27,23 @@ class Directory(Protocol):
 
 
 class SagaRepository(Protocol):
-    def claim(self, now) -> Claim | None: ...
+    def claim(self, now) -> Claim | bool | None: ...
     def record(self, claim: Claim, now, external_ref=None, error=None) -> bool: ...
+
+
+@dataclass(frozen=True)
+class CandidateSnapshot:
+    stage: str
+    requisition_id: str
+    hire_start_date: date | None
+    first_name: str
+    last_name: str
+    email: str
+
+
+class Candidates(Protocol):
+    def snapshot(self, tenant_id: str, candidate_case_id: str) -> CandidateSnapshot | None: ...
+
+
+class Clock(Protocol):
+    def __call__(self) -> datetime: ...

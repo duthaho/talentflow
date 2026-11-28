@@ -38,8 +38,8 @@ class TransitionCandidateCommand:
     expected_version: int | None
     actor_id: str
     correlation_id: str
-    start_date: date | None = None
     if_match: tuple[str, ...] | None = None
+    start_date: date | None = None
 
 
 class TransitionCandidateHandler:

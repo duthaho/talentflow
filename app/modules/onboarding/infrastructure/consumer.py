@@ -16,6 +16,8 @@ from app.shared.observability import consumer_outcomes
 
 def decode_event(body: bytes) -> dict:
     try:
+        if len(body) > 256 * 1024:
+            raise ValueError
         event = json.loads(body)
         if not isinstance(event, dict):
             raise ValueError

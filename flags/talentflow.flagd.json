@@ -88,7 +88,7 @@
       "metadata": {
         "kind": "release",
         "owner": "backend",
-        "issue": "DUTH-65",
+        "issue": "DUTH-64",
         "contextScope": "tenant",
         "createdAt": "2026-11-28",
         "expiresAt": "2027-02-26"

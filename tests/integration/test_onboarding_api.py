@@ -47,6 +47,15 @@ def test_get_actions_and_preconditions(api, process):
     )
     assert replay.status_code == 202 and replay.headers["idempotent-replayed"] == "true"
     assert replay.json() == response.json()
+    from app.modules.audit.persistence import AuditEvent
+
+    with process[0]() as session:
+        records = list(
+            session.scalars(
+                select(AuditEvent).where(AuditEvent.action == "onboarding.cancel_requested")
+            )
+        )
+        assert len(records) == 1 and records[0].actor_id == "hire" and records[0].correlation_id
     assert client.post(path, headers={**headers, "If-Match": '"2"'}).status_code == 409
     assert client.post(path).status_code == 401
 

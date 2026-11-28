@@ -14,21 +14,24 @@
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
-      "fullScopeAllowed": true,
+      "fullScopeAllowed": false,
       "protocol": "openid-connect",
-      "defaultClientScopes": [],
+      "defaultClientScopes": [
+        "basic",
+        "roles",
+        "service_account",
+        "kc-admin-api"
+      ],
       "optionalClientScopes": [],
       "protocolMappers": [
         {
-          "name": "roles",
+          "name": "admin-audience",
           "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "protocolMapper": "oidc-audience-mapper",
           "config": {
-            "usermodel.clientRoleMapping.clientId": "realm-management",
-            "claim.name": "resource_access.realm-management.roles",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "access.token.claim": "true"
+            "included.client.audience": "realm-management",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
           }
         }
       ]
@@ -53,9 +56,19 @@
         "providerId": "declarative-user-profile",
         "config": {
           "kc.user.profile.config": [
-            "{\"attributes\": [{\"name\": \"onboarding_saga_id\", \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"talentflow_tenant_id\", \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": false}]}"
+            "{\"attributes\": [{\"name\": \"username\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"email\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"firstName\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"lastName\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"onboarding_saga_id\", \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": false}, {\"name\": \"talentflow_tenant_id\", \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": false}]}"
           ]
         }
+      }
+    ]
+  },
+  "clientScopeMappings": {
+    "realm-management": [
+      {
+        "client": "talentflow-onboarding",
+        "roles": [
+          "manage-users"
+        ]
       }
     ]
   }

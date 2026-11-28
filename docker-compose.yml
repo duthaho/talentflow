@@ -355,6 +355,7 @@ services:
     environment:
       <<: *runtime_environment
       OTEL_SERVICE_NAME: talentflow-onboarding-worker
+      WORKER_MAX_BACKOFF_SECONDS: 5
       KEYCLOAK_ADMIN_URL: http://keycloak:8080
       KEYCLOAK_ONBOARDING_REALM: employees
       KEYCLOAK_ONBOARDING_CLIENT_ID: talentflow-onboarding

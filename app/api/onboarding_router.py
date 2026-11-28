@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.api.conditional_requests import (
     CONDITIONAL_RESPONSES,
+    ETAG_HEADER,
     ETAG_RESPONSE,
     IfMatch,
     etag,
@@ -123,6 +124,14 @@ def owned_saga(
 
 
 router = APIRouter(tags=["onboarding"], route_class=CommandRoute)
+ACTION_RESPONSES = {
+    **CONDITIONAL_RESPONSES,
+    202: {"headers": {"ETag": ETAG_HEADER}},
+    401: {"description": "Authentication required"},
+    403: {"description": "Forbidden or feature-disabled (feature: onboarding)"},
+    404: {"description": "Unknown saga or another tenant"},
+    409: {"description": "State disallows action; problem contains current_status"},
+}
 
 
 @router.get(
@@ -191,7 +200,7 @@ def act(action, request, response, session, saga, actor):
     "/v1/onboarding-sagas/{saga_id}/retry",
     response_model=OnboardingSaga,
     status_code=202,
-    responses=CONDITIONAL_RESPONSES,
+    responses=ACTION_RESPONSES,
     operation_id="retryOnboardingSaga",
 )
 def retry(
@@ -209,7 +218,7 @@ def retry(
     "/v1/onboarding-sagas/{saga_id}/cancel",
     response_model=OnboardingSaga,
     status_code=202,
-    responses=CONDITIONAL_RESPONSES,
+    responses=ACTION_RESPONSES,
     operation_id="cancelOnboardingSaga",
 )
 def cancel(

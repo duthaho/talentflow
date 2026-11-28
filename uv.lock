@@ -1634,6 +1634,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "dnspython" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "openfeature-provider-flagd" },
     { name = "openfeature-sdk" },
     { name = "opentelemetry-api" },
@@ -1653,7 +1654,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "jsonschema" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -1668,6 +1668,7 @@ requires-dist = [
     { name = "cryptography", specifier = ">=50.0.1,<51" },
     { name = "dnspython", specifier = ">=2.8,<3" },
     { name = "fastapi", specifier = ">=0.115,<1.0" },
+    { name = "httpx", specifier = ">=0.28,<1.0" },
     { name = "openfeature-provider-flagd", specifier = "==0.6.1" },
     { name = "openfeature-sdk", specifier = "==0.10.0" },
     { name = "opentelemetry-api", specifier = ">=1.45.2,<2.0" },
@@ -1687,7 +1688,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28,<1.0" },
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "pytest", specifier = ">=9.0.3,<10.0" },
     { name = "pytest-cov", specifier = ">=6.0,<7.0" },
