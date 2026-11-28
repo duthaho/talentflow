@@ -9,6 +9,10 @@ from app.modules.organization.application.ports import (
 )
 
 
+class InvalidTenantAdminError(ValueError):
+    pass
+
+
 class TenantSlugAlreadyExistsError(ValueError):
     pass
 
@@ -35,6 +39,8 @@ class OrganizationService:
         self._unit_of_work = unit_of_work
 
     def create_tenant(self, command: CreateTenantCommand) -> TenantView:
+        if command.admin_id.startswith("system:"):
+            raise InvalidTenantAdminError("System principals cannot hold memberships")
         if self._repository.slug_exists(slug=command.slug):
             raise TenantSlugAlreadyExistsError("Tenant slug already exists")
         tenant = self._repository.create_tenant(

@@ -18,6 +18,7 @@ export const CASE: CandidateCaseDetail = {
   email: "ada@example.test",
   stage: "screening",
   version: 2,
+  source: "staff",
   created_at: "2026-11-20T09:00:00Z",
 };
 

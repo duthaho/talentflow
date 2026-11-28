@@ -17,8 +17,9 @@ RUN addgroup --system talentflow && adduser --system --ingroup talentflow talent
 COPY --from=build --chown=talentflow:talentflow /web/.next/standalone ./
 COPY --from=build --chown=talentflow:talentflow /web/.next/static ./.next/static
 COPY --from=build --chown=talentflow:talentflow /web/public ./public
+COPY --from=build --chown=talentflow:talentflow /web/ingress.cjs ./ingress.cjs
 USER talentflow
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
     CMD wget -q -O /dev/null http://127.0.0.1:3000/signed-out || exit 1
-CMD ["node", "server.js"]
+CMD ["node", "--require", "./ingress.cjs", "server.js"]

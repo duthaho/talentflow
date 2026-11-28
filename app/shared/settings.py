@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_requests_per_minute: int = 120
     rate_limit_trusted_proxy_cidrs: str = ""
+    careers_apply_limit_per_hour: int = Field(default=5, gt=0)
+    careers_apply_limit_per_email_per_day: int = Field(default=3, gt=0)
     attachment_storage_root: str = "./data/attachments"
     attachment_storage_backend: Literal["filesystem", "s3"] = "filesystem"
     attachment_s3_endpoint_url: str = ""

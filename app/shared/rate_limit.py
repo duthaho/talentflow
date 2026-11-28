@@ -100,11 +100,21 @@ def install_rate_limit_middleware(
     ) -> Response:
         if not enabled or request.method == "OPTIONS" or request.url.path in _EXEMPT_PATHS:
             return await call_next(request)
-        decision = limiter.consume(
-            f"talentflow:rate-limit:{client_identifier(request, trusted_proxy_cidrs)}",
-            limit=requests_per_minute,
-            window_seconds=60,
-        )
+        try:
+            decision = limiter.consume(
+                f"talentflow:rate-limit:{client_identifier(request, trusted_proxy_cidrs)}",
+                limit=requests_per_minute,
+                window_seconds=60,
+            )
+        except Exception:
+            if request.url.path.startswith("/v1/public/"):
+                return problem_response(
+                    request,
+                    status=503,
+                    detail="Application service temporarily unavailable",
+                    type_uri=problem_type("service-unavailable"),
+                )
+            raise
         headers = {
             "X-RateLimit-Limit": str(requests_per_minute),
             "X-RateLimit-Remaining": str(decision.remaining),

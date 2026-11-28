@@ -28,6 +28,8 @@ class CandidatePage:
 @dataclass(frozen=True)
 class CandidateDetail(CandidateListItem):
     created_at: datetime
+    source: str = "staff"
+    consent: dict | None = None
 
 
 class CandidateRepository(Protocol):

@@ -78,6 +78,14 @@ export function CandidateDetail({
       {state.status === "ready" && (
         <>
           <Profile candidate={state.data} />
+          {state.data.source === "careers" && <p>Source: careers page</p>}
+          {state.data.consent && (
+            <Panel id="consent" title="Consent">
+              <p>{state.data.consent.version}</p>
+              <time dateTime={state.data.consent.accepted_at}>{formatTimestamp(state.data.consent.accepted_at)}</time>
+              <p className="mt-3 whitespace-pre-wrap">{state.data.consent.text ?? "Consent text cleared under the retention policy."}</p>
+            </Panel>
+          )}
           <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
             <div className="space-y-6">
               {permissions.attachments ? (

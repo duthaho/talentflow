@@ -1,3 +1,3 @@
-from app.modules.candidates.infrastructure.models import CandidateCase
+from app.modules.candidates.infrastructure.models import CandidateCase, CandidateConsent
 
-__all__ = ["CandidateCase"]
+__all__ = ["CandidateCase", "CandidateConsent"]

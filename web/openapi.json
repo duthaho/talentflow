@@ -414,6 +414,16 @@
       },
       "CandidateCaseDetailResponse": {
         "properties": {
+          "consent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CandidateConsentResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -437,6 +447,15 @@
           },
           "requisition_id": {
             "title": "Requisition Id",
+            "type": "string"
+          },
+          "source": {
+            "default": "staff",
+            "enum": [
+              "staff",
+              "careers"
+            ],
+            "title": "Source",
             "type": "string"
           },
           "stage": {
@@ -502,6 +521,37 @@
           "version"
         ],
         "title": "CandidateCaseResponse",
+        "type": "object"
+      },
+      "CandidateConsentResponse": {
+        "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "text",
+          "accepted_at"
+        ],
+        "title": "CandidateConsentResponse",
         "type": "object"
       },
       "CandidateListItem": {
@@ -1738,6 +1788,127 @@
           "instance",
           "correlation_id"
         ],
+        "type": "object"
+      },
+      "PublicConsent": {
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "text"
+        ],
+        "title": "PublicConsent",
+        "type": "object"
+      },
+      "PublicListing": {
+        "properties": {
+          "requisitions": {
+            "items": {
+              "$ref": "#/components/schemas/PublicRequisition"
+            },
+            "title": "Requisitions",
+            "type": "array"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/PublicTenantResponse"
+          },
+          "upload_policy": {
+            "$ref": "#/components/schemas/PublicUploadPolicy"
+          }
+        },
+        "required": [
+          "tenant",
+          "upload_policy",
+          "requisitions"
+        ],
+        "title": "PublicListing",
+        "type": "object"
+      },
+      "PublicRequisition": {
+        "properties": {
+          "department": {
+            "title": "Department",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "title": "Published At",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "department",
+          "published_at"
+        ],
+        "title": "PublicRequisition",
+        "type": "object"
+      },
+      "PublicTenantResponse": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ],
+        "title": "PublicTenantResponse",
+        "type": "object"
+      },
+      "PublicUploadPolicy": {
+        "properties": {
+          "content_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Types",
+            "type": "array"
+          },
+          "max_bytes": {
+            "title": "Max Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_bytes",
+          "content_types"
+        ],
+        "title": "PublicUploadPolicy",
+        "type": "object"
+      },
+      "Received": {
+        "properties": {
+          "status": {
+            "default": "received",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "Received",
         "type": "object"
       },
       "RequisitionListResponse": {
@@ -5433,6 +5604,184 @@
           }
         },
         "summary": "Approve Offer"
+      }
+    },
+    "/v1/public/tenants/{slug}/consent": {
+      "get": {
+        "operationId": "consent_v1_public_tenants__slug__consent_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicConsent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Consent",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/v1/public/tenants/{slug}/requisitions": {
+      "get": {
+        "operationId": "listing_v1_public_tenants__slug__requisitions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicListing"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Listing",
+        "tags": [
+          "public"
+        ]
+      }
+    },
+    "/v1/public/tenants/{slug}/requisitions/{requisition_id}/applications": {
+      "post": {
+        "description": "Idempotency-Key is ignored for anonymous multipart intake; deduplication uses tenant/email.",
+        "operationId": "apply_v1_public_tenants__slug__requisitions__requisition_id__applications_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "requisition_id",
+            "required": true,
+            "schema": {
+              "title": "Requisition Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "consent_accepted": {
+                    "type": "string"
+                  },
+                  "consent_version": {
+                    "type": "string"
+                  },
+                  "cv": {
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "first_name": {
+                    "type": "string"
+                  },
+                  "last_name": {
+                    "type": "string"
+                  },
+                  "website": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "first_name",
+                  "last_name",
+                  "email",
+                  "consent_version",
+                  "consent_accepted",
+                  "cv"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Received"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply",
+        "tags": [
+          "public"
+        ]
       }
     },
     "/v1/reports/pipeline": {

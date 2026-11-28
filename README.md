@@ -174,3 +174,32 @@ infra/opentofu/ legacy AWS foundation — out of scope, not maintained
 ```
 
 RabbitMQ relay, retry/DLQ inspection and replay: [event operations](docs/events/operations.md).
+
+### Public careers
+
+Publish a requisition, then visit `/careers/<tenant-slug>` without signing in.
+Applicants consent to the displayed wording and submit a clean PDF or DOCX. Staff
+see the source and immutable consent record on candidate detail. No applicant
+confirmation email is sent. See [ADR-009](docs/adr/009-public-careers-intake.md).
+
+- `CAREERS_APPLY_LIMIT_PER_HOUR`: per visitor IP, default 5.
+- `CAREERS_APPLY_LIMIT_PER_EMAIL_PER_DAY`: per tenant and normalized email, default 3.
+- `CAREERS_TRUSTED_PROXY_HOPS`: web ingress trusted proxy count, default 0 (socket peer).
+- `RATE_LIMIT_TRUSTED_PROXY_CIDRS`: compose trusts only the fixed web `/32`.
+- `ATTACHMENT_MAX_BYTES`: keep the same value in web and API, default 5242880.
+
+Start web through `npm run dev`, `npm start`, or the Docker image command so its
+socket ingress hook is loaded. The deployed API must be reachable only through
+web. The development loopback API port does not trust forwarded addresses. Public
+listing and consent cache for approximately 60 seconds. Changes in publication
+are enforced immediately on applications.
+
+Opt-in tests use disposable local services only: `CAREERS_CLAMD_PORT`,
+`CAREERS_TEST_DATABASE_URL`, `CAREERS_TEST_REDIS_URL`. Run
+`uv run python -m pytest tests/integration/test_careers_live.py` with those set
+for real scanner, PostgreSQL race, and Redis evidence.
+
+For the careers migration PostgreSQL round trip, set
+`CAREERS_MIGRATION_DATABASE_URL` to a fresh disposable database and run
+`uv run python -m pytest tests/integration/test_careers_migration.py`. It verifies
+upgrade/downgrade/upgrade while preserving the webhook schema and existing endpoint.

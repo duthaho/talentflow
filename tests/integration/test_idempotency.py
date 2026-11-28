@@ -225,6 +225,7 @@ def test_openapi_coverage_and_exclusions(context):
     excluded = {
         "/v1/tenants",
         "/v1/calendar-subscriptions",
+        "/v1/public/tenants/{slug}/requisitions/{requisition_id}/applications",
         "/v1/webhook-endpoints",
         "/v1/webhook-endpoints/{endpoint_id}/secret-rotations",
         "/v1/candidate-cases/{candidate_case_id}/attachments",

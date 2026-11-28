@@ -81,3 +81,20 @@ An unexpected server failure occurred. Its detail never exposes exception data.
 ## service-unavailable
 
 A required dependency is temporarily unavailable.
+
+## length-required
+
+`411` on public careers application uploads without an explicit `Content-Length`,
+with invalid length, or with any `Transfer-Encoding`. This check runs before
+multipart parsing. The same-origin web handler supplies the actual buffered length.
+
+## payload-too-large
+
+`413` when a public application body exceeds `ATTACHMENT_MAX_BYTES + 65536`,
+including when the streamed bytes exceed a misleading declared length. Choose a
+smaller CV. File validation within the body cap still uses `422`.
+
+Public careers requests also return `503` (`service-unavailable`) when Redis,
+ClamAV, or the API upstream is unavailable. No application is persisted when
+quota or malware scanning cannot complete. Retry later; a `429` includes
+`Retry-After`. A stale consent version returns `422`: reload and accept the text.

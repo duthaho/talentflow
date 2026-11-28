@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 METADATA_ALLOWLIST: dict[str, frozenset[str]] = {
+    "candidate_case.reapplied": frozenset({"requisition_id"}),
     "candidate_case.created": frozenset({"requisition_id", "stage"}),
     "candidate_case.stage_transitioned": frozenset({"from_stage", "to_stage", "version"}),
     "candidate_case.legal_hold_set": frozenset(),

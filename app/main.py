@@ -15,6 +15,7 @@ from app.api.identity_router import router as identity_router
 from app.api.interview_router import router as interview_router
 from app.api.offer_router import router as offer_router
 from app.api.organization_router import router as organization_router
+from app.api.public_careers_router import router as public_careers_router
 from app.api.reporting_router import router as reporting_router
 from app.api.retention_router import router as retention_router
 from app.api.webhook_contract import install_webhook_openapi
@@ -30,6 +31,7 @@ from app.shared.rate_limit import (
     install_rate_limit_middleware,
 )
 from app.shared.settings import Settings, settings
+from app.shared.system_users import ensure_system_users
 
 
 def create_app(database_url: str | None = None, app_settings: Settings | None = None) -> FastAPI:
@@ -48,6 +50,8 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
     async def lifespan(_: FastAPI):
         if runtime_settings.app_env != "production":
             Base.metadata.create_all(engine)
+            with session_factory() as session:
+                ensure_system_users(session)
         yield
         rate_limiter.close()
         engine.dispose()
@@ -92,6 +96,7 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
         )
     instrument_app(app)
     for router in (
+        public_careers_router,
         attachment_router,
         attachment_policy_router,
         audit_router,

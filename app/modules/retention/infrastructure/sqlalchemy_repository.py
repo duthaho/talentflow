@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.modules.attachments.application.ports import AttachmentStorage
 from app.modules.attachments.persistence import Attachment
 from app.modules.audit.persistence import AuditEvent
-from app.modules.candidates.persistence import CandidateCase
+from app.modules.candidates.persistence import CandidateCase, CandidateConsent
 from app.modules.retention.application.retention import LegalHoldView, RetentionPolicy
 from app.modules.retention.persistence import CandidateLegalHold
 from app.modules.retention.persistence import RetentionPolicy as RetentionPolicyRecord
@@ -121,6 +121,9 @@ class SqlAlchemyRetentionRepository:
             for attachment in attachments:
                 self._storage.delete(storage_key=attachment.storage_key)
                 self._session.delete(attachment)
+            consent = self._session.get(CandidateConsent, record.id)
+            if consent is not None:
+                consent.text = None
             record.first_name = "Redacted"
             record.last_name = "Candidate"
             record.email = f"purged+{record.id}@redacted.invalid"
