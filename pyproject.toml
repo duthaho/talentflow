@@ -25,11 +25,11 @@ dependencies = [
   "dnspython>=2.8,<3",
   "openfeature-sdk==0.10.0",
   "openfeature-provider-flagd==0.6.1",
+  "httpx>=0.28,<1.0",
 ]
 
 [dependency-groups]
 dev = [
-  "httpx>=0.28,<1.0",
   "jsonschema>=4.23,<5",
   "pytest>=9.0.3,<10.0",
   "pytest-cov>=6.0,<7.0",

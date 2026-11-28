@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.modules.candidates.domain.start_date import validate_start_date
 
 
 class CreateTenantRequest(BaseModel):
@@ -26,6 +28,7 @@ class WebhooksFeature(BaseModel):
 
 class Features(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    onboarding: bool = False
     webhooks: WebhooksFeature
 
 
@@ -72,13 +75,21 @@ class CreateCandidateCaseRequest(BaseModel):
 
 
 class TransitionCandidateCaseRequest(BaseModel):
+    start_date: date | None = None
+
     target_stage: str = Field(min_length=3, max_length=40)
     expected_version: int | None = Field(
         default=None, ge=1, description="Legacy version precondition; alternatively supply If-Match"
     )
 
+    @model_validator(mode="after")
+    def valid_start_date(self):
+        validate_start_date(self.target_stage, self.start_date, datetime.now(UTC).date())
+        return self
+
 
 class CandidateCaseResponse(BaseModel):
+    hire_start_date: date | None = None
     id: str
     requisition_id: str
     first_name: str

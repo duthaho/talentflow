@@ -3,25 +3,95 @@
   "flags": {
     "release.webhooks.outbound": {
       "state": "ENABLED",
-      "variants": {"on": true, "off": false},
+      "variants": {
+        "on": true,
+        "off": false
+      },
       "defaultVariant": "off",
       "targeting": {
-        "if": [{"in": [{"var": "tenant_id"}, ["00000000-0000-4000-8000-000000000001"]]}, "on", null]
+        "if": [
+          {
+            "in": [
+              {
+                "var": "tenant_id"
+              },
+              [
+                "00000000-0000-4000-8000-000000000001"
+              ]
+            ]
+          },
+          "on",
+          null
+        ]
       },
       "metadata": {
-        "kind": "release", "owner": "backend", "issue": "DUTH-65",
-        "contextScope": "tenant", "createdAt": "2026-11-28", "expiresAt": "2027-02-26"
+        "kind": "release",
+        "owner": "backend",
+        "issue": "DUTH-65",
+        "contextScope": "tenant",
+        "createdAt": "2026-11-28",
+        "expiresAt": "2027-02-26"
       }
     },
     "ops.webhooks.delivery": {
       "state": "ENABLED",
-      "variants": {"on": true, "off": false},
+      "variants": {
+        "on": true,
+        "off": false
+      },
       "defaultVariant": "on",
       "targeting": {
-        "if": [{"in": [{"var": "tenant_id"}, []]}, "off", null]
+        "if": [
+          {
+            "in": [
+              {
+                "var": "tenant_id"
+              },
+              []
+            ]
+          },
+          "off",
+          null
+        ]
       },
       "metadata": {
-        "kind": "ops", "owner": "backend", "issue": "DUTH-65", "contextScope": "tenant", "createdAt": "2026-11-28"
+        "kind": "ops",
+        "owner": "backend",
+        "issue": "DUTH-65",
+        "contextScope": "tenant",
+        "createdAt": "2026-11-28"
+      }
+    },
+    "release.onboarding.saga": {
+      "state": "ENABLED",
+      "variants": {
+        "on": true,
+        "off": false
+      },
+      "defaultVariant": "off",
+      "targeting": {
+        "if": [
+          {
+            "in": [
+              {
+                "var": "tenant_id"
+              },
+              [
+                "00000000-0000-4000-8000-000000000001"
+              ]
+            ]
+          },
+          "on",
+          null
+        ]
+      },
+      "metadata": {
+        "kind": "release",
+        "owner": "backend",
+        "issue": "DUTH-64",
+        "contextScope": "tenant",
+        "createdAt": "2026-11-28",
+        "expiresAt": "2027-02-26"
       }
     }
   }

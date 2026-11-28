@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 
 from app.modules.candidates.application.ports import (
     ApprovedOfferRepository,
@@ -9,6 +10,7 @@ from app.modules.candidates.application.ports import (
     UnitOfWork,
 )
 from app.modules.candidates.domain.candidate_case import CandidateCase
+from app.modules.candidates.domain.start_date import validate_start_date
 from app.modules.workflow.domain.candidate_state_machine import CandidateStage
 from app.shared.concurrency import resolve_expected_version
 
@@ -38,6 +40,7 @@ class TransitionCandidateCommand:
     actor_id: str
     correlation_id: str
     if_match: tuple[str, ...] | None = None
+    start_date: date | None = None
 
 
 class TransitionCandidateHandler:
@@ -86,7 +89,8 @@ class TransitionCandidateHandler:
             raise ApprovedOfferRequiredError(
                 "An approved offer is required before hiring a candidate"
             )
-        transitioned = candidate.transition(target_stage)
+        validate_start_date(command.target_stage, command.start_date, datetime.now(UTC).date())
+        transitioned = candidate.transition(target_stage, command.start_date)
         if not self._repository.transition(
             candidate=transitioned, expected_version=expected_version
         ):

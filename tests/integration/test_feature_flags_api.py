@@ -178,7 +178,11 @@ def test_api_actor_worker_agreement_and_outage(api, tmp_path, gate, delivery, ou
     assert client.get("/health/ready").status_code == 200
     if outage:
         warnings = [r for r in caplog.records if r.message == "feature_flag_evaluation_failed"]
-        assert len(warnings) == 2
+        assert {r.flag_key for r in warnings} == {
+            "release.webhooks.outbound",
+            "ops.webhooks.delivery",
+            "release.onboarding.saga",
+        }
 
 
 @pytest.mark.parametrize("account_for_pause", [True, False])

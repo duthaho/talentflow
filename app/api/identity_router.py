@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request, Response
 
 from app.api.schemas import CurrentActorResponse, Features, WebhooksFeature
-from app.modules.feature_flags.application.flags import Context, webhooks_state
+from app.modules.feature_flags.application.flags import ONBOARDING_SAGA, Context, webhooks_state
 from app.modules.identity.security import ROLE_PERMISSIONS, ActorContext, resolve_actor
 from app.modules.organization.persistence import Tenant, User
 from app.shared.database import SessionDep, forbidden
@@ -30,6 +30,9 @@ def get_current_actor(
         role=actor.role,
         permissions=sorted(ROLE_PERMISSIONS[actor.role]),
         features=Features(
-            webhooks=WebhooksFeature(enabled=state.enabled, delivery_paused=state.delivery_paused)
+            onboarding=request.app.state.feature_flags.is_enabled(
+                ONBOARDING_SAGA, Context(actor.tenant_id, actor.role)
+            ),
+            webhooks=WebhooksFeature(enabled=state.enabled, delivery_paused=state.delivery_paused),
         ),
     )

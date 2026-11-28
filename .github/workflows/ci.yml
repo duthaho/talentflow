@@ -13,6 +13,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  onboarding-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      COMPOSE_PROJECT_NAME: onboarding-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+          enable-cache: true
+      - run: uv sync --all-groups --frozen
+      - name: Verify real provisioning, broker, SMTP, crashes and migrations
+        run: scripts/verify_onboarding.sh
+
   hiring-e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -117,6 +132,7 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     env:
+      ONBOARDING_TEST_DATABASE_URL: postgresql+psycopg://talentflow:ci-password@localhost:5432/talentflow
       DUTH59_TEST_POSTGRES_URL: postgresql+psycopg://talentflow:ci-password@localhost:5432/talentflow
       DUTH59_TEST_RABBITMQ_URL: amqp://talentflow:talentflow@localhost:5672/%2Ftalentflow
       DATABASE_URL: postgresql+psycopg://talentflow:ci-password@localhost:5432/talentflow

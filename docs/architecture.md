@@ -249,6 +249,7 @@ Each consumer records `(consumer, event_id)` in an inbox table in the same trans
 | `tenant:read` | ✓ | ✓ | ✓ | ✓ |  |
 | `retention:manage` | ✓ | ✓ |  |  |  |
 | `retention:purge` | ✓ | ✓ |  |  |  |
+| `onboarding:manage` | ✓ | | | | |
 | `webhook:manage` | ✓ | | | | |
 <!-- permission-matrix:end -->
 

@@ -31,6 +31,22 @@
         "contextScope": "tenant",
         "createdAt": "2026-11-28"
       }
+    },
+    "release.onboarding.saga": {
+      "state": "ENABLED",
+      "variants": {
+        "on": true,
+        "off": false
+      },
+      "defaultVariant": "on",
+      "metadata": {
+        "kind": "release",
+        "owner": "backend",
+        "issue": "DUTH-65",
+        "contextScope": "tenant",
+        "createdAt": "2026-11-28",
+        "expiresAt": "2027-02-26"
+      }
     }
   }
 }

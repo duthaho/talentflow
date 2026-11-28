@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Protocol
 
 from app.modules.candidates.domain.candidate_case import CandidateCase
@@ -28,6 +28,7 @@ class CandidatePage:
 @dataclass(frozen=True)
 class CandidateDetail(CandidateListItem):
     created_at: datetime
+    hire_start_date: date | None = None
     source: str = "staff"
     consent: dict | None = None
 

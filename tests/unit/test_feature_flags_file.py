@@ -10,6 +10,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from prometheus_client import REGISTRY as METRICS
 
 from app.modules.feature_flags.application.flags import (
+    ONBOARDING_SAGA,
     REGISTRY,
     WEBHOOKS_DELIVERY,
     WEBHOOKS_OUTBOUND,
@@ -149,7 +150,7 @@ def test_lifecycle_rejects_each_invalid_stage(tmp_path, mutation, rule):
         release["state"] = "UNKNOWN"
     if mutation == "name":
         document["flags"]["bad-name"] = document["flags"].pop(WEBHOOKS_OUTBOUND.key)
-        registry = (replace(WEBHOOKS_OUTBOUND, key="bad-name"), WEBHOOKS_DELIVERY)
+        registry = (replace(WEBHOOKS_OUTBOUND, key="bad-name"), WEBHOOKS_DELIVERY, ONBOARDING_SAGA)
     if mutation == "metadata":
         del release["metadata"]["owner"]
     if mutation == "expired":
@@ -161,7 +162,7 @@ def test_lifecycle_rejects_each_invalid_stage(tmp_path, mutation, rule):
     if mutation == "role":
         release["targeting"]["if"][0] = {"var": "role"}
     if mutation == "fallback":
-        registry = (replace(WEBHOOKS_OUTBOUND, fallback=True), WEBHOOKS_DELIVERY)
+        registry = (replace(WEBHOOKS_OUTBOUND, fallback=True), WEBHOOKS_DELIVERY, ONBOARDING_SAGA)
     if mutation == "variants":
         release["variants"]["on"] = False
     if mutation == "else":
@@ -177,7 +178,7 @@ def test_lifecycle_rejects_each_invalid_stage(tmp_path, mutation, rule):
     if mutation == "fractional_bucket":
         release["targeting"]["if"][2] = {"fractional": [["other", 25], ["off", 75]]}
     if mutation.startswith("retired"):
-        registry = (replace(WEBHOOKS_OUTBOUND, retired=True), WEBHOOKS_DELIVERY)
+        registry = (replace(WEBHOOKS_OUTBOUND, retired=True), WEBHOOKS_DELIVERY, ONBOARDING_SAGA)
         if mutation == "retired_reference":
             release["defaultVariant"] = "on"
             del release["targeting"]
@@ -218,10 +219,10 @@ def test_all_valid_lifecycle_stages_pass(stage):
         release["defaultVariant"] = "on"
         del release["targeting"]
     if stage == "retired":
-        registry = (replace(WEBHOOKS_OUTBOUND, retired=True), WEBHOOKS_DELIVERY)
+        registry = (replace(WEBHOOKS_OUTBOUND, retired=True), WEBHOOKS_DELIVERY, ONBOARDING_SAGA)
     if stage == "removed":
         del document["flags"][WEBHOOKS_OUTBOUND.key]
-        registry = (WEBHOOKS_DELIVERY,)
+        registry = (WEBHOOKS_DELIVERY, ONBOARDING_SAGA)
     validate(document, registry, sources=[])
 
 

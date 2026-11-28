@@ -186,6 +186,8 @@ channels:
     description: >-
       Binding keys: `candidate_case.stage_changed.v1`, `candidate_case.erased.v1`. The process
       manager starts on `to_stage = hired` and ignores other stage changes after the inbox insert.
+      Implemented in DUTH-154 with a transactional inbox, tenant/case advisory lock and
+      durable compensation. Recovery is limited to 30 days; see docs/onboarding.md.
     messages:
       candidateCaseStageChanged:
         $ref: '#/components/messages/CandidateCaseStageChangedV1'

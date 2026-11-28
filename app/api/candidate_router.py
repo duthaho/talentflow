@@ -202,6 +202,7 @@ def transition_candidate_case_stage(
                 candidate_id=candidate_case_id,
                 tenant_id=actor.tenant_id,
                 target_stage=payload.target_stage,
+                start_date=payload.start_date,
                 expected_version=payload.expected_version,
                 if_match=parse_if_match(
                     request.headers.getlist("if-match") if if_match is not None else None
@@ -260,6 +261,7 @@ def transition_candidate_case_stage(
         first_name=record.first_name,
         last_name=record.last_name,
         email=record.email,
+        hire_start_date=record.hire_start_date,
         stage=transitioned.stage.value,
         version=transitioned.version,
     )

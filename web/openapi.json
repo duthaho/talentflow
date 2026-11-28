@@ -203,6 +203,24 @@
       }
     },
     "schemas": {
+      "Actions": {
+        "properties": {
+          "can_cancel": {
+            "title": "Can Cancel",
+            "type": "boolean"
+          },
+          "can_retry": {
+            "title": "Can Retry",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "can_retry",
+          "can_cancel"
+        ],
+        "title": "Actions",
+        "type": "object"
+      },
       "ApproveOfferRequest": {
         "properties": {
           "decision": {
@@ -452,6 +470,18 @@
             "title": "First Name",
             "type": "string"
           },
+          "hire_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hire Start Date"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -504,6 +534,18 @@
           "first_name": {
             "title": "First Name",
             "type": "string"
+          },
+          "hire_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hire Start Date"
           },
           "id": {
             "title": "Id",
@@ -1124,6 +1166,11 @@
       "Features": {
         "additionalProperties": false,
         "properties": {
+          "onboarding": {
+            "default": false,
+            "title": "Onboarding",
+            "type": "boolean"
+          },
           "webhooks": {
             "$ref": "#/components/schemas/WebhooksFeature"
           }
@@ -1667,6 +1714,112 @@
         "title": "OfferSummaryResponse",
         "type": "object"
       },
+      "OnboardingSaga": {
+        "properties": {
+          "actions": {
+            "$ref": "#/components/schemas/Actions"
+          },
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "candidate_case_id": {
+            "format": "uuid",
+            "title": "Candidate Case Id",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "compensating",
+              "compensated",
+              "completed",
+              "completed_with_warnings",
+              "cancelled",
+              "compensation_failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/StepResponse"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskResponse"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "enum": [
+                  "notify_exhausted",
+                  "no_recipients",
+                  "candidate_erased"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "id",
+          "candidate_case_id",
+          "status",
+          "attempt",
+          "version",
+          "start_date",
+          "started_at",
+          "finished_at",
+          "warning",
+          "steps",
+          "tasks",
+          "actions"
+        ],
+        "title": "OnboardingSaga",
+        "type": "object"
+      },
       "PipelineCandidateSummary": {
         "properties": {
           "by_stage": {
@@ -2184,6 +2337,102 @@
         "title": "SetRequisitionPublicationRequest",
         "type": "object"
       },
+      "StepResponse": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "compensation_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "in_flight",
+                  "retry_wait",
+                  "done",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compensation Status"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "in_flight",
+              "retry_wait",
+              "succeeded",
+              "failed",
+              "skipped",
+              "not_run"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "step": {
+            "enum": [
+              "create_employee",
+              "provision_account",
+              "schedule_tasks",
+              "notify"
+            ],
+            "title": "Step",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step",
+          "status",
+          "attempts",
+          "last_error",
+          "next_attempt_at",
+          "completed_at",
+          "compensation_status"
+        ],
+        "title": "StepResponse",
+        "type": "object"
+      },
       "SubmitFeedbackRequest": {
         "properties": {
           "comments": {
@@ -2210,6 +2459,45 @@
           "comments"
         ],
         "title": "SubmitFeedbackRequest",
+        "type": "object"
+      },
+      "TaskResponse": {
+        "properties": {
+          "due_date": {
+            "format": "date",
+            "title": "Due Date",
+            "type": "string"
+          },
+          "key": {
+            "enum": [
+              "laptop",
+              "accounts",
+              "buddy",
+              "orientation"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "scheduled",
+              "cancelled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "due_date",
+          "status"
+        ],
+        "title": "TaskResponse",
         "type": "object"
       },
       "TenantResponse": {
@@ -2249,6 +2537,18 @@
             ],
             "description": "Legacy version precondition; alternatively supply If-Match",
             "title": "Expected Version"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
           },
           "target_stage": {
             "maxLength": 40,
@@ -4442,6 +4742,105 @@
         "summary": "Create Offer"
       }
     },
+    "/v1/candidate-cases/{candidate_case_id}/onboarding": {
+      "get": {
+        "operationId": "getCandidateCaseOnboarding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "candidate_case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Actor-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingSaga"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "ETag": {
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Onboarding",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
     "/v1/candidate-cases/{candidate_case_id}/stage": {
       "patch": {
         "operationId": "transition_candidate_case_stage_v1_candidate_cases__candidate_case_id__stage_patch",
@@ -5662,6 +6061,596 @@
           }
         },
         "summary": "Approve Offer"
+      }
+    },
+    "/v1/onboarding-sagas/{saga_id}/cancel": {
+      "post": {
+        "operationId": "cancelOnboardingSaga",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "saga_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Saga Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Strong aggregate ETag, e.g. \"3\", a list of strong tags, or *. Alternative to expected_version; both must agree. Missing: 428; stale: 412; malformed or conflicting: 400. Idempotent replays are resolved first.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Strong aggregate ETag, e.g. \"3\", a list of strong tags, or *. Alternative to expected_version; both must agree. Missing: 428; stale: 412; malformed or conflicting: 400. Idempotent replays are resolved first.",
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Actor-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingSaga"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "ETag": {
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "correlation_id": {
+                      "type": "string"
+                    },
+                    "current_version": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance",
+                    "correlation_id"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Invalid or contradictory preconditions"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Forbidden or feature-disabled (feature: onboarding)"
+          },
+          "404": {
+            "description": "Unknown saga or another tenant"
+          },
+          "409": {
+            "description": "State disallows action; problem contains current_status"
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "correlation_id": {
+                      "type": "string"
+                    },
+                    "current_version": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance",
+                    "correlation_id"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Precondition failed; refetch before retrying",
+            "headers": {
+              "ETag": {
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "correlation_id": {
+                      "type": "string"
+                    },
+                    "current_version": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance",
+                    "correlation_id"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Supply If-Match or expected_version"
+          }
+        },
+        "summary": "Cancel",
+        "tags": [
+          "onboarding"
+        ]
+      }
+    },
+    "/v1/onboarding-sagas/{saga_id}/retry": {
+      "post": {
+        "operationId": "retryOnboardingSaga",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "saga_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Saga Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Strong aggregate ETag, e.g. \"3\", a list of strong tags, or *. Alternative to expected_version; both must agree. Missing: 428; stale: 412; malformed or conflicting: 400. Idempotent replays are resolved first.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Strong aggregate ETag, e.g. \"3\", a list of strong tags, or *. Alternative to expected_version; both must agree. Missing: 428; stale: 412; malformed or conflicting: 400. Idempotent replays are resolved first.",
+              "title": "If-Match"
+            }
+          },
+          {
+            "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional retry key: 1\u2013255 visible ASCII characters. Scoped to tenant and actor; same command replays its successful response; different command returns 422; in-progress command returns 409 with Retry-After.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Tenant-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Tenant-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Actor-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Actor-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "headers": {
+              "ETag": {
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingSaga"
+                }
+              }
+            },
+            "description": "Successful Response",
+            "headers": {
+              "ETag": {
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "correlation_id": {
+                      "type": "string"
+                    },
+                    "current_version": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance",
+                    "correlation_id"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Invalid or contradictory preconditions"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Forbidden or feature-disabled (feature: onboarding)"
+          },
+          "404": {
+            "description": "Unknown saga or another tenant"
+          },
+          "409": {
+            "description": "State disallows action; problem contains current_status"
+          },
+          "412": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "correlation_id": {
+                      "type": "string"
+                    },
+                    "current_version": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance",
+                    "correlation_id"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Precondition failed; refetch before retrying",
+            "headers": {
+              "ETag": {
+                "description": "Strong aggregate version validator, e.g. \"3\". See ADR-007.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "428": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "correlation_id": {
+                      "type": "string"
+                    },
+                    "current_version": {
+                      "type": "integer"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "format": "uri",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "instance",
+                    "correlation_id"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Supply If-Match or expected_version"
+          }
+        },
+        "summary": "Retry",
+        "tags": [
+          "onboarding"
+        ]
       }
     },
     "/v1/public/tenants/{slug}/consent": {

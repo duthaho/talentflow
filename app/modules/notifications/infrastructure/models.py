@@ -51,12 +51,16 @@ class NotificationDelivery(Base):
     __tablename__ = "notification_deliveries"
     __table_args__ = (UniqueConstraint("outbox_event_id", name="uq_notification_delivery_outbox"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    outbox_event_id: Mapped[str] = mapped_column(
-        ForeignKey("outbox_events.id", ondelete="CASCADE"), nullable=False
+    outbox_event_id: Mapped[str | None] = mapped_column(
+        ForeignKey("outbox_events.id", ondelete="CASCADE"), nullable=True
     )
     tenant_id: Mapped[str] = mapped_column(
         ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
+    kind: Mapped[str] = mapped_column(
+        String(40), default="offer_approval_recorded", server_default="offer_approval_recorded"
+    )
+    dedup_key: Mapped[str | None] = mapped_column(String(160), unique=True)
     recipient_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     channel: Mapped[str] = mapped_column(String(32), nullable=False, default="in_app")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
