@@ -112,6 +112,12 @@ def test_keycloak_privilege_boundary(services):
         async with httpx.AsyncClient() as client:
             token = await directory.access_token(client)
             headers = {"Authorization": "Bearer " + token}
+            for realm in ("talentflow", "master"):
+                response = await client.get(
+                    settings.keycloak_admin_url + "/admin/realms/" + realm + "/users",
+                    headers=headers,
+                )
+                assert response.status_code == 403, (realm, response.status_code)
             for realm in ("employees", "talentflow", "master"):
                 response = await client.get(
                     settings.keycloak_admin_url + "/admin/realms/" + realm + "/clients",
@@ -339,7 +345,79 @@ def test_real_broker_inbox_dedup_and_poison(process, services):
         broker.close()
 
 
-def test_api_hire_outbox_to_real_broker_starts_and_completes(process, services):
+def test_real_broker_recovers_flag_skipped_hire_without_duplicate(process, services):
+    import pika
+    from sqlalchemy import delete
+
+    from app.modules.notifications.persistence import InboxMessage
+
+    sessions, repo, _, _, now, original = process
+    with sessions.begin() as session:
+        session.execute(delete(Step))
+        session.execute(delete(Saga))
+
+    class Flags:
+        enabled = False
+
+        def is_enabled(self, *args):
+            return self.enabled
+
+    flags = Flags()
+    broker = RabbitBroker(
+        os.environ["ONBOARDING_TEST_RABBITMQ_URL"],
+        consumer="onboarding",
+        bindings=("candidate_case.stage_changed.v1", "candidate_case.erased.v1"),
+    )
+    consumer = OnboardingConsumer(sessions, broker, repo, flags, clock=lambda: now[0])
+    event = {
+        **original,
+        "specversion": "1.0",
+        "source": "urn:talentflow:candidates",
+        "datacontenttype": "application/json",
+        "correlationid": str(uuid4()),
+        "causationid": str(uuid4()),
+        "data": {**original["data"], "candidate_case_id": original["subject"]},
+    }
+
+    def republish():
+        broker.publish("", "onboarding.events", json.dumps(event).encode(), pika.BasicProperties())
+        consumer.drain()
+
+    try:
+        broker.connect()
+        republish()
+        with sessions() as session:
+            assert session.get(InboxMessage, ("onboarding", event["id"])) is not None
+            assert session.scalar(select(Saga)) is None
+        flags.enabled = True
+        republish()  # Enabling alone cannot bypass inbox deduplication.
+        with sessions.begin() as session:
+            assert session.scalar(select(Saga)) is None
+            session.execute(
+                delete(InboxMessage).where(
+                    InboxMessage.consumer == "onboarding", InboxMessage.event_id == event["id"]
+                )
+            )
+        republish()  # Execute the runbook's exact-entry removal/direct-queue recovery.
+        with sessions() as session:
+            saga_id = session.scalar(select(Saga.id))
+            assert saga_id is not None
+        with sessions.begin() as session:
+            session.execute(
+                delete(InboxMessage).where(
+                    InboxMessage.consumer == "onboarding", InboxMessage.event_id == event["id"]
+                )
+            )
+        republish()  # Repeating recovery also preserves the original saga identity.
+        republish()
+        with sessions() as session:
+            assert list(session.scalars(select(Saga.id))) == [saga_id]
+    finally:
+        broker.close()
+
+
+@pytest.mark.parametrize("explicit_date", [False, True])
+def test_api_hire_outbox_to_real_broker_starts_and_completes(process, services, explicit_date):
     import time
 
     from fastapi.testclient import TestClient
@@ -379,12 +457,20 @@ def test_api_hire_outbox_to_real_broker_starts_and_completes(process, services):
             app.state.session_factory = sessions
             headers = {"X-Tenant-Id": event["tenantid"], "X-Actor-Id": "hire", "If-Match": '"1"'}
             started = time.monotonic()
+            from datetime import UTC, datetime
+
+            start_date = (datetime.now(UTC).date() + timedelta(days=365)).isoformat()
             response = client.patch(
                 "/v1/candidate-cases/" + event["subject"] + "/stage",
                 headers=headers,
-                json={"target_stage": "hired"},
+                json={
+                    "target_stage": "hired",
+                    **({"start_date": start_date} if explicit_date else {}),
+                },
             )
             assert response.status_code == 200, response.text
+            if explicit_date:
+                assert response.json()["hire_start_date"] == start_date
             assert OutboxPublisher(sessions, broker).publish_pending() == 1
             consumer = OnboardingConsumer(
                 sessions, broker, repo, app.state.feature_flags, clock=lambda: now[0]
@@ -396,6 +482,10 @@ def test_api_hire_outbox_to_real_broker_starts_and_completes(process, services):
             )
             assert result.status_code == 200
             assert all(step["status"] == "succeeded" for step in result.json()["steps"])
+            assert len(result.json()["tasks"]) == 4
+            if explicit_date:
+                assert result.json()["start_date"] == start_date
+                assert all(task["due_date"] == start_date for task in result.json()["tasks"])
             assert time.monotonic() - started < 30
     finally:
         broker.close()
