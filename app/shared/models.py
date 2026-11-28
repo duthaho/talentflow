@@ -11,6 +11,7 @@ from app.modules.notifications.infrastructure.models import (
     OutboxEvent,
 )
 from app.modules.offers.infrastructure.models import ApprovalDecision, Offer
+from app.modules.onboarding.infrastructure import models as onboarding_models  # noqa: F401
 from app.modules.organization.infrastructure.models import Membership, Requisition, Tenant, User
 from app.modules.retention.infrastructure.models import CandidateLegalHold, RetentionPolicy
 from app.modules.webhooks.infrastructure import models as webhook_models  # noqa: F401
