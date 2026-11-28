@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CONTROL_CLASS } from "@/components/pipeline/form-fields";
 import { settle, type ApiClient } from "@/lib/api/client";
-import { describeProblem } from "@/lib/api/problem";
+import { describeProblem, isFeatureDisabled } from "@/lib/api/problem";
 import { formatTimestamp } from "@/lib/candidates/detail";
 import { usePagedList } from "@/lib/offers/use-paged-list";
 import { followDelivery } from "@/lib/webhooks/redelivery";
@@ -47,11 +47,15 @@ export function DeliveryLog({
   endpoint,
   pollIntervalMs = 2000,
   pollTimeoutMs = 60000,
+  readOnly = false,
   onRedelivered,
+  onFeatureDisabled,
 }: {
   api: ApiClient;
   endpoint: WebhookEndpoint;
+  readOnly?: boolean;
   onRedelivered: () => void;
+  onFeatureDisabled: () => void;
   pollIntervalMs?: number;
   pollTimeoutMs?: number;
 }) {
@@ -91,6 +95,10 @@ export function DeliveryLog({
     );
     if (!mounted.current) return;
     setRedelivering(null);
+    if (!queued.ok && isFeatureDisabled(queued.problem)) {
+      onFeatureDisabled();
+      return;
+    }
     if (!queued.ok) {
       setResults((current) => ({ ...current, [original.id]: { tone: "error", message: describeProblem(queued.problem).description } }));
       return;
@@ -117,7 +125,9 @@ export function DeliveryLog({
           <h2 id={headingId} className="text-lg font-medium">
             Delivery log: {hostOf(endpoint.url)}
           </h2>
-          <p className="text-sm text-muted-foreground">Newest first. Redelivery sends the same event again with the same webhook-id.</p>
+          <p className="text-sm text-muted-foreground">
+            {readOnly ? "Newest first." : "Newest first. Redelivery sends the same event again with the same webhook-id."}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <label htmlFor="delivery-status" className="text-sm text-muted-foreground">
@@ -143,7 +153,7 @@ export function DeliveryLog({
         </div>
       </header>
 
-      {endpoint.status !== "enabled" && (
+      {!readOnly && endpoint.status !== "enabled" && (
         <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">Enable this endpoint to redeliver events to it.</p>
       )}
 
@@ -192,7 +202,7 @@ export function DeliveryLog({
                   <DeliveryRow
                     key={delivery.id}
                     delivery={delivery}
-                    redeliverable={canRedeliver(delivery, endpoint)}
+                    redeliverable={!readOnly && canRedeliver(delivery, endpoint)}
                     busy={redelivering !== null}
                     redelivering={redelivering === delivery.id}
                     result={result}

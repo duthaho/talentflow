@@ -10,6 +10,12 @@ import { fakeDelivery, fakeEndpoint, fakeWebhooksBackend } from "../../../test/w
 import { WebhooksWorkspace } from "./webhooks-workspace";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+const router = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
+
+const LIVE = { enabled: true, deliveryPaused: false };
+const GATE_OFF = { enabled: false, deliveryPaused: false };
+const DISABLED_NOTICE = /Webhooks are turned off for your organization\. You can still view, disable, rotate or delete existing endpoints\./;
 
 type Backend = ReturnType<typeof fakeWebhooksBackend>;
 
@@ -17,9 +23,10 @@ async function settled() {
   await waitFor(() => expect(document.querySelectorAll('[aria-busy="true"]')).toHaveLength(0));
 }
 
-async function renderWorkspace(backend: Backend) {
-  render(<WebhooksWorkspace api={backend.api} pollIntervalMs={1} pollTimeoutMs={200} />);
+async function renderWorkspace(backend: Backend, feature = LIVE) {
+  const view = render(<WebhooksWorkspace feature={feature} api={backend.api} pollIntervalMs={1} pollTimeoutMs={200} />);
   await settled();
+  return view;
 }
 
 function endpointRow(host: string) {
@@ -37,6 +44,7 @@ async function typeInto(field: HTMLElement, text: string) {
 }
 
 beforeEach(() => {
+  router.refresh.mockClear();
   vi.mocked(toast.error).mockClear();
   vi.mocked(toast.success).mockClear();
 });
@@ -318,5 +326,126 @@ describe("WebhooksWorkspace delivery log (AC2)", () => {
     await userEvent.click(within(within(log).getByRole("alert")).getByRole("button", { name: "Retry" }));
     await settled();
     expect(within(log).getByText(/No deliveries yet/)).toBeInTheDocument();
+  });
+});
+
+describe("WebhooksWorkspace feature gate (ADR-010 §4)", () => {
+  const dead = fakeDelivery("dead", "crm", { status: "dead_lettered", attempt_count: 8, last_status_code: 503, completed_at: "2026-11-23T10:00:00Z" });
+
+  function actions(host: string) {
+    return within(endpointRow(host))
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+  }
+
+  it("keeps existing endpoints reachable but read-only while the gate is off", async () => {
+    const backend = fakeWebhooksBackend({
+      webhooksEnabled: false,
+      endpoints: [fakeEndpoint("crm"), fakeEndpoint("old", { status: "disabled", disabled_reason: "manual" })],
+      deliveries: [dead],
+    });
+    await renderWorkspace(backend, GATE_OFF);
+
+    expect(screen.getByRole("status")).toHaveTextContent(DISABLED_NOTICE);
+    expect(screen.getByRole("status")).toHaveTextContent("Events for enabled endpoints are kept and sent if webhooks are turned back on.");
+    expect(screen.queryByRole("button", { name: "New endpoint" })).not.toBeInTheDocument();
+    expect(actions("crm.example.com")).toEqual(["Deliveries", "Disable", "Rotate secret", "Delete"]);
+    expect(actions("old.example.com")).toEqual(["Deliveries", "Rotate secret", "Delete"]);
+
+    await userEvent.click(screen.getByRole("button", { name: "Deliveries for crm.example.com" }));
+    await settled();
+    const log = screen.getByRole("region", { name: "Delivery log: crm.example.com" });
+    expect(log.querySelector(`tr[data-delivery-id="dead"]`)).toHaveTextContent("Dead-lettered");
+    expect(within(log).queryByRole("button", { name: /^Redeliver/ })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Disable crm.example.com" }));
+    await waitFor(() => expect(endpointRow("crm.example.com")).toHaveTextContent("Disabled by an admin"));
+    expect(await writes(backend)[0].json()).toEqual({ enabled: false });
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("says webhooks are not available yet when the gate is off and nothing exists", async () => {
+    await renderWorkspace(fakeWebhooksBackend({ webhooksEnabled: false }), GATE_OFF);
+    expect(screen.getByText("Webhooks are not available for your organization yet.")).toBeInTheDocument();
+    expect(screen.queryByText(/No webhook endpoints yet/)).not.toBeInTheDocument();
+  });
+
+  it("warns that delivery is paused without restricting management", async () => {
+    await renderWorkspace(fakeWebhooksBackend({ endpoints: [fakeEndpoint("crm")] }), { enabled: true, deliveryPaused: true });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Delivery is paused for your organization. Pending deliveries are kept and will be sent when delivery resumes; waiting does not use up retry attempts.",
+    );
+    expect(screen.getByRole("button", { name: "New endpoint" })).toBeEnabled();
+    expect(actions("crm.example.com")).toEqual(["Deliveries", "Edit", "Disable", "Rotate secret", "Delete"]);
+  });
+
+  it("shows only the disabled notice during a flagd outage, whose fallback is gate off and delivery paused", async () => {
+    await renderWorkspace(fakeWebhooksBackend({ webhooksEnabled: false, endpoints: [fakeEndpoint("crm")] }), { enabled: false, deliveryPaused: true });
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent(DISABLED_NOTICE);
+    expect(screen.queryByText(/Delivery is paused/)).not.toBeInTheDocument();
+  });
+
+  it("switches to the disabled notice and refreshes the server render when create hits a closed gate", async () => {
+    const backend = fakeWebhooksBackend();
+    await renderWorkspace(backend);
+    backend.gate.enabled = false;
+
+    await userEvent.click(screen.getByRole("button", { name: "New endpoint" }));
+    const dialog = screen.getByRole("dialog", { name: "New webhook endpoint" });
+    await typeInto(within(dialog).getByLabelText("Receiver URL"), "https://hooks.acme.test/tf");
+    await userEvent.click(within(dialog).getByLabelText(/candidate_case\.created\.v1/));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create endpoint" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("status")).toHaveTextContent(DISABLED_NOTICE);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New endpoint" })).not.toBeInTheDocument();
+    expect(router.refresh).toHaveBeenCalledOnce();
+  });
+
+  it("handles a closed gate on edit, re-enable and redeliver the same way", async () => {
+    const backend = fakeWebhooksBackend({ endpoints: [fakeEndpoint("crm"), fakeEndpoint("old", { status: "disabled", disabled_reason: "manual" })], deliveries: [dead] });
+
+    const first = await renderWorkspace(backend);
+    backend.gate.enabled = false;
+    await userEvent.click(screen.getByRole("button", { name: "Edit crm.example.com" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(DISABLED_NOTICE));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    first.unmount();
+
+    backend.gate.enabled = true;
+    const second = await renderWorkspace(backend);
+    backend.gate.enabled = false;
+    await userEvent.click(screen.getByRole("button", { name: "Enable old.example.com" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(DISABLED_NOTICE));
+    expect(toast.error).not.toHaveBeenCalled();
+    second.unmount();
+
+    backend.gate.enabled = true;
+    await renderWorkspace(backend);
+    await userEvent.click(screen.getByRole("button", { name: "Deliveries for crm.example.com" }));
+    await settled();
+    backend.gate.enabled = false;
+    await userEvent.click(screen.getByRole("button", { name: /^Redeliver/ }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(DISABLED_NOTICE));
+    expect(screen.queryByRole("button", { name: /^Redeliver/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    expect(router.refresh).toHaveBeenCalledTimes(3);
+  });
+
+  it("restores the full workspace when a refreshed render reports the gate on again", async () => {
+    const backend = fakeWebhooksBackend({ webhooksEnabled: false, endpoints: [fakeEndpoint("crm")] });
+    const view = await renderWorkspace(backend, GATE_OFF);
+    expect(screen.queryByRole("button", { name: "New endpoint" })).not.toBeInTheDocument();
+
+    backend.gate.enabled = true;
+    view.rerender(<WebhooksWorkspace feature={LIVE} api={backend.api} pollIntervalMs={1} pollTimeoutMs={200} />);
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New endpoint" })).toBeInTheDocument();
+    expect(actions("crm.example.com")).toContain("Edit");
   });
 });

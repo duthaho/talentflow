@@ -62,13 +62,17 @@ export function fakeWebhooksBackend({
   endpoints = [],
   deliveries = [],
   redeliveryResult = (delivery) => ({ ...delivery, status: "succeeded", attempt_count: 1, last_status_code: 204, completed_at: "2026-11-27T10:00:05Z" }),
+  webhooksEnabled = true,
   override,
 }: {
   endpoints?: WebhookEndpoint[];
   deliveries?: WebhookDelivery[];
   redeliveryResult?: (pending: WebhookDelivery) => WebhookDelivery;
+  webhooksEnabled?: boolean;
   override?: Handler;
 } = {}) {
+  // Mutable so a test can close the ADR-010 release gate mid-session, as a flagd reload would.
+  const gate = { enabled: webhooksEnabled };
   const store = new Map(endpoints.map((item) => [item.id, structuredClone(item)]));
   const log = new Map(deliveries.map((item) => [item.id, structuredClone(item)]));
   const requests: Request[] = [];
@@ -94,6 +98,11 @@ export function fakeWebhooksBackend({
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
+    if (!gate.enabled && (await gatedOff(request.clone(), method, path))) {
+      return problem(403, "feature-disabled", "Webhooks are not enabled for this organization. Existing endpoints can still be viewed, disabled, rotated or deleted.", {
+        feature: "webhooks",
+      });
+    }
 
     if (method === "GET" && path === "/v1/webhook-event-types") return Response.json({ items: EVENT_TYPES });
 
@@ -219,5 +228,16 @@ export function fakeWebhooksBackend({
   });
 
   const api = createApiClient({ baseUrl: "http://api.test", fetch: fetchMock as unknown as typeof fetch });
-  return { api, requests, fetchMock, store, log };
+  return { api, requests, fetchMock, store, log, gate };
+}
+
+// ADR-010 §3: with the gate off only create, redeliver and a PATCH other than exactly {"enabled": false} are refused.
+async function gatedOff(request: Request, method: string, path: string): Promise<boolean> {
+  if (method === "POST" && path === "/v1/webhook-endpoints") return true;
+  if (method === "POST" && path.endsWith("/redeliveries")) return true;
+  if (method === "PATCH") {
+    const body = (await request.json()) as Record<string, unknown>;
+    return !(Object.keys(body).length === 1 && body.enabled === false);
+  }
+  return false;
 }
