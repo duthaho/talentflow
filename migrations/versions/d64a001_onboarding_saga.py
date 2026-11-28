@@ -28,7 +28,7 @@ def upgrade():
     op.create_table(
         "onboarding_sagas",
         sa.Column("id", sa.String(length=36), nullable=False),
-        sa.Column("tenant_id", sa.NullType(), nullable=False),
+        sa.Column("tenant_id", sa.String(length=36), nullable=False),
         sa.Column("candidate_case_id", sa.String(length=36), nullable=False),
         sa.Column("status", sa.String(length=24), nullable=False),
         sa.Column("attempt", sa.Integer(), server_default="1", nullable=False),
@@ -129,7 +129,7 @@ def upgrade():
     )
     op.create_table(
         "onboarding_erasure_tombstones",
-        sa.Column("tenant_id", sa.NullType(), nullable=False),
+        sa.Column("tenant_id", sa.String(length=36), nullable=False),
         sa.Column("candidate_case_id", sa.String(length=36), nullable=False),
         sa.Column("erased_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("source_event_id", sa.String(length=36), nullable=False),
