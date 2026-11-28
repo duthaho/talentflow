@@ -14,7 +14,7 @@ const router = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
 const LIVE = { enabled: true, deliveryPaused: false };
-const GATE_OFF = { enabled: false, deliveryPaused: false };
+const GATE_OFF = { enabled: false, deliveryPaused: true };
 const DISABLED_NOTICE = /Webhooks are turned off for your organization\. You can still view, disable, rotate or delete existing endpoints\./;
 
 type Backend = ReturnType<typeof fakeWebhooksBackend>;
@@ -379,8 +379,8 @@ describe("WebhooksWorkspace feature gate (ADR-010 §4)", () => {
     expect(actions("crm.example.com")).toEqual(["Deliveries", "Edit", "Disable", "Rotate secret", "Delete"]);
   });
 
-  it("shows only the disabled notice during a flagd outage, whose fallback is gate off and delivery paused", async () => {
-    await renderWorkspace(fakeWebhooksBackend({ webhooksEnabled: false, endpoints: [fakeEndpoint("crm")] }), { enabled: false, deliveryPaused: true });
+  it("shows only the disabled notice when the gate is off or flagd is down, since delivery then also reports paused", async () => {
+    await renderWorkspace(fakeWebhooksBackend({ webhooksEnabled: false, endpoints: [fakeEndpoint("crm")] }), GATE_OFF);
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(screen.getByRole("status")).toHaveTextContent(DISABLED_NOTICE);
     expect(screen.queryByText(/Delivery is paused/)).not.toBeInTheDocument();
