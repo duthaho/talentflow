@@ -146,7 +146,7 @@ Rules:
 |---|---|
 | `candidate_case.stage_changed.v1`, `to_stage = hired` | Evaluate the flag. Insert a saga and its step rows, unless a saga for `(tenant_id, candidate_case_id)` already exists (unique constraint) or an erasure tombstone exists. |
 | `candidate_case.stage_changed.v1`, any other `to_stage` | Inbox insert only (`skipped`). |
-| `candidate_case.erased.v1` | Set `erased_at` on the saga, or write a tombstone when no saga exists, so a late `hired` event cannot start one. Then by state:<br>• `running` before the pivot → cancel (compensate), ending `cancelled`.<br>• `running` after the pivot (notify pending) → notify is skipped without reading the candidate or sending, and the saga ends `completed_with_warnings` (`candidate_erased`).<br>• `compensating` → finishes compensating, then ends `cancelled`.<br>• `compensated` → moves to `cancelled`, so retry returns `409`.<br>• `completed`, `completed_with_warnings`, `cancelled`, `compensation_failed` → unchanged (no personal data held).<br>Every step checks `erased_at` before reading the candidate port and never sends data for an erased candidate. |
+| `candidate_case.erased.v1` | Set `erased_at` on the saga, or write a tombstone when no saga exists, so a late `hired` event cannot start one. Then by state:<br>• `running` before the pivot → cancel (compensate), ending `cancelled`.<br>• `running` after the pivot (notify pending) → notify is skipped without reading the candidate or sending, and the saga ends `completed_with_warnings` (`candidate_erased`).<br>• `compensating` → finishes compensating, then ends `cancelled`.<br>• `compensated` → moves to `cancelled`, so retry returns `409`.<br>• `completed`, `completed_with_warnings`, `cancelled` → unchanged (no personal data held by the saga).<br>• `compensation_failed` → unchanged, but a failed compensation may have left name and email in the HRIS or Keycloak, so the handler logs and counts `onboarding_erasure_cleanup_required` (saga id only) and the runbook covers the cleanup.<br>Every step checks `erased_at` before reading the candidate port and never sends data for an erased candidate. |
 
 ### Configuration (names only)
 
@@ -223,7 +223,7 @@ Traced to the issue's AC1–AC4.
   - The process manager's state machine and step policy live in `app/modules/onboarding/domain`.
   - The HRIS, Keycloak, clock, candidates and notification ports are in `application`.
   - pika, httpx and SQLAlchemy stay in `infrastructure`.
-- Schema changes go through Alembic, expand-only: new `onboarding_*` tables and the nullable `candidate_cases.hire_start_date`.
+- Schema changes go through Alembic, expand-only: new `onboarding_*` tables, the nullable `candidate_cases.hire_start_date`, and an expand-only change to `notification_deliveries` in the notifications module (Plan, design gap G1).
 - The consumer uses the shared RabbitMQ transport, retry and DLQ, and the inbox. No second messaging path.
 - No change to the event envelope or to any published event schema.
 - flagd usage follows ADR 010 in full: registry, lint, tenant-only context, fallback `false`.
@@ -267,4 +267,91 @@ None. The requester answered all six on 2026-11-28. The two adjustments above fo
 
 ## Plan
 
-(added at the `plan` step: design summary or link, test plan, threat model, sub-issues by stage)
+Sources: Đông-SA's technical design, Diễm-QA's test plan and Hoàng-Security's threat model, posted on DUTH-64 on 2026-11-28 in the plan-asks thread. This section records the decisions the implementation follows. Those three comments carry the full detail: the complete DDL, the OpenAPI fragment and the per-AC test table.
+
+### Changes accepted into the spec
+
+These came out of the design and the threat model. They are binding on stage 1 and extend the spec's Contract and ACs.
+
+| # | Change | Source |
+|---|---|---|
+| G1 | `notification_deliveries` cannot hold an onboarding email today: `outbox_event_id` is `NOT NULL`, `UNIQUE` and has an FK, and the sender hard-codes the offer text. In the same migration, as an expand-only change: make `outbox_event_id` nullable, add `kind varchar(40) NOT NULL DEFAULT 'offer_approval_recorded'` and `dedup_key varchar(160) NULL UNIQUE` (`onboarding:<saga_id>:<attempt>:<recipient_id>`). The sender picks its template from `kind`. | Đông-SA |
+| G2 | The delivery `payload_json` holds ids, the start date and task keys only. The `onboarding_ready` template reads the name at send time through the candidates read. If the case has been anonymized by then, the email says "a new hire". | Đông-SA |
+| G3 | Keycloak 26 drops undeclared user attributes. `realm-employees.json` declares `onboarding_saga_id` in the user profile, with view and edit for admin only. The AC12 test asserts the attribute comes back on GET. | Đông-SA, Hoàng-Security |
+| S1 | Only `onboarding-worker` gets `KEYCLOAK_ONBOARDING_*` and `HRIS_STUB_*`, in its own `environment` block and never in the shared `*runtime_environment` anchor. A test parses `docker-compose.yml` to prove it. The worker also never gets `KEYCLOAK_ADMIN_PASSWORD`. | Hoàng-Security |
+| S2 | The client cannot escalate inside `employees`. Its only role is `realm-management/manage-users`. Real-Keycloak tests show a `403` when it maps `realm-admin`, lists clients, or touches realm `talentflow` or `master`. A realm lint asserts: confidential client, service account only (no standard, direct-grant or implicit flow), `registrationAllowed:false`, `accessTokenLifespan` ≤ 300 s, and admin events on with details off. | Hoàng-Security |
+| S3 | Startup fails when `APP_ENV=production` and the onboarding client secret is empty or the public dev value. Production also requires `https://` for `KEYCLOAK_ADMIN_URL` and `HRIS_STUB_URL`. | Hoàng-Security |
+| S4 | Adopt-on-409 looks the user up with `?username=tf-<id>&exact=true`. It adopts only when exactly one user matches and that user's `onboarding_saga_id` equals the saga id. A similar `tf-<id>x` user is never adopted. Delete uses the same rule. | Hoàng-Security, Đông-SA |
+| S5 | PII is never put in a URL: no `?email=` lookups, and `follow_redirects=False`. Adapters map responses to typed errors, so no exception message carries a response body. Fault tests on steps 1 and 2 (409, 500, timeout) show that the seeded name and email are absent from logs, spans and `last_error`. Metric labels are only `status`, `step` and `outcome`. | Hoàng-Security |
+| S6 | The consumer does not trust the payload. Before it starts a saga, it re-reads the case through the candidates port: the case must exist in the envelope's tenant, have `stage = hired` and have `anonymized_at` null. Otherwise the outcome is `skipped`. The candidates port treats `anonymized_at` like `erased_at`. | Hoàng-Security |
+| S7 | Retry is capped at 5 attempts. After that, retry returns `409`. | Hoàng-Security |
+| S8 | Each name in `ONBOARDING_FAULT_INJECTION` must be one of the four step names, or startup fails. The worker's composition root applies it by wrapping adapters, never inside the domain or the stub. | Hoàng-Security |
+| S9 | `hris-stub` requires a bearer token, `HRIS_STUB_TOKEN`, which only it and `onboarding-worker` receive. A missing or wrong token gets `401`. | Hoàng-Security (recommended); Đông-SA left it to security, so it is accepted |
+| S10 | R4 is accepted on two conditions. First, `docs/onboarding.md` and the DUTH-69 DSAR runbook state that erasure for a hired person must be forwarded to the HRIS and directory owner, using the saga's `external_ref` ids. Second, erasure of a `compensation_failed` saga records `onboarding_erasure_cleanup_required` (events table above). | Hoàng-Security |
+
+### Design summary
+
+- **Schema (Alembic `d64a001`, expand-only):**
+  - `onboarding_sagas`: unique `(tenant_id, candidate_case_id)`, CHECK constraints on status, `compensation_reason` and `warning`, plus `version`, `attempt`, `start_date`, `hired_by` (envelope `actorid`), `erased_at` and `source_event_id`.
+  - `onboarding_saga_steps`: unique `(saga_id, attempt, step)`, forward and compensation status, `attempts`, `deadline_at`, `next_attempt_at` and `lease_owner`, with a partial index on `next_attempt_at IS NOT NULL`.
+  - `onboarding_tasks`: unique `(saga_id, attempt, key)`.
+  - `onboarding_erasure_tombstones`: primary key `(tenant_id, candidate_case_id)`, ids only.
+  - `candidate_cases.hire_start_date`.
+  - The G1 columns.
+- **Start/erase race:** the hired and erased handlers both take `pg_advisory_xact_lock` on `(tenant, case)` before they check for a saga or a tombstone.
+- **Attempt protocol:**
+  - `in_flight` doubles as a lease. Claiming a row sets `next_attempt_at` to lease expiry, which is the timeout + 30 s. A due `in_flight` row is therefore a crashed attempt, and the normal claim picks it up again.
+  - External steps run in three parts: a claim transaction (`FOR UPDATE SKIP LOCKED`, plus a saga compare-and-set on `version`), then the adapter call outside any transaction, then a record transaction guarded by `lease_owner`.
+  - Local steps run claim, work and outcome in one transaction.
+  - Cancel or erasure sets `compensation_reason` and pulls `next_attempt_at` forward. An in-flight attempt finishes and then compensates.
+- **Domain:** pure `decide()` and `on_outcome()` functions, with the step policies held as constants. The policy table matches the spec. A permanent error (`directory_conflict`, an HRIS 4xx) fails the step at once.
+- **Modules:**
+  - `app/modules/onboarding/{domain,application,infrastructure}`;
+  - `app/api/onboarding_router.py` (`CommandRoute`, so `Idempotency-Key` handling comes for free);
+  - `app/workers/onboarding.py`;
+  - `app/workers/hris_stub.py`.
+  - The architecture test adds the module and the reasoned cross-context reads: onboarding → candidates, organization, notifications and audit; notifications → candidates.
+- **API:** the spec's example plus `warning`, and `title` on tasks. `GET` returns the current attempt only. Error order on the POSTs: 401 → 403 `forbidden` → 404 → 403 `feature-disabled` → 428/412 → 409.
+- **ADR 011** records orchestration vs choreography and in-house vs Temporal, and cites this design's forces: lease-as-timer, compensation order, and Postgres as the single durable store.
+
+### Test plan
+
+Each spec AC maps to tests at a named layer and stage. The full table is in Diễm-QA's comment. The rules:
+
+- **Fixtures:**
+  - two tenants with every role;
+  - a fixed UTC clock and recording or faulting ports;
+  - disposable migrated PostgreSQL, a run-specific RabbitMQ vhost, real Keycloak with both realms, the HRIS stub and Mailpit;
+  - unique identifiers per case.
+
+  Tests that need services run explicitly. A skipped integration test does not count as acceptance.
+- **AC5 (no sleeps):** an injected clock and a controllable timeout boundary drive the timer loop one iteration at a time. Tests cover just before, exactly at and after `next_attempt_at`, and they reach deadlines directly.
+- **AC6 (real crash):** reuse the child-process SIGKILL pattern from `test_rabbitmq_outbox.py` on PostgreSQL. The worker child is killed after the remote effect and before the commit. After a restart there is still exactly one employee and one account. A normal exception that rolls back is not enough evidence.
+- **AC8 (real concurrency):** independent PostgreSQL connections meet at a barrier. Worker B skips a row that worker A holds and makes zero calls. The tests also race two distinct hire events against the unique constraint, and hired against erased under the advisory lock.
+- **Security tests from the threat model:** S1–S9 above, plus erasure while step 2 is claimed: the saga ends `cancelled` and Keycloak holds no user.
+- **Browser (stage 2):**
+  - the happy-path E2E has a 30 s deadline;
+  - the compensation E2E keeps the real backoffs, with a longer scenario timeout instead of shortened policy;
+  - condition-based assertions and zero retries, keeping traces.
+- **Gates:** both stages run ruff format and check, pytest with branch coverage ≥ 85 % (changed-module coverage reported) and the architecture tests. Stage 1 adds the Alembic upgrade from `d65a001` and building and starting the Compose images. Stage 2 adds the web lint, typecheck, test, build, `api:check` and `test:e2e`.
+
+### Threat model
+
+Hoàng-Security reviewed the design with STRIDE. The verdict is **approve with conditions**, and no Critical or High threat remains once S1–S10 are implemented. R4 is accepted (S10). **Stage 1 goes through `security_review`** after `code_review`, where Hoàng-Security checks S1–S10 against the code and runs pip-audit, a secret scan and the Keycloak boundary tests. **Stage 2 skips `security_review`** if the panel renders buttons only from the server's `actions` and shows no PII. QA checks that condition.
+
+### Sub-issues by stage
+
+Each stage merges and verifies on its own. Đông-SA advised against splitting stage 1 further: every stage-1 AC needs the whole four-step chain, so a cut by layer could not be verified. Stage 1 therefore ships as one PR with ordered commits and a review guide:
+
+1. migration and models (including G1);
+2. domain and unit tests;
+3. application, repository and PostgreSQL tests;
+4. adapters, the HRIS stub and the realm;
+5. consumer, worker and Compose;
+6. API, flag and `/v1/me`;
+7. metrics, ADR 011 and docs.
+
+| Stage | Sub-issue | Handler | Goal | Acceptance criteria | Depends on | Review path |
+|---|---|---|---|---|---|---|
+| 1 (`todo`) | Onboarding saga: process manager, provisioning and API | Quốc-BE | A hire in an enabled tenant runs the four-step saga with timeouts, retries and compensation, observable through the API, metrics and audit | Spec AC1 (API, broker and Compose level), AC2 (API), AC3–AC8, AC9 (API and worker), AC10 (API), AC11–AC13, AC14 (backend), plus G1–G3 and S1–S10 | DUTH-65 (merged); this spec merged | code_review → security_review → qa |
+| 2 (`backlog`) | Onboarding panel, hire start date and E2E | Hiếu-FE | Recruiters enter a start date when hiring and see the saga timeline. Admins retry and cancel from the candidate detail page | Spec AC1 (web), AC2 (form), AC9 (panel hidden or visible), AC10 (controls driven only by `actions`, stale-action feedback), AC13 (final README catalog row), AC14 (web and E2E: happy path and compensation) | Stage 1 merged | code_review → qa (security_review skipped under the condition above) |
