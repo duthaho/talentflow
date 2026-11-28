@@ -53,7 +53,9 @@ export function WebhooksWorkspace({
   const router = useRouter();
   const [disabledByApi, setDisabledByApi] = useState(false);
   const [renderedFeature, setRenderedFeature] = useState(feature);
-  if (renderedFeature.enabled !== feature.enabled) {
+  // `feature` comes from the server page, so a new object means a fresh /v1/me render (ADR-010 §4).
+  // That render is authoritative even when its value matches the one before the refused mutation.
+  if (renderedFeature !== feature) {
     setRenderedFeature(feature);
     setDisabledByApi(false);
   }
