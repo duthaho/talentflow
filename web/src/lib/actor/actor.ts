@@ -33,7 +33,14 @@ export type Actor = {
   tenantName: string;
   role: Role;
   permissions: Permission[];
+  features: Features;
 };
+
+export type Features = {
+  webhooks: { enabled: boolean; deliveryPaused: boolean };
+};
+
+export type FeatureName = keyof Features;
 
 export const ROLE_LABELS: Record<Role, string> = {
   tenant_admin: "Tenant admin",

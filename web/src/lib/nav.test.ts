@@ -6,7 +6,10 @@ import { ROLE_PERMISSIONS } from "../../test/role-permissions";
 
 import { isActive, navItem, visibleNav } from "./nav";
 
-const labelsFor = (role: Role) => visibleNav(ROLE_PERMISSIONS[role]).map((item) => item.label);
+const WEBHOOKS_ON = { webhooks: { enabled: true, deliveryPaused: false } };
+const WEBHOOKS_OFF = { webhooks: { enabled: false, deliveryPaused: true } };
+
+const labelsFor = (role: Role, features = WEBHOOKS_ON) => visibleNav({ permissions: ROLE_PERMISSIONS[role], features }).map((item) => item.label);
 
 describe("role-aware navigation", () => {
   it("shows every section to the tenant admin and all but webhooks to the recruiter", () => {
@@ -28,7 +31,13 @@ describe("role-aware navigation", () => {
   });
 
   it("shows only the overview without permissions", () => {
-    expect(visibleNav([]).map((item) => item.label)).toEqual(["Overview"]);
+    expect(visibleNav({ permissions: [], features: WEBHOOKS_ON }).map((item) => item.label)).toEqual(["Overview"]);
+  });
+
+  it("hides webhooks from the tenant admin while the tenant's release gate is off", () => {
+    expect(labelsFor("tenant_admin", WEBHOOKS_OFF)).not.toContain("Webhooks");
+    expect(labelsFor("tenant_admin", { webhooks: { enabled: true, deliveryPaused: true } })).toContain("Webhooks");
+    expect(labelsFor("recruiter", WEBHOOKS_ON)).not.toContain("Webhooks");
   });
 
   it("marks nested routes active without matching the overview everywhere", () => {

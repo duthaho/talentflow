@@ -10,7 +10,7 @@ import { MobileNav } from "./mobile-nav";
 import { NavLinks } from "./nav-links";
 
 export function AppShell({ actor, children }: { actor: Actor; children: ReactNode }) {
-  const items = visibleNav(actor.permissions);
+  const items = visibleNav(actor);
   return (
     <div className="flex min-h-svh flex-1 flex-col md:flex-row">
       <a

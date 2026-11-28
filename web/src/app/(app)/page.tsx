@@ -13,7 +13,7 @@ export default async function OverviewPage() {
   const result = await getCurrentActor();
   if (!result.ok) return <ProblemView problem={result.problem} retryHref="/" />;
   const { actor } = result;
-  const destinations = visibleNav(actor.permissions).filter((item) => item.href !== "/");
+  const destinations = visibleNav(actor).filter((item) => item.href !== "/");
   return (
     <>
       <PageHeader

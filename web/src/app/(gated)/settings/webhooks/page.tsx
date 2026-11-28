@@ -12,6 +12,6 @@ export default async function WebhooksPage() {
   if (result.ok && !isAllowed(item, result.actor.permissions)) forbidden();
   return <RequirePermission item={item}>
     <PageHeader title="Webhooks" description="Send signed hiring events to your own systems, and inspect or redeliver what was sent." />
-    <WebhooksWorkspace />
+    {result.ok && <WebhooksWorkspace feature={result.actor.features.webhooks} />}
   </RequirePermission>;
 }
