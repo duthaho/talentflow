@@ -16,7 +16,7 @@ const MANAGE: Permission[] = [
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  tenant_admin: MANAGE,
+  tenant_admin: [...MANAGE, "webhook:manage"],
   recruiter: MANAGE,
   auditor: ["audit:read", "tenant:read"],
   hiring_manager: ["tenant:read"],

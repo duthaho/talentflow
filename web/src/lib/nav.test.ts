@@ -9,10 +9,10 @@ import { isActive, navItem, visibleNav } from "./nav";
 const labelsFor = (role: Role) => visibleNav(ROLE_PERMISSIONS[role]).map((item) => item.label);
 
 describe("role-aware navigation", () => {
-  it("shows every section to the tenant admin and the recruiter", () => {
-    const all = ["Overview", "Candidates", "Interviews", "Offers", "Reports", "Audit log", "Requisitions", "Retention"];
-    expect(labelsFor("tenant_admin")).toEqual(all);
-    expect(labelsFor("recruiter")).toEqual(all);
+  it("shows every section to the tenant admin and all but webhooks to the recruiter", () => {
+    const hiring = ["Overview", "Candidates", "Interviews", "Offers", "Reports", "Audit log", "Requisitions", "Retention"];
+    expect(labelsFor("tenant_admin")).toEqual([...hiring, "Webhooks"]);
+    expect(labelsFor("recruiter")).toEqual(hiring);
   });
 
   it("limits the hiring manager to read-only hiring sections", () => {

@@ -14,6 +14,7 @@ const PERMISSIONS = [
   "tenant:read",
   "retention:manage",
   "retention:purge",
+  "webhook:manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

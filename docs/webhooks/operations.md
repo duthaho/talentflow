@@ -14,6 +14,13 @@ register `http://webhook-demo:8080/events` through `POST /v1/webhook-endpoints`
 with the tenant-admin access token and an explicit `event_types` list. It returns
 `secret: {id, value}` once. Keep the value in the receiver's secret store.
 
+Or use the web app: sign in as the tenant admin and open **Settings → Webhooks**
+(`/settings/webhooks`). It lists, creates, edits, disables, deletes and rotates
+endpoints, shows each secret once in a dialog that discards it on close, and has
+a per-endpoint delivery log with a status filter (for example Dead-lettered) and
+a Redeliver action that follows the new delivery until it finishes. Only roles
+with `webhook:manage` see the screen; the API enforces the same permission.
+
 The demo sink accepts requests to demonstrate transport; it does not authenticate
 messages. Real receivers must verify the raw body and replay window using the
 [ADR-008 sample verifier](../adr/008-outbound-webhooks.md#2-signing-standard-webhooks-hmac-sha256)
