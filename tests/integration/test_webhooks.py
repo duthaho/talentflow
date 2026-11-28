@@ -109,6 +109,7 @@ def worker(api, sender=None, **options):
         app.state.session_factory,
         sender or Sender(),
         build_cipher(app.state.runtime_settings),
+        flags=app.state.feature_flags,
         **options,
     )
 

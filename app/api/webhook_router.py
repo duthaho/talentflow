@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.api.conditional_requests import parse_if_match, precondition_exception
 from app.api.idempotency import CommandRoute
+from app.modules.feature_flags.application.flags import WEBHOOKS_OUTBOUND, Context
 from app.modules.identity.security import ActorContext, permissions_for, resolve_actor
 from app.modules.webhooks.application.contracts import EVENT_TYPES, WebhookError
 from app.modules.webhooks.infrastructure.cipher import build_cipher
@@ -109,6 +110,30 @@ class RotateSecret(Body):
     grace_period_seconds: int = Field(default=86400, ge=0, le=604800)
 
 
+def require_webhooks(request: Request, actor: Annotated[ActorContext, Depends(webhook_actor)]):
+    if not request.app.state.feature_flags.is_enabled(
+        WEBHOOKS_OUTBOUND, Context(actor.tenant_id, actor.role)
+    ):
+        raise HTTPException(
+            403,
+            {
+                "problem_type": "feature-disabled",
+                "feature": "webhooks",
+                "detail": "Webhooks are not enabled for this organization. Existing endpoints can still be viewed, disabled, rotated or deleted.",
+            },
+            headers={"Cache-Control": "private, no-store"},
+        )
+
+
+def require_webhook_patch(
+    payload: UpdateEndpoint,
+    request: Request,
+    actor: Annotated[ActorContext, Depends(webhook_actor)],
+):
+    if payload.model_dump(exclude_unset=True) != {"enabled": False}:
+        require_webhooks(request, actor)
+
+
 def problem(error):
     detail = {"problem_type": error.slug, "detail": str(error)}
     if error.pointer:
@@ -183,7 +208,12 @@ def event_types():
     }
 
 
-@router.post("/v1/webhook-endpoints", status_code=201, operation_id="createWebhookEndpoint")
+@router.post(
+    "/v1/webhook-endpoints",
+    status_code=201,
+    operation_id="createWebhookEndpoint",
+    dependencies=[Depends(require_webhooks)],
+)
 def create(payload: CreateEndpoint, request: Request, response: Response, manager: Service):
     data = payload.model_dump()
     data["url"] = validate_url(request, data["url"])
@@ -215,6 +245,7 @@ def endpoint(endpoint_id: UUID, response: Response, manager: Service):
 @commands.patch(
     "/v1/webhook-endpoints/{endpoint_id}",
     operation_id="updateWebhookEndpoint",
+    dependencies=[Depends(require_webhook_patch)],
     openapi_extra={"x-idempotency-key": True},
 )
 def patch(
@@ -304,6 +335,7 @@ def detail(delivery_id: UUID, manager: Service):
     "/v1/webhook-deliveries/{delivery_id}/redeliveries",
     status_code=202,
     operation_id="redeliverWebhook",
+    dependencies=[Depends(require_webhooks)],
 )
 def redeliver(delivery_id: UUID, response: Response, manager: Service):
     result = manager.redeliver(str(delivery_id))

@@ -18,6 +18,17 @@ class TenantResponse(BaseModel):
     slug: str
 
 
+class WebhooksFeature(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+    delivery_paused: bool
+
+
+class Features(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    webhooks: WebhooksFeature
+
+
 class CurrentActorResponse(BaseModel):
     user_id: str
     email: str | None
@@ -26,6 +37,7 @@ class CurrentActorResponse(BaseModel):
     tenant_name: str
     role: Literal["tenant_admin", "recruiter", "auditor", "hiring_manager", "interviewer"]
     permissions: list[str]
+    features: Features
 
 
 class CreateRequisitionRequest(BaseModel):

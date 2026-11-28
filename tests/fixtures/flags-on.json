@@ -1,0 +1,36 @@
+{
+  "$schema": "https://flagd.dev/schema/v0/flags.json",
+  "flags": {
+    "release.webhooks.outbound": {
+      "state": "ENABLED",
+      "variants": {
+        "on": true,
+        "off": false
+      },
+      "defaultVariant": "on",
+      "metadata": {
+        "kind": "release",
+        "owner": "backend",
+        "issue": "DUTH-65",
+        "contextScope": "tenant",
+        "createdAt": "2026-11-28",
+        "expiresAt": "2027-02-26"
+      }
+    },
+    "ops.webhooks.delivery": {
+      "state": "ENABLED",
+      "variants": {
+        "on": true,
+        "off": false
+      },
+      "defaultVariant": "on",
+      "metadata": {
+        "kind": "ops",
+        "owner": "backend",
+        "issue": "DUTH-65",
+        "contextScope": "tenant",
+        "createdAt": "2026-11-28"
+      }
+    }
+  }
+}

@@ -115,7 +115,7 @@ CONTRACT = {
                         },
                     },
                     "401": {"$ref": "#/components/responses/Unauthorized"},
-                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "403": {"$ref": "#/components/responses/ForbiddenOrFeatureDisabled"},
                     "409": {
                         "description": "`conflict` "
                         "(URL already "
@@ -156,6 +156,10 @@ CONTRACT = {
             },
             "patch": {
                 "tags": ["webhooks"],
+                "x-talentflow-feature-gate": {
+                    "feature": "webhooks",
+                    "allowed-when-disabled-body": {"enabled": False},
+                },
                 "operationId": "updateWebhookEndpoint",
                 "summary": "Update URL, description, subscriptions or enabled state",
                 "description": "Requires If-Match. "
@@ -195,7 +199,7 @@ CONTRACT = {
                     },
                     "400": {"$ref": "#/components/responses/InvalidPrecondition"},
                     "401": {"$ref": "#/components/responses/Unauthorized"},
-                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "403": {"$ref": "#/components/responses/ForbiddenOrFeatureDisabled"},
                     "404": {"$ref": "#/components/responses/NotFound"},
                     "409": {
                         "description": "`conflict`: "
@@ -500,7 +504,7 @@ CONTRACT = {
                     },
                     "400": {"$ref": "#/components/responses/ValidationError"},
                     "401": {"$ref": "#/components/responses/Unauthorized"},
-                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "403": {"$ref": "#/components/responses/ForbiddenOrFeatureDisabled"},
                     "404": {"$ref": "#/components/responses/NotFound"},
                     "409": {
                         "description": "`delivery-not-redeliverable` "
@@ -632,6 +636,22 @@ CONTRACT = {
             "NoStore": {"schema": {"type": "string", "const": "private, no-store"}},
         },
         "responses": {
+            "ForbiddenOrFeatureDisabled": {
+                "description": "`forbidden`: the "
+                "caller lacks "
+                "`webhook:manage`; or "
+                "`feature-disabled`: "
+                "webhooks are not "
+                "enabled for the "
+                "tenant (ADR-010 §3). "
+                "`feature-disabled` "
+                "carries `feature: "
+                "webhooks`.",
+                "headers": {"Cache-Control": {"$ref": "#/components/headers/NoStore"}},
+                "content": {
+                    "application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}
+                },
+            },
             "Unauthorized": {
                 "description": "`unauthorized`",
                 "content": {
@@ -712,6 +732,11 @@ CONTRACT = {
                     "detail": {"type": "string"},
                     "instance": {"type": "string"},
                     "correlation_id": {"type": "string"},
+                    "feature": {
+                        "type": "string",
+                        "enum": ["webhooks"],
+                        "description": "Public feature name on feature-disabled.",
+                    },
                     "current_version": {"type": "integer"},
                     "errors": {
                         "type": "array",

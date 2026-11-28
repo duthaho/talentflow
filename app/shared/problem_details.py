@@ -28,6 +28,7 @@ PROBLEM_TYPES = frozenset(
         "rate-limited",
         "not-found",
         "forbidden",
+        "feature-disabled",
         "conflict",
         "internal-error",
         "service-unavailable",
@@ -137,7 +138,9 @@ def problem_response(
     response_headers["X-Correlation-Id"] = correlation_id
     body: dict[str, Any] = {
         "type": type_uri,
-        "title": _STATUS_TITLES.get(status, "HTTP Error"),
+        "title": "Feature Disabled"
+        if type_uri == problem_type("feature-disabled")
+        else _STATUS_TITLES.get(status, "HTTP Error"),
         "status": status,
         "detail": detail,
         "instance": request.url.path,

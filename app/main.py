@@ -21,6 +21,7 @@ from app.api.retention_router import router as retention_router
 from app.api.webhook_contract import install_webhook_openapi
 from app.api.webhook_router import commands as webhook_commands
 from app.api.webhook_router import router as webhook_router
+from app.modules.feature_flags.infrastructure.openfeature import OpenFeatureFlags
 from app.modules.identity.infrastructure.jwt_validator import HttpJwksProvider, JwtValidator
 from app.shared.database import Base, build_engine
 from app.shared.observability import configure_logging, configure_telemetry, instrument_app
@@ -52,9 +53,13 @@ def create_app(database_url: str | None = None, app_settings: Settings | None = 
             Base.metadata.create_all(engine)
             with session_factory() as session:
                 ensure_system_users(session)
-        yield
-        rate_limiter.close()
-        engine.dispose()
+        app.state.feature_flags = OpenFeatureFlags(runtime_settings)
+        try:
+            yield
+        finally:
+            app.state.feature_flags.close()
+            rate_limiter.close()
+            engine.dispose()
 
     app = FastAPI(title="TalentFlow API", version="0.1.0", lifespan=lifespan)
     if runtime_settings.cors_origins:
